@@ -1,0 +1,40 @@
+{
+  "name": "upstream-pulse",
+  "version": "1.0.0",
+  "description": "AI-powered upstream OSS contribution insights for Red Hat AI Organization",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "db:migrate": "cd backend && npm run db:migrate",
+    "db:studio": "cd backend && npm run db:studio",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/redhat-ai/upstream-pulse.git"
+  },
+  "keywords": [
+    "open-source",
+    "contribution-tracking",
+    "analytics",
+    "ai-insights",
+    "red-hat"
+  ],
+  "author": "Red Hat AI Organization",
+  "license": "UNLICENSED"
+}

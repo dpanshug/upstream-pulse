@@ -1,0 +1,221 @@
+import { Worker, Job } from 'bullmq';
+import { Redis } from 'ioredis';
+import { randomUUID } from 'crypto';
+import { config } from '../../shared/config/index.js';
+import { logger } from '../../shared/utils/logger.js';
+import { db } from '../../shared/database/client.js';
+import { projects, contributions, collectionJobs } from '../../shared/database/schema.js';
+import { GitHubCollector } from '../../modules/collection/github-collector.js';
+import { IdentityResolver } from '../../modules/identity/resolver.js';
+import { eq } from 'drizzle-orm';
+
+interface CollectionJobData {
+  projectId: string;
+  jobType: 'full_sync' | 'incremental';
+  since?: string; // ISO date string
+}
+
+const redisConnection = new Redis(config.redisUrl, {
+  maxRetriesPerRequest: null,
+});
+
+export const collectionWorker = new Worker<CollectionJobData>(
+  'contribution-collection',
+  async (job: Job<CollectionJobData>) => {
+    const { projectId, jobType, since } = job.data;
+
+    logger.info('Starting collection job', {
+      jobId: job.id,
+      projectId,
+      jobType,
+    });
+
+    // Update job status to running
+    const jobRecordId = randomUUID();
+    const jobRecord = await db.insert(collectionJobs).values({
+      id: jobRecordId,
+      jobType,
+      projectId,
+      status: 'running',
+      startedAt: new Date(),
+      metadata: { bullmqJobId: job.id },
+    }).returning();
+
+    try {
+      // Fetch project details
+      const project = await db.query.projects.findFirst({
+        where: eq(projects.id, projectId),
+      });
+
+      if (!project) {
+        throw new Error(`Project not found: ${projectId}`);
+      }
+
+      logger.info('Collecting contributions for project', {
+        name: project.name,
+        org: project.githubOrg,
+        repo: project.githubRepo,
+      });
+
+      // Determine collection start date
+      const sinceDate = since
+        ? new Date(since)
+        : jobType === 'incremental'
+        ? new Date(Date.now() - 24 * 60 * 60 * 1000) // Last 24 hours
+        : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000); // Last 90 days
+
+      // Collect contributions from GitHub
+      const collector = new GitHubCollector();
+      const contributionRecords = await collector.collectRepositoryContributions(
+        {
+          githubOrg: project.githubOrg,
+          githubRepo: project.githubRepo,
+          id: project.id,
+        },
+        sinceDate
+      );
+
+      logger.info('GitHub data collected', {
+        count: contributionRecords.length,
+        project: project.name,
+      });
+
+      // Update progress
+      await job.updateProgress(30);
+
+      // Resolve identities
+      const resolver = new IdentityResolver();
+      const contributors = contributionRecords.map(c => ({
+        username: c.author || 'unknown',
+        email: c.email,
+      }));
+
+      // Deduplicate contributors
+      const uniqueContributors = Array.from(
+        new Map(contributors.map(c => [c.username, c])).values()
+      );
+
+      const identities = await resolver.bulkResolve(uniqueContributors);
+
+      logger.info('Identities resolved', {
+        total: uniqueContributors.length,
+        resolved: Array.from(identities.values()).filter(i => i.teamMember).length,
+      });
+
+      // Update progress
+      await job.updateProgress(60);
+
+      // Store contributions in database
+      let recordsProcessed = 0;
+      let errorsCount = 0;
+
+      for (const record of contributionRecords) {
+        try {
+          const identity = identities.get(record.author || 'unknown');
+
+          await db.insert(contributions).values({
+            projectId: project.id,
+            teamMemberId: identity?.teamMember?.id,
+            contributionType: record.type,
+            contributionDate: record.date.toISOString().split('T')[0],
+            githubId: record.githubId,
+            githubUrl: record.metadata?.url,
+            linesAdded: record.linesAdded,
+            linesDeleted: record.linesDeleted,
+            filesChanged: record.filesChanged,
+            isMerged: record.isMerged,
+            metadata: record.metadata,
+          }).onConflictDoNothing(); // Skip duplicates
+
+          recordsProcessed++;
+        } catch (error) {
+          errorsCount++;
+          logger.warn('Error storing contribution', {
+            error: (error as Error).message,
+            record: record.githubId,
+          });
+        }
+      }
+
+      // Update progress
+      await job.updateProgress(90);
+
+      // Update project last sync time
+      await db.update(projects)
+        .set({
+          lastSyncAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(projects.id, projectId));
+
+      // Mark job as completed
+      await db.update(collectionJobs)
+        .set({
+          status: 'completed',
+          completedAt: new Date(),
+          recordsProcessed,
+          errorsCount,
+        })
+        .where(eq(collectionJobs.id, jobRecordId));
+
+      logger.info('Collection job completed', {
+        jobId: job.id,
+        project: project.name,
+        recordsProcessed,
+        errorsCount,
+      });
+
+      return {
+        success: true,
+        recordsProcessed,
+        errorsCount,
+      };
+
+    } catch (error) {
+      logger.error('Collection job failed', {
+        jobId: job.id,
+        projectId,
+        error: (error as Error).message,
+      });
+
+      // Mark job as failed
+      await db.update(collectionJobs)
+        .set({
+          status: 'failed',
+          completedAt: new Date(),
+          errorDetails: {
+            message: (error as Error).message,
+            stack: (error as Error).stack,
+          },
+        })
+        .where(eq(collectionJobs.id, jobRecordId));
+
+      throw error;
+    }
+  },
+  {
+    connection: redisConnection,
+    concurrency: 3, // Process up to 3 jobs concurrently
+    limiter: {
+      max: 10, // Max 10 jobs
+      duration: 60000, // Per 60 seconds
+    },
+  }
+);
+
+collectionWorker.on('completed', (job) => {
+  logger.info('Collection job completed', { jobId: job.id });
+});
+
+collectionWorker.on('failed', (job, err) => {
+  logger.error('Collection job failed', {
+    jobId: job?.id,
+    error: err.message,
+  });
+});
+
+collectionWorker.on('error', (err) => {
+  logger.error('Collection worker error', { error: err });
+});
+
+logger.info('Collection worker started');
