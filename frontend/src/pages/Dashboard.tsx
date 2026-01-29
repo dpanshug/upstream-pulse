@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   GitCommit,
   GitPullRequest,
@@ -11,7 +12,17 @@ import {
   Activity,
   Calendar,
   ArrowUpRight,
+  Loader2,
 } from 'lucide-react';
+
+// Period options for the selector
+const PERIOD_OPTIONS = [
+  { label: '7d', value: 7, description: 'Last 7 days' },
+  { label: '30d', value: 30, description: 'Last 30 days' },
+  { label: '90d', value: 90, description: 'Last 90 days' },
+  { label: '1y', value: 365, description: 'Last year' },
+  { label: 'All time', value: 0, description: 'Since beginning' },
+] as const;
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
@@ -66,8 +77,11 @@ interface DashboardData {
   dailyBreakdown: any[];
 }
 
-async function fetchDashboard(): Promise<DashboardData> {
-  const res = await fetch(`${API_URL}/api/metrics/dashboard`);
+async function fetchDashboard(days: number): Promise<DashboardData> {
+  const url = days === 0 
+    ? `${API_URL}/api/metrics/dashboard?days=0`
+    : `${API_URL}/api/metrics/dashboard?days=${days}`;
+  const res = await fetch(url);
   if (!res.ok) throw new Error('Failed to fetch dashboard');
   return res.json();
 }
@@ -91,12 +105,12 @@ function TrendIndicator({ trend }: { trend: TrendMetric }) {
 }
 
 // Progress bar for contribution breakdown
-function ContributionBar({ metric, color }: { metric: ContributionTypeMetric; color: string }) {
+function ContributionBar({ metric, bgColor }: { metric: ContributionTypeMetric; bgColor: string }) {
   return (
     <div className="w-full">
       <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
         <div 
-          className={`h-full ${color} rounded-full transition-all duration-500`}
+          className={`h-full ${bgColor} rounded-full transition-all duration-500`}
           style={{ width: `${Math.min(metric.teamPercent, 100)}%` }}
         />
       </div>
@@ -111,12 +125,14 @@ function ContributionTypeCard({
   icon: Icon,
   color,
   bgColor,
+  barColor,
 }: {
   title: string;
   metric: ContributionTypeMetric;
   icon: React.ElementType;
   color: string;
   bgColor: string;
+  barColor: string;
 }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md transition-shadow">
@@ -136,7 +152,7 @@ function ContributionTypeCard({
         <span className="text-sm text-gray-500">of {metric.total}</span>
       </div>
       
-      <ContributionBar metric={metric} color={color.replace('text-', 'bg-')} />
+      <ContributionBar metric={metric} bgColor={barColor} />
       
       <p className="text-xs text-gray-500 mt-2">Team's share of total</p>
     </div>
@@ -232,12 +248,60 @@ function ContributorBreakdown({ contributor }: { contributor: ContributorRanking
   );
 }
 
+// Period selector button group
+function PeriodSelector({
+  selectedDays,
+  onSelect,
+  isLoading,
+}: {
+  selectedDays: number;
+  onSelect: (days: number) => void;
+  isLoading: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+      {PERIOD_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          onClick={() => onSelect(option.value)}
+          title={option.description}
+          className={`
+            px-3 py-1.5 text-sm font-medium rounded-md transition-all
+            ${selectedDays === option.value
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+            }
+          `}
+        >
+          {option.label}
+        </button>
+      ))}
+      {isLoading && (
+        <Loader2 className="w-4 h-4 text-gray-400 animate-spin ml-2" />
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: fetchDashboard,
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Get days from URL, default to 0 (all time)
+  const daysParam = searchParams.get('days');
+  const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : 0;
+  
+  const { data, isLoading, isFetching, error } = useQuery({
+    queryKey: ['dashboard', selectedDays],
+    queryFn: () => fetchDashboard(selectedDays),
     refetchInterval: 60000,
+    // Keep previous data while fetching new data for seamless transition
+    placeholderData: (previousData) => previousData,
   });
+  
+  // Handle period selection
+  const handlePeriodChange = (days: number) => {
+    setSearchParams({ days: days.toString() });
+  };
 
   if (isLoading) {
     return (
@@ -276,14 +340,21 @@ export default function Dashboard() {
               <h1 className="text-2xl font-bold text-gray-900">Upstream Pulse</h1>
               <p className="text-sm text-gray-500">Red Hat AI Open Source Contributions</p>
             </div>
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <Calendar className="w-4 h-4" />
-              <span>
-                {data.summary.periodStart} to {data.summary.periodEnd}
-              </span>
-              <span className="px-2 py-1 bg-gray-100 rounded-full text-xs font-medium">
-                {data.summary.periodDays} days
-              </span>
+            <div className="flex items-center gap-4">
+              <PeriodSelector
+                selectedDays={selectedDays}
+                onSelect={handlePeriodChange}
+                isLoading={isFetching && !isLoading}
+              />
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Calendar className="w-4 h-4" />
+                <span>
+                  {data.summary.periodStart === 'All time' 
+                    ? 'All time' 
+                    : `${data.summary.periodStart} to ${data.summary.periodEnd}`
+                  }
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -334,6 +405,7 @@ export default function Dashboard() {
               icon={GitCommit}
               color="text-blue-600"
               bgColor="bg-blue-50"
+              barColor="bg-blue-600"
             />
             <ContributionTypeCard
               title="Pull Requests"
@@ -341,6 +413,7 @@ export default function Dashboard() {
               icon={GitPullRequest}
               color="text-purple-600"
               bgColor="bg-purple-50"
+              barColor="bg-purple-600"
             />
             <ContributionTypeCard
               title="Code Reviews"
@@ -348,6 +421,7 @@ export default function Dashboard() {
               icon={MessageSquare}
               color="text-green-600"
               bgColor="bg-green-50"
+              barColor="bg-green-600"
             />
             <ContributionTypeCard
               title="Issues"
@@ -355,6 +429,7 @@ export default function Dashboard() {
               icon={AlertCircle}
               color="text-orange-600"
               bgColor="bg-orange-50"
+              barColor="bg-orange-600"
             />
           </div>
         </section>

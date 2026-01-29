@@ -31,12 +31,19 @@ export class MetricsService {
 
   /**
    * Get date range from options or default to last N days
+   * If days=0, returns null to indicate "all time" (no date filtering)
    */
-  private getDateRange(options: MetricsQueryOptions): DateRange {
+  private getDateRange(options: MetricsQueryOptions): DateRange | null {
     if (options.dateRange) {
       return options.dateRange;
     }
-    const days = options.days || 30;
+    const days = options.days ?? 0; // Default to 0 (all time)
+    
+    // days=0 means "all time" - no date filtering
+    if (days === 0) {
+      return null;
+    }
+    
     return {
       start: new Date(Date.now() - days * 24 * 60 * 60 * 1000),
       end: new Date(),
@@ -125,15 +132,19 @@ export class MetricsService {
    * Get contribution breakdown for a date range
    */
   async getContributionBreakdown(options: MetricsQueryOptions = {}): Promise<ContributionBreakdown> {
-    const { start, end } = this.getDateRange(options);
-    const startStr = this.formatDate(start);
-    const endStr = this.formatDate(end);
+    const dateRange = this.getDateRange(options);
 
     // Build where conditions
-    const conditions = [
-      gte(contributions.contributionDate, startStr),
-      lte(contributions.contributionDate, endStr),
-    ];
+    const conditions: ReturnType<typeof eq>[] = [];
+    
+    // Only add date filters if not "all time"
+    if (dateRange) {
+      const startStr = this.formatDate(dateRange.start);
+      const endStr = this.formatDate(dateRange.end);
+      conditions.push(gte(contributions.contributionDate, startStr));
+      conditions.push(lte(contributions.contributionDate, endStr));
+    }
+    
     if (options.projectId) {
       conditions.push(eq(contributions.projectId, options.projectId));
     }
@@ -172,11 +183,17 @@ export class MetricsService {
    * Get daily contribution trend
    */
   async getDailyTrend(options: MetricsQueryOptions = {}): Promise<DailyContribution[]> {
-    const { start, end } = this.getDateRange(options);
-    const startStr = this.formatDate(start);
-    const endStr = this.formatDate(end);
+    const dateRange = this.getDateRange(options);
+    
+    // For "all time", default to last 365 days for the daily chart
+    const effectiveRange = dateRange || {
+      start: new Date(Date.now() - 365 * 24 * 60 * 60 * 1000),
+      end: new Date(),
+    };
+    const startStr = this.formatDate(effectiveRange.start);
+    const endStr = this.formatDate(effectiveRange.end);
 
-    const conditions = [
+    const conditions: ReturnType<typeof eq>[] = [
       gte(contributions.contributionDate, startStr),
       lte(contributions.contributionDate, endStr),
     ];
@@ -212,8 +229,8 @@ export class MetricsService {
     const dailyMap = new Map<string, DailyContribution>();
 
     // Initialize with all dates in range
-    const current = new Date(start);
-    while (current <= end) {
+    const current = new Date(effectiveRange.start);
+    while (current <= effectiveRange.end) {
       const dateStr = this.formatDate(current);
       dailyMap.set(dateStr, {
         date: dateStr,
@@ -264,15 +281,20 @@ export class MetricsService {
    * Get count of active team contributors
    */
   async getActiveContributorCount(options: MetricsQueryOptions = {}): Promise<number> {
-    const { start, end } = this.getDateRange(options);
-    const startStr = this.formatDate(start);
-    const endStr = this.formatDate(end);
+    const dateRange = this.getDateRange(options);
 
-    const conditions = [
-      gte(contributions.contributionDate, startStr),
-      lte(contributions.contributionDate, endStr),
+    const conditions: ReturnType<typeof eq>[] = [
       isNotNull(contributions.teamMemberId),
     ];
+    
+    // Only add date filters if not "all time"
+    if (dateRange) {
+      const startStr = this.formatDate(dateRange.start);
+      const endStr = this.formatDate(dateRange.end);
+      conditions.push(gte(contributions.contributionDate, startStr));
+      conditions.push(lte(contributions.contributionDate, endStr));
+    }
+    
     if (options.projectId) {
       conditions.push(eq(contributions.projectId, options.projectId));
     }
@@ -289,16 +311,21 @@ export class MetricsService {
    * Get top contributors by contribution count
    */
   async getTopContributors(options: MetricsQueryOptions = {}): Promise<ContributorSummary[]> {
-    const { start, end } = this.getDateRange(options);
-    const startStr = this.formatDate(start);
-    const endStr = this.formatDate(end);
+    const dateRange = this.getDateRange(options);
     const topN = options.topN || 10;
 
-    const conditions = [
-      gte(contributions.contributionDate, startStr),
-      lte(contributions.contributionDate, endStr),
+    const conditions: ReturnType<typeof eq>[] = [
       isNotNull(contributions.teamMemberId),
     ];
+    
+    // Only add date filters if not "all time"
+    if (dateRange) {
+      const startStr = this.formatDate(dateRange.start);
+      const endStr = this.formatDate(dateRange.end);
+      conditions.push(gte(contributions.contributionDate, startStr));
+      conditions.push(lte(contributions.contributionDate, endStr));
+    }
+    
     if (options.projectId) {
       conditions.push(eq(contributions.projectId, options.projectId));
     }
@@ -366,9 +393,7 @@ export class MetricsService {
    * Get top projects by team contribution
    */
   async getTopProjects(options: MetricsQueryOptions = {}): Promise<ProjectSummary[]> {
-    const { start, end } = this.getDateRange(options);
-    const startStr = this.formatDate(start);
-    const endStr = this.formatDate(end);
+    const dateRange = this.getDateRange(options);
     const topN = options.topN || 5;
 
     // Get tracked projects
@@ -385,12 +410,12 @@ export class MetricsService {
     for (const project of trackedProjects) {
       const breakdown = await this.getContributionBreakdown({
         projectId: project.id,
-        dateRange: { start, end },
+        ...(dateRange ? { dateRange } : { days: 0 }),
       });
 
       const activeContributors = await this.getActiveContributorCount({
         projectId: project.id,
-        dateRange: { start, end },
+        ...(dateRange ? { dateRange } : { days: 0 }),
       });
 
       summaries.push({
@@ -415,7 +440,15 @@ export class MetricsService {
    * Get contribution trend comparing current vs previous period
    */
   async getContributionTrend(options: MetricsQueryOptions = {}): Promise<TrendComparison> {
-    const { start, end } = this.getDateRange(options);
+    const dateRange = this.getDateRange(options);
+    
+    // For "all time", there's no previous period to compare
+    if (!dateRange) {
+      const current = await this.getContributionBreakdown({ days: 0 });
+      return this.buildTrend(current.team.total, 0);
+    }
+    
+    const { start, end } = dateRange;
     const periodMs = end.getTime() - start.getTime();
     
     const previousEnd = new Date(start.getTime() - 1);
@@ -438,7 +471,15 @@ export class MetricsService {
    * Get active contributor trend
    */
   async getActiveContributorTrend(options: MetricsQueryOptions = {}): Promise<TrendComparison> {
-    const { start, end } = this.getDateRange(options);
+    const dateRange = this.getDateRange(options);
+    
+    // For "all time", there's no previous period to compare
+    if (!dateRange) {
+      const current = await this.getActiveContributorCount({ days: 0 });
+      return this.buildTrend(current, 0);
+    }
+    
+    const { start, end } = dateRange;
     const periodMs = end.getTime() - start.getTime();
     
     const previousEnd = new Date(start.getTime() - 1);
@@ -465,7 +506,7 @@ export class MetricsService {
    * Get complete dashboard metrics (main entry point)
    */
   async getDashboardMetrics(options: MetricsQueryOptions = {}): Promise<DashboardMetrics> {
-    const days = options.days || 30;
+    const days = options.days ?? 0; // Default to 0 (all time)
     const queryOptions = { ...options, days };
 
     logger.info('Calculating dashboard metrics', { days });
@@ -512,10 +553,21 @@ export class MetricsService {
    * This is the new preferred method for the frontend
    */
   async getDashboard(options: MetricsQueryOptions = {}): Promise<DashboardResponse> {
-    const days = options.days || 30;
-    const { start, end } = this.getDateRange({ days });
-    const startStr = this.formatDate(start);
-    const endStr = this.formatDate(end);
+    const days = options.days ?? 0; // Default to 0 (all time)
+    const dateRange = this.getDateRange({ days });
+    
+    // For display purposes
+    let startStr: string;
+    let endStr: string;
+    
+    if (dateRange) {
+      startStr = this.formatDate(dateRange.start);
+      endStr = this.formatDate(dateRange.end);
+    } else {
+      // For "all time", show earliest contribution date or a placeholder
+      endStr = this.formatDate(new Date());
+      startStr = 'All time';
+    }
 
     logger.info('Building dashboard', { days, start: startStr, end: endStr });
 
