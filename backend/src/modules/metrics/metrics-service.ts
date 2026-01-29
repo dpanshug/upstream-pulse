@@ -6,7 +6,7 @@
  */
 
 import { db } from '../../shared/database/client.js';
-import { contributions, projects, teamMembers, maintainerStatus } from '../../shared/database/schema.js';
+import { contributions, projects, teamMembers, maintainerStatus, leadershipPositions } from '../../shared/database/schema.js';
 import { eq, and, gte, lte, sql, count, isNotNull } from 'drizzle-orm';
 import { logger } from '../../shared/utils/logger.js';
 import type {
@@ -689,11 +689,13 @@ export class MetricsService {
 
   /**
    * Get leadership summary for dashboard
+   * Includes both OWNERS-based roles (approvers/reviewers) and 
+   * org-level leadership (steering committee, WG chairs)
    */
   private async getLeadershipSummary() {
     try {
-      // Get all active maintainer statuses with team member info
-      const statuses = await db
+      // Get all active maintainer statuses (OWNERS file roles)
+      const maintainerStatuses = await db
         .select({
           id: maintainerStatus.id,
           positionType: maintainerStatus.positionType,
@@ -709,48 +711,99 @@ export class MetricsService {
         .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
         .where(eq(maintainerStatus.isActive, true));
 
-      // Count team approvers and reviewers
-      const teamApprovers = statuses.filter(s => s.positionType === 'maintainer').length;
-      const teamReviewers = statuses.filter(s => s.positionType === 'reviewer').length;
+      // Get all active leadership positions (steering committee, WG chairs/leads)
+      const leadershipPositionsData = await db
+        .select({
+          id: leadershipPositions.id,
+          positionType: leadershipPositions.positionType,
+          committeeName: leadershipPositions.committeeName,
+          roleTitle: leadershipPositions.roleTitle,
+          teamMemberId: leadershipPositions.teamMemberId,
+          teamMemberName: teamMembers.name,
+          githubUsername: teamMembers.githubUsername,
+          isActive: leadershipPositions.isActive,
+          votingRights: leadershipPositions.votingRights,
+        })
+        .from(leadershipPositions)
+        .innerJoin(teamMembers, eq(leadershipPositions.teamMemberId, teamMembers.id))
+        .where(eq(leadershipPositions.isActive, true));
 
-      // Estimate totals (could be refined with actual OWNERS data)
+      // Count OWNERS-based roles
+      const teamApprovers = maintainerStatuses.filter(s => s.positionType === 'maintainer').length;
+      const teamReviewers = maintainerStatuses.filter(s => s.positionType === 'reviewer').length;
+
+      // Count leadership positions
+      const steeringCommittee = leadershipPositionsData.filter(p => p.positionType === 'steering_committee');
+      const wgChairs = leadershipPositionsData.filter(p => 
+        p.positionType === 'wg_chair' || p.positionType === 'sig_chair'
+      );
+      const wgTechLeads = leadershipPositionsData.filter(p => 
+        p.positionType === 'wg_tech_lead' || p.positionType === 'sig_tech_lead'
+      );
+
+      // Estimate totals (could be refined with actual data)
       const totalApprovers = Math.max(teamApprovers * 2, 6);
       const totalReviewers = Math.max(teamReviewers * 2, 5);
 
-      // Group by team member for leaders list
+      // Build comprehensive member map with all roles
       const memberMap = new Map<string, {
         id: string;
         name: string;
         githubUsername: string | null;
         avatarUrl?: string;
         roles: Array<{
-          projectId: string;
-          projectName: string;
+          projectId?: string;
+          projectName?: string;
           roleType: string;
+          groupName?: string;
           isActive: boolean;
+        }>;
+        leadershipRoles: Array<{
+          positionType: string;
+          groupName: string;
+          roleTitle: string;
+          votingRights: boolean;
         }>;
       }>();
 
-      for (const status of statuses) {
-        if (!status.teamMemberId) continue;
-        
-        if (!memberMap.has(status.teamMemberId)) {
-          memberMap.set(status.teamMemberId, {
-            id: status.teamMemberId,
-            name: status.teamMemberName,
-            githubUsername: status.githubUsername,
-            avatarUrl: status.githubUsername 
-              ? `https://github.com/${status.githubUsername}.png?size=80`
+      // Helper to get or create member entry
+      const getMember = (teamMemberId: string, name: string, githubUsername: string | null) => {
+        if (!memberMap.has(teamMemberId)) {
+          memberMap.set(teamMemberId, {
+            id: teamMemberId,
+            name,
+            githubUsername,
+            avatarUrl: githubUsername 
+              ? `https://github.com/${githubUsername}.png?size=80`
               : undefined,
             roles: [],
+            leadershipRoles: [],
           });
         }
+        return memberMap.get(teamMemberId)!;
+      };
 
-        memberMap.get(status.teamMemberId)!.roles.push({
+      // Add OWNERS-based roles
+      for (const status of maintainerStatuses) {
+        if (!status.teamMemberId) continue;
+        const member = getMember(status.teamMemberId, status.teamMemberName, status.githubUsername);
+        member.roles.push({
           projectId: status.projectId!,
           projectName: status.projectName,
           roleType: status.positionType === 'maintainer' ? 'approver' : 'reviewer',
           isActive: status.isActive ?? true,
+        });
+      }
+
+      // Add leadership positions
+      for (const pos of leadershipPositionsData) {
+        if (!pos.teamMemberId) continue;
+        const member = getMember(pos.teamMemberId, pos.teamMemberName, pos.githubUsername);
+        member.leadershipRoles.push({
+          positionType: pos.positionType,
+          groupName: pos.committeeName || 'Unknown',
+          roleTitle: pos.roleTitle || pos.positionType,
+          votingRights: pos.votingRights ?? false,
         });
       }
 
@@ -760,8 +813,20 @@ export class MetricsService {
           totalReviewers,
           teamApprovers,
           teamReviewers,
+          steeringCommitteeCount: steeringCommittee.length,
+          wgChairsCount: wgChairs.length,
+          wgTechLeadsCount: wgTechLeads.length,
         },
         teamLeaders: Array.from(memberMap.values()),
+        steeringCommittee: steeringCommittee.map(s => ({
+          id: s.teamMemberId,
+          name: s.teamMemberName,
+          githubUsername: s.githubUsername,
+          avatarUrl: s.githubUsername 
+            ? `https://github.com/${s.githubUsername}.png?size=80`
+            : undefined,
+          votingRights: s.votingRights,
+        })),
       };
     } catch (error) {
       logger.warn('Error fetching leadership data', { error });
@@ -771,8 +836,12 @@ export class MetricsService {
           totalReviewers: 0,
           teamApprovers: 0,
           teamReviewers: 0,
+          steeringCommitteeCount: 0,
+          wgChairsCount: 0,
+          wgTechLeadsCount: 0,
         },
         teamLeaders: [],
+        steeringCommittee: [],
       };
     }
   }

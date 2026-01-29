@@ -51,9 +51,23 @@ export const insightQueue = new Queue('insight-generation', {
   },
 });
 
+export const leadershipQueue = new Queue('leadership-refresh', {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
+    },
+    removeOnComplete: 25,
+    removeOnFail: 10,
+  },
+});
+
 export class CollectionScheduler {
   private dailySyncSchedule: cron.ScheduledTask | null = null;
   private weeklyGovernanceSchedule: cron.ScheduledTask | null = null;
+  private monthlyLeadershipSchedule: cron.ScheduledTask | null = null;
 
   /**
    * Start scheduled jobs
@@ -78,9 +92,16 @@ export class CollectionScheduler {
       await this.triggerGovernanceRefresh();
     });
 
+    // Monthly leadership refresh at 4 AM UTC on the 1st of each month
+    this.monthlyLeadershipSchedule = cron.schedule('0 4 1 * *', async () => {
+      logger.info('Triggering monthly leadership refresh');
+      await this.triggerLeadershipRefresh();
+    });
+
     logger.info('Collection scheduler started', {
       dailySync: '0 2 * * * (2 AM UTC)',
       weeklyGovernance: '0 3 * * 0 (3 AM UTC on Sundays)',
+      monthlyLeadership: '0 4 1 * * (4 AM UTC on 1st of month)',
     });
   }
 
@@ -96,6 +117,10 @@ export class CollectionScheduler {
 
     if (this.weeklyGovernanceSchedule) {
       this.weeklyGovernanceSchedule.stop();
+    }
+
+    if (this.monthlyLeadershipSchedule) {
+      this.monthlyLeadershipSchedule.stop();
     }
 
     logger.info('Collection scheduler stopped');
@@ -313,6 +338,71 @@ export class CollectionScheduler {
       governanceQueue.getActiveCount(),
       governanceQueue.getCompletedCount(),
       governanceQueue.getFailedCount(),
+    ]);
+
+    return {
+      waiting,
+      active,
+      completed,
+      failed,
+      total: waiting + active + completed + failed,
+    };
+  }
+
+  /**
+   * Trigger leadership refresh (steering committee, WG chairs/leads)
+   * Runs monthly to update leadership positions from community repo
+   */
+  async triggerLeadershipRefresh() {
+    logger.info('Triggering leadership refresh');
+
+    const job = await leadershipQueue.add(
+      'monthly-leadership',
+      {
+        trigger: 'scheduled',
+      },
+      {
+        priority: 1,
+        jobId: `monthly-leadership-${Date.now()}`,
+      }
+    );
+
+    logger.info('Leadership refresh job queued', { jobId: job.id });
+
+    return job;
+  }
+
+  /**
+   * Manually trigger leadership refresh
+   */
+  async triggerManualLeadershipRefresh() {
+    logger.info('Manually triggering leadership refresh');
+
+    const job = await leadershipQueue.add(
+      'manual-leadership',
+      {
+        trigger: 'manual',
+      },
+      {
+        priority: 0, // Highest priority for manual triggers
+        jobId: `manual-leadership-${Date.now()}`,
+      }
+    );
+
+    logger.info('Manual leadership refresh job queued', { jobId: job.id });
+
+    return job;
+  }
+
+  /**
+   * Get leadership queue statistics
+   */
+  async getLeadershipQueueStats() {
+    const [waiting, active, completed, failed] = await Promise.all([
+      leadershipQueue.getWaitingCount(),
+      leadershipQueue.getActiveCount(),
+      leadershipQueue.getCompletedCount(),
+      leadershipQueue.getFailedCount(),
     ]);
 
     return {

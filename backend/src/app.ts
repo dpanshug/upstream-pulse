@@ -5,6 +5,7 @@ import { config, validateConfig } from './shared/config/index.js';
 import { logger } from './shared/utils/logger.js';
 import { db } from './shared/database/client.js';
 import { teamMembers, projects } from './shared/database/schema.js';
+import { eq } from 'drizzle-orm';
 
 // Validate configuration on startup
 try {
@@ -215,9 +216,15 @@ app.post<{
   try {
     const { name, primaryEmail, githubUsername, department, role } = request.body;
 
-    if (!name || !primaryEmail) {
+    if (!name) {
       reply.status(400);
-      return { error: 'name and primaryEmail are required' };
+      return { error: 'name is required' };
+    }
+
+    // Require at least one identifier (email or GitHub username)
+    if (!primaryEmail && !githubUsername) {
+      reply.status(400);
+      return { error: 'Either primaryEmail or githubUsername is required' };
     }
 
     // Auto-fetch GitHub user ID if username is provided (soft failure - don't block creation)
@@ -384,6 +391,31 @@ app.post<{
     reply.status(500);
     return {
       error: 'Failed to trigger governance refresh',
+      message: (error as Error).message,
+    };
+  }
+});
+
+// Manual leadership refresh endpoint
+app.post('/api/leadership/refresh', async (request, reply) => {
+  try {
+    const { CollectionScheduler } = await import('./jobs/scheduler.js');
+    const scheduler = new CollectionScheduler();
+
+    const job = await scheduler.triggerManualLeadershipRefresh();
+    const message = 'Leadership refresh queued (steering committee, WG chairs/leads)';
+    logger.info(message);
+
+    return {
+      success: true,
+      jobId: job.id,
+      message,
+    };
+  } catch (error) {
+    logger.error('Error triggering leadership refresh', { error });
+    reply.status(500);
+    return {
+      error: 'Failed to trigger leadership refresh',
       message: (error as Error).message,
     };
   }

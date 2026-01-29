@@ -167,11 +167,78 @@ curl -X POST http://localhost:3000/api/leadership/sync
 
 ---
 
+## Org-Level Leadership (Kubeflow)
+
+Beyond repo-level OWNERS files, we also track org-level leadership positions from the `kubeflow/community` repository.
+
+### Data Sources
+
+| Source | File | Data |
+|--------|------|------|
+| Steering Committee | `KUBEFLOW-STEERING-COMMITTEE.md` | Members, terms, voting rights |
+| Working Groups | `wgs.yaml` | Chairs, Tech Leads per WG/SIG |
+
+### Leadership Collector
+
+The `LeadershipCollector` class fetches and parses these files:
+
+```typescript
+// Fetch steering committee from markdown table
+const steeringCommittee = await collector.fetchSteeringCommittee();
+
+// Fetch WG/SIG chairs and tech leads from YAML
+const wgLeadership = await collector.fetchWorkingGroupLeadership();
+
+// Combined
+const allPositions = await collector.getAllLeadershipPositions();
+```
+
+### Position Types
+
+| Position Type | Source | Description |
+|---------------|--------|-------------|
+| `steering_committee` | KUBEFLOW-STEERING-COMMITTEE.md | Org-wide governance, voting rights |
+| `wg_chair` | wgs.yaml | Working Group Chair |
+| `wg_tech_lead` | wgs.yaml | Working Group Tech Lead |
+| `sig_chair` | wgs.yaml | SIG Chair |
+| `sig_tech_lead` | wgs.yaml | SIG Tech Lead |
+
+### Leadership Worker
+
+A separate worker handles leadership collection:
+
+- **Queue**: `leadership-refresh`
+- **Schedule**: Monthly (1st of month, 4AM UTC)
+- **Manual trigger**: `POST /api/leadership/refresh`
+
+This runs separately from the weekly OWNERS refresh because leadership positions change less frequently.
+
+### How It Works
+
+1. **Fetch**: Download files from `kubeflow/community` repo via GitHub API
+2. **Parse**: Extract members from markdown table and YAML structures
+3. **Match**: Match GitHub usernames to team members in database
+4. **Store**: Upsert to `leadership_positions` table
+5. **Cleanup**: Mark removed leaders as inactive
+
+### API Endpoints
+
+```bash
+# Trigger leadership refresh
+curl -X POST http://localhost:3000/api/leadership/refresh
+
+# Get leadership data (included in dashboard)
+curl http://localhost:3000/api/metrics/dashboard | jq '.leadership'
+```
+
+---
+
 ## Roadmap
 
 - [x] Kubernetes/Kubeflow OWNERS support
+- [x] Org-level steering committee tracking
+- [x] Working Group chairs/leads tracking
 - [ ] CODEOWNERS support
 - [ ] Apache MAINTAINERS support
 - [ ] GitHub team/permission integration
-- [ ] Org-level steering committee tracking
 - [ ] Historical leadership changes over time

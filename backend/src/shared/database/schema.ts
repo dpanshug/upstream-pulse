@@ -22,7 +22,7 @@ export const projects = pgTable('projects', {
 export const teamMembers = pgTable('team_members', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: varchar('name', { length: 255 }).notNull(),
-  primaryEmail: varchar('primary_email', { length: 255 }).unique().notNull(),
+  primaryEmail: varchar('primary_email', { length: 255 }).unique(), // Optional - GitHub username is primary identifier
   githubUsername: varchar('github_username', { length: 255 }),
   githubUserId: integer('github_user_id').unique(),
   employeeId: varchar('employee_id', { length: 100 }),
