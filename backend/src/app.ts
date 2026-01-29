@@ -4,6 +4,7 @@ import websocket from '@fastify/websocket';
 import { config, validateConfig } from './shared/config/index.js';
 import { logger } from './shared/utils/logger.js';
 import { db } from './shared/database/client.js';
+import { teamMembers, projects } from './shared/database/schema.js';
 
 // Validate configuration on startup
 try {
@@ -87,6 +88,89 @@ app.get('/api/projects', async (request, reply) => {
   }
 });
 
+// Add new project
+app.post<{
+  Body: {
+    name: string;
+    githubOrg: string;
+    githubRepo: string;
+    ecosystem?: string;
+    primaryLanguage?: string;
+    startCollection?: boolean;  // Start collecting immediately
+    fullHistory?: boolean;      // Collect from day 0
+  };
+}>('/api/projects', async (request, reply) => {
+  try {
+    const { name, githubOrg, githubRepo, ecosystem, primaryLanguage, startCollection, fullHistory } = request.body;
+
+    if (!name || !githubOrg || !githubRepo) {
+      reply.status(400);
+      return { error: 'name, githubOrg, and githubRepo are required' };
+    }
+
+    // Validate repo exists on GitHub
+    const { fetchGitHubRepoCreatedAt } = await import('./shared/utils/github.js');
+    const repoCreatedAt = await fetchGitHubRepoCreatedAt(githubOrg, githubRepo);
+
+    if (!repoCreatedAt) {
+      reply.status(404);
+      return { error: `Repository ${githubOrg}/${githubRepo} not found on GitHub` };
+    }
+
+    // Insert project
+    const [newProject] = await db.insert(projects).values({
+      name,
+      githubOrg,
+      githubRepo,
+      ecosystem: ecosystem || 'unknown',
+      primaryLanguage,
+      trackingEnabled: true,
+    }).returning();
+
+    logger.info(`Created project: ${name} (${githubOrg}/${githubRepo})`);
+
+    let collectionJob = null;
+
+    // Optionally start collection
+    if (startCollection) {
+      const { CollectionScheduler } = await import('./jobs/scheduler.js');
+      const scheduler = new CollectionScheduler();
+
+      // For new projects, always collect from repo creation date (sensible default)
+      // There's no existing data, so full history makes sense
+      collectionJob = await scheduler.triggerProjectCollection(newProject.id, repoCreatedAt);
+
+      logger.info(`Started collection for ${name}`, {
+        since: repoCreatedAt.toISOString(),
+      });
+    }
+
+    return {
+      success: true,
+      project: newProject,
+      repoCreatedAt: repoCreatedAt.toISOString(),
+      collection: collectionJob ? {
+        jobId: collectionJob.id,
+        since: fullHistory ? repoCreatedAt.toISOString() : undefined,
+      } : null,
+    };
+  } catch (error) {
+    logger.error('Error creating project', { error });
+
+    // Handle duplicate repo
+    if ((error as any).code === '23505') {
+      reply.status(409);
+      return { error: 'This repository is already being tracked' };
+    }
+
+    reply.status(500);
+    return {
+      error: 'Failed to create project',
+      message: (error as Error).message,
+    };
+  }
+});
+
 // Team members API
 app.get('/api/team-members', async (request, reply) => {
   try {
@@ -109,20 +193,133 @@ app.get('/api/team-members', async (request, reply) => {
   }
 });
 
+// Add new team member
+app.post<{
+  Body: {
+    name: string;
+    primaryEmail: string;
+    githubUsername?: string;
+    department?: string;
+    role?: string;
+  };
+}>('/api/team-members', async (request, reply) => {
+  try {
+    const { name, primaryEmail, githubUsername, department, role } = request.body;
+
+    if (!name || !primaryEmail) {
+      reply.status(400);
+      return { error: 'name and primaryEmail are required' };
+    }
+
+    // Auto-fetch GitHub user ID if username is provided (soft failure - don't block creation)
+    let githubUserId: number | null = null;
+    if (githubUsername) {
+      try {
+        const { fetchGitHubUserId } = await import('./shared/utils/github.js');
+        githubUserId = await fetchGitHubUserId(githubUsername);
+        if (githubUserId) {
+          logger.info(`Fetched GitHub user ID for @${githubUsername}: ${githubUserId}`);
+        } else {
+          logger.warn(`GitHub user @${githubUsername} not found, continuing without ID`);
+        }
+      } catch (error) {
+        logger.warn(`Failed to fetch GitHub ID for @${githubUsername}, continuing without it`, { error });
+      }
+    }
+
+    const [newMember] = await db.insert(teamMembers).values({
+      name,
+      primaryEmail,
+      githubUsername,
+      githubUserId,
+      department,
+      role,
+      isActive: true,
+    }).returning();
+
+    logger.info(`Created team member: ${name} (@${githubUsername})`);
+
+    return {
+      success: true,
+      member: newMember,
+    };
+  } catch (error) {
+    logger.error('Error creating team member', { error });
+    
+    // Handle duplicate email
+    if ((error as any).code === '23505') {
+      reply.status(409);
+      return { error: 'A team member with this email already exists' };
+    }
+
+    reply.status(500);
+    return {
+      error: 'Failed to create team member',
+      message: (error as Error).message,
+    };
+  }
+});
+
 // Collection jobs API
 app.post<{
-  Body: { projectId: string };
+  Body: {
+    projectId: string;
+    since?: string;        // ISO date string - fetch from this date
+    fullHistory?: boolean; // Fetch from repo creation date (day 0)
+  };
 }>('/api/admin/collect', async (request, reply) => {
   try {
+    const { projectId, since, fullHistory } = request.body;
+
+    if (!projectId) {
+      reply.status(400);
+      return { error: 'projectId is required' };
+    }
+
+    // Validate project exists
+    const project = await db.query.projects.findFirst({
+      where: (projects, { eq }) => eq(projects.id, projectId),
+    });
+
+    if (!project) {
+      reply.status(404);
+      return { error: 'Project not found' };
+    }
+
     const { CollectionScheduler } = await import('./jobs/scheduler.js');
     const scheduler = new CollectionScheduler();
 
-    const job = await scheduler.triggerProjectCollection(request.body.projectId);
+    let sinceDate: Date | undefined;
+
+    if (fullHistory) {
+      // Fetch repo creation date from GitHub
+      const { fetchGitHubRepoCreatedAt } = await import('./shared/utils/github.js');
+      const createdAt = await fetchGitHubRepoCreatedAt(project.githubOrg, project.githubRepo);
+      if (createdAt) {
+        sinceDate = createdAt;
+        logger.info(`Full history sync from repo creation: ${createdAt.toISOString()}`);
+      } else {
+        reply.status(500);
+        return { error: 'Failed to fetch repo creation date from GitHub' };
+      }
+    } else if (since) {
+      const parsedDate = new Date(since);
+      if (isNaN(parsedDate.getTime())) {
+        reply.status(400);
+        return { error: 'Invalid date format for "since" parameter' };
+      }
+      sinceDate = parsedDate;
+    }
+
+    const job = await scheduler.triggerProjectCollection(projectId, sinceDate);
 
     return {
       success: true,
       jobId: job.id,
-      message: 'Collection job queued',
+      message: fullHistory
+        ? `Full history collection queued from ${sinceDate?.toISOString().split('T')[0]}`
+        : 'Collection job queued',
+      since: sinceDate?.toISOString(),
     };
   } catch (error) {
     logger.error('Error triggering collection', { error });

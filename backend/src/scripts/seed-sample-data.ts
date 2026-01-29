@@ -1,6 +1,7 @@
 import { db } from '../shared/database/client.js';
 import { projects, teamMembers } from '../shared/database/schema.js';
 import { logger } from '../shared/utils/logger.js';
+import { fetchGitHubUserId } from '../shared/utils/github.js';
 
 /**
  * Seed sample data for testing
@@ -94,8 +95,19 @@ async function seedSampleData() {
 
     logger.info('Inserting sample team members...');
     for (const member of sampleMembers) {
-      await db.insert(teamMembers).values(member).onConflictDoNothing();
-      logger.info(`Inserted team member: ${member.name}`);
+      // Auto-fetch GitHub user ID if username is provided
+      let githubUserId: number | null = null;
+      if (member.githubUsername) {
+        logger.info(`Fetching GitHub user ID for @${member.githubUsername}...`);
+        githubUserId = await fetchGitHubUserId(member.githubUsername);
+      }
+
+      await db.insert(teamMembers).values({
+        ...member,
+        githubUserId,
+      }).onConflictDoNothing();
+
+      logger.info(`Inserted team member: ${member.name} (GitHub ID: ${githubUserId ?? 'not found'})`);
     }
 
     logger.info('Sample data seeding completed successfully!');

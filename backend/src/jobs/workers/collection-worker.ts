@@ -11,7 +11,7 @@ import { eq } from 'drizzle-orm';
 
 interface CollectionJobData {
   projectId: string;
-  jobType: 'full_sync' | 'incremental';
+  jobType: 'sync' | 'full_sync'; // 'sync' for daily/manual, 'full_sync' for new project bootstrap
   since?: string; // ISO date string
 }
 
@@ -58,11 +58,11 @@ export const collectionWorker = new Worker<CollectionJobData>(
       });
 
       // Determine collection start date
+      // 'since' should always be provided by scheduler (from last_sync_at or repo creation)
+      // Fallback to 7 days if not provided
       const sinceDate = since
         ? new Date(since)
-        : jobType === 'incremental'
-        ? new Date(Date.now() - 24 * 60 * 60 * 1000) // Last 24 hours
-        : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000); // Last 90 days
+        : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
       // Collect contributions from GitHub
       const collector = new GitHubCollector();

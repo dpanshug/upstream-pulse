@@ -39,30 +39,26 @@ export const insightQueue = new Queue('insight-generation', {
 });
 
 export class CollectionScheduler {
-  private dailyFullSyncSchedule: cron.ScheduledTask | null = null;
-  private hourlyIncrementalSchedule: cron.ScheduledTask | null = null;
+  private dailySyncSchedule: cron.ScheduledTask | null = null;
 
   /**
-   * Start all scheduled jobs
+   * Start scheduled jobs
+   * 
+   * Schedule:
+   * - Daily sync at 2 AM UTC: Fetches from last_sync_at for each project
+   * - Full history sync: Only when adding new projects (triggered via API)
    */
   start() {
     logger.info('Starting collection scheduler');
 
-    // Daily full sync at 2 AM UTC
-    this.dailyFullSyncSchedule = cron.schedule('0 2 * * *', async () => {
-      logger.info('Triggering daily full sync');
-      await this.triggerFullSync();
-    });
-
-    // Hourly incremental sync for active repos
-    this.hourlyIncrementalSchedule = cron.schedule('0 * * * *', async () => {
-      logger.info('Triggering hourly incremental sync');
-      await this.triggerIncrementalSync();
+    // Daily sync at 2 AM UTC - fetches from last_sync_at
+    this.dailySyncSchedule = cron.schedule('0 2 * * *', async () => {
+      logger.info('Triggering daily sync');
+      await this.triggerDailySync();
     });
 
     logger.info('Collection scheduler started', {
-      dailyFullSync: '0 2 * * * (2 AM UTC)',
-      hourlyIncremental: '0 * * * * (every hour)',
+      dailySync: '0 2 * * * (2 AM UTC)',
     });
   }
 
@@ -72,113 +68,109 @@ export class CollectionScheduler {
   stop() {
     logger.info('Stopping collection scheduler');
 
-    if (this.dailyFullSyncSchedule) {
-      this.dailyFullSyncSchedule.stop();
-    }
-
-    if (this.hourlyIncrementalSchedule) {
-      this.hourlyIncrementalSchedule.stop();
+    if (this.dailySyncSchedule) {
+      this.dailySyncSchedule.stop();
     }
 
     logger.info('Collection scheduler stopped');
   }
 
   /**
-   * Trigger full sync for all enabled projects
+   * Daily sync for all enabled projects
+   * Uses last_sync_at to avoid redundant fetches
    */
-  async triggerFullSync() {
+  async triggerDailySync() {
     try {
       const enabledProjects = await db.query.projects.findMany({
         where: eq(projects.trackingEnabled, true),
       });
 
-      logger.info(`Queuing full sync for ${enabledProjects.length} projects`);
+      logger.info(`Queuing daily sync for ${enabledProjects.length} projects`);
 
       for (const project of enabledProjects) {
+        // Use last_sync_at if available, otherwise default to 7 days ago
+        const defaultSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const sinceDate = project.lastSyncAt || defaultSince;
+
         await contributionQueue.add(
-          'full-sync',
+          'daily-sync',
           {
             projectId: project.id,
-            jobType: 'full_sync',
-            since: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(), // Last 90 days
+            jobType: 'sync',
+            since: sinceDate.toISOString(),
           },
           {
             priority: 1,
-            jobId: `full-sync-${project.id}-${Date.now()}`,
+            jobId: `daily-sync-${project.id}-${Date.now()}`,
           }
         );
 
-        logger.debug('Queued full sync job', {
+        logger.debug('Queued daily sync job', {
           project: project.name,
-          org: project.githubOrg,
-          repo: project.githubRepo,
+          since: sinceDate.toISOString(),
         });
       }
 
       return enabledProjects.length;
 
     } catch (error) {
-      logger.error('Error triggering full sync', { error });
+      logger.error('Error triggering daily sync', { error });
       throw error;
     }
   }
 
   /**
-   * Trigger incremental sync for active projects (updated in last 7 days)
+   * Full history sync for a project (from repo creation date)
+   * Use when adding new projects
    */
-  async triggerIncrementalSync() {
-    try {
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  async triggerFullHistorySync(projectId: string, repoCreatedAt: Date) {
+    logger.info('Triggering full history sync', { projectId, since: repoCreatedAt });
 
-      const activeProjects = await db.query.projects.findMany({
-        where: eq(projects.trackingEnabled, true),
-        // TODO: Add filter for recently active projects
-      });
-
-      // Only sync projects that have had recent activity
-      // For now, we'll sync all enabled projects
-      const projectsToSync = activeProjects;
-
-      logger.info(`Queuing incremental sync for ${projectsToSync.length} projects`);
-
-      for (const project of projectsToSync) {
-        await contributionQueue.add(
-          'incremental-sync',
-          {
-            projectId: project.id,
-            jobType: 'incremental',
-            since: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Last 24 hours
-          },
-          {
-            priority: 2,
-            jobId: `incremental-sync-${project.id}-${Date.now()}`,
-          }
-        );
+    const job = await contributionQueue.add(
+      'full-history-sync',
+      {
+        projectId,
+        jobType: 'full_sync',
+        since: repoCreatedAt.toISOString(),
+      },
+      {
+        priority: 0, // Highest priority
+        jobId: `full-history-${projectId}-${Date.now()}`,
       }
+    );
 
-      return projectsToSync.length;
+    logger.info('Full history sync job queued', {
+      jobId: job.id,
+      projectId,
+      since: repoCreatedAt.toISOString(),
+    });
 
-    } catch (error) {
-      logger.error('Error triggering incremental sync', { error });
-      throw error;
-    }
+    return job;
   }
 
   /**
    * Manually trigger collection for a specific project
+   * Fetches from a custom date or last_sync_at
    */
-  async triggerProjectCollection(
-    projectId: string,
-    since?: Date
-  ) {
+  async triggerProjectCollection(projectId: string, since?: Date) {
     logger.info('Manually triggering collection', { projectId });
+
+    // If no since date provided, fetch the project's last_sync_at
+    let sinceDate = since;
+    if (!sinceDate) {
+      const project = await db.query.projects.findFirst({
+        where: eq(projects.id, projectId),
+      });
+      // Default to last 30 days if no last_sync_at
+      sinceDate = project?.lastSyncAt || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    }
 
     const job = await contributionQueue.add(
       'manual-sync',
       {
         projectId,
-        jobType: 'full_sync',
-        since: since?.toISOString() || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+        jobType: 'sync',
+        since: sinceDate.toISOString(),
       },
       {
         priority: 0, // Highest priority
@@ -188,6 +180,7 @@ export class CollectionScheduler {
     logger.info('Manual collection job queued', {
       jobId: job.id,
       projectId,
+      since: sinceDate.toISOString(),
     });
 
     return job;
