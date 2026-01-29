@@ -78,6 +78,8 @@ Handles AI-powered analysis using Google Gemini.
 3. Stores contributions in the database (skips duplicates)
 4. Updates project `last_sync_at` timestamp
 
+> **Note:** Metrics are calculated on-demand by the API from raw contributions data, not pre-calculated by the worker.
+
 **Job types:**
 - `full_sync` - For new projects (fetches from repo creation date)
 - `sync` - For daily/manual syncs (fetches from `last_sync_at`)

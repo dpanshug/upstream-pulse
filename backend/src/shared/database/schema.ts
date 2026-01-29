@@ -114,7 +114,9 @@ export const leadershipPositions = pgTable('leadership_positions', {
   activeIdx: index('leadership_active_idx').on(table.isActive),
 }));
 
-// Aggregated metrics (pre-calculated for dashboard performance)
+// DEPRECATED: This table is no longer used. Metrics are now calculated on-demand.
+// Kept for backwards compatibility. Can be removed in a future migration.
+// @deprecated Use MetricsService.getDashboardMetrics() instead
 export const metricsDaily = pgTable('metrics_daily', {
   id: uuid('id').defaultRandom().primaryKey(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
