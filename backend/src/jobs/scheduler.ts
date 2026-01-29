@@ -25,6 +25,19 @@ export const contributionQueue = new Queue('contribution-collection', {
   },
 });
 
+export const governanceQueue = new Queue('governance-refresh', {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
+    },
+    removeOnComplete: 50,
+    removeOnFail: 25,
+  },
+});
+
 export const insightQueue = new Queue('insight-generation', {
   connection: redisConnection,
   defaultJobOptions: {
@@ -40,12 +53,14 @@ export const insightQueue = new Queue('insight-generation', {
 
 export class CollectionScheduler {
   private dailySyncSchedule: cron.ScheduledTask | null = null;
+  private weeklyGovernanceSchedule: cron.ScheduledTask | null = null;
 
   /**
    * Start scheduled jobs
    * 
    * Schedule:
    * - Daily sync at 2 AM UTC: Fetches from last_sync_at for each project
+   * - Weekly governance at 3 AM UTC on Sundays: Refreshes OWNERS files for all projects
    * - Full history sync: Only when adding new projects (triggered via API)
    */
   start() {
@@ -57,8 +72,15 @@ export class CollectionScheduler {
       await this.triggerDailySync();
     });
 
+    // Weekly governance refresh at 3 AM UTC on Sundays
+    this.weeklyGovernanceSchedule = cron.schedule('0 3 * * 0', async () => {
+      logger.info('Triggering weekly governance refresh');
+      await this.triggerGovernanceRefresh();
+    });
+
     logger.info('Collection scheduler started', {
       dailySync: '0 2 * * * (2 AM UTC)',
+      weeklyGovernance: '0 3 * * 0 (3 AM UTC on Sundays)',
     });
   }
 
@@ -70,6 +92,10 @@ export class CollectionScheduler {
 
     if (this.dailySyncSchedule) {
       this.dailySyncSchedule.stop();
+    }
+
+    if (this.weeklyGovernanceSchedule) {
+      this.weeklyGovernanceSchedule.stop();
     }
 
     logger.info('Collection scheduler stopped');
@@ -229,5 +255,72 @@ export class CollectionScheduler {
     logger.info('Insight generation job queued', { jobId: job.id });
 
     return job;
+  }
+
+  /**
+   * Trigger governance refresh for all projects
+   * Runs weekly to update OWNERS file data
+   */
+  async triggerGovernanceRefresh() {
+    logger.info('Triggering governance refresh for all projects');
+
+    const job = await governanceQueue.add(
+      'weekly-governance',
+      {
+        trigger: 'scheduled',
+      },
+      {
+        priority: 1,
+        jobId: `weekly-governance-${Date.now()}`,
+      }
+    );
+
+    logger.info('Governance refresh job queued', { jobId: job.id });
+
+    return job;
+  }
+
+  /**
+   * Trigger governance refresh for a specific project
+   * Called when a new project is added
+   */
+  async triggerProjectGovernance(projectId: string, trigger: 'new_project' | 'manual' = 'manual') {
+    logger.info('Triggering governance refresh for project', { projectId, trigger });
+
+    const job = await governanceQueue.add(
+      `governance-${trigger}`,
+      {
+        projectId,
+        trigger,
+      },
+      {
+        priority: 0, // Highest priority for new projects
+        jobId: `governance-${projectId}-${Date.now()}`,
+      }
+    );
+
+    logger.info('Project governance job queued', { jobId: job.id, projectId });
+
+    return job;
+  }
+
+  /**
+   * Get governance queue statistics
+   */
+  async getGovernanceQueueStats() {
+    const [waiting, active, completed, failed] = await Promise.all([
+      governanceQueue.getWaitingCount(),
+      governanceQueue.getActiveCount(),
+      governanceQueue.getCompletedCount(),
+      governanceQueue.getFailedCount(),
+    ]);
+
+    return {
+      waiting,
+      active,
+      completed,
+      failed,
+      total: waiting + active + completed + failed,
+    };
   }
 }

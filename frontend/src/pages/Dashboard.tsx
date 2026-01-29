@@ -13,6 +13,8 @@ import {
   Calendar,
   ArrowUpRight,
   Loader2,
+  Shield,
+  Crown,
 } from 'lucide-react';
 
 // Period options for the selector
@@ -53,6 +55,31 @@ interface ContributorRanking {
   total: number;
 }
 
+interface LeadershipRole {
+  projectId: string;
+  projectName: string;
+  roleType: string;
+  isActive: boolean;
+}
+
+interface LeadershipMember {
+  id: string;
+  name: string;
+  githubUsername: string | null;
+  avatarUrl?: string;
+  roles: LeadershipRole[];
+}
+
+interface LeadershipData {
+  summary: {
+    totalApprovers: number;
+    totalReviewers: number;
+    teamApprovers: number;
+    teamReviewers: number;
+  };
+  teamLeaders: LeadershipMember[];
+}
+
 interface DashboardData {
   summary: {
     periodDays: number;
@@ -75,6 +102,7 @@ interface DashboardData {
   topContributors: ContributorRanking[];
   topProjects: any[];
   dailyBreakdown: any[];
+  leadership?: LeadershipData;
 }
 
 async function fetchDashboard(days: number): Promise<DashboardData> {
@@ -283,6 +311,195 @@ function PeriodSelector({
   );
 }
 
+// Leadership member card
+function LeadershipMemberCard({ member }: { member: LeadershipMember }) {
+  const activeApproverRoles = member.roles.filter(r => r.roleType === 'approver' && r.isActive);
+  const activeReviewerRoles = member.roles.filter(r => r.roleType === 'reviewer' && r.isActive);
+
+  // Determine primary role
+  const isApprover = activeApproverRoles.length > 0;
+  const isReviewerOnly = !isApprover && activeReviewerRoles.length > 0;
+
+  // Get unique projects (deduplicated)
+  const projectsMap = new Map<string, { name: string; canApprove: boolean }>();
+  for (const role of activeApproverRoles) {
+    projectsMap.set(role.projectId, { name: role.projectName, canApprove: true });
+  }
+  for (const role of activeReviewerRoles) {
+    if (!projectsMap.has(role.projectId)) {
+      projectsMap.set(role.projectId, { name: role.projectName, canApprove: false });
+    }
+  }
+  const projects = Array.from(projectsMap.values());
+
+  return (
+    <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+      <img
+        src={member.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=e5e7eb&color=374151`}
+        alt={member.name}
+        className="w-10 h-10 rounded-full ring-2 ring-white shadow-sm"
+      />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="font-medium text-gray-900">{member.name}</p>
+          {isApprover && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
+              <Crown className="w-3 h-3" />
+              Approver
+            </span>
+          )}
+          {isReviewerOnly && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+              Reviewer
+            </span>
+          )}
+        </div>
+        {member.githubUsername && (
+          <a
+            href={`https://github.com/${member.githubUsername}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-gray-500 hover:text-blue-600 inline-flex items-center gap-1"
+          >
+            @{member.githubUsername}
+            <ArrowUpRight className="w-3 h-3" />
+          </a>
+        )}
+        {projects.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {projects.map((proj, idx) => (
+              <span
+                key={idx}
+                className={`text-xs px-2 py-0.5 rounded ${
+                  proj.canApprove 
+                    ? 'bg-amber-50 text-amber-700 border border-amber-200' 
+                    : 'bg-blue-50 text-blue-700 border border-blue-200'
+                }`}
+                title={proj.canApprove ? `Can approve PRs in ${proj.name}` : `Can review PRs in ${proj.name}`}
+              >
+                {proj.name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Leadership summary section
+function LeadershipSection({ leadership }: { leadership: LeadershipData }) {
+  const { summary, teamLeaders } = leadership;
+
+  // Calculate cleaner metrics
+  const totalTeamMaintainers = teamLeaders.length;
+  const teamApprovers = teamLeaders.filter(m => 
+    m.roles.some(r => r.roleType === 'approver' && r.isActive)
+  ).length;
+  const teamReviewersOnly = teamLeaders.filter(m => 
+    m.roles.every(r => r.roleType === 'reviewer') && m.roles.some(r => r.isActive)
+  ).length;
+  
+  // Total maintainers in projects (approvers + reviewer-only people)
+  const totalMaintainersInProjects = summary.totalApprovers + summary.totalReviewers;
+  const coveragePercent = totalMaintainersInProjects > 0 
+    ? ((totalTeamMaintainers / totalMaintainersInProjects) * 100).toFixed(0)
+    : 0;
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Shield className="w-5 h-5 text-amber-600" />
+          <h2 className="text-lg font-semibold text-gray-900">
+            Team Leadership
+          </h2>
+        </div>
+        <p className="text-sm text-gray-500">
+          Team members with maintainer roles in OWNERS files
+        </p>
+      </div>
+
+      {/* Leadership Stats - Simplified */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {/* Primary: Team Maintainers */}
+        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl shadow-sm border border-amber-100 p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Shield className="w-5 h-5 text-amber-600" />
+            <span className="text-sm font-medium text-amber-800">Team Maintainers</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold text-amber-900">{totalTeamMaintainers}</span>
+            <span className="text-sm text-amber-600">people</span>
+          </div>
+          <p className="text-xs text-amber-700 mt-2">
+            {teamApprovers} can approve {teamReviewersOnly > 0 ? `• ${teamReviewersOnly} review only` : ''}
+          </p>
+        </div>
+
+        {/* Coverage */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Users className="w-5 h-5 text-blue-500" />
+            <span className="text-sm font-medium text-gray-700">Project Coverage</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold text-gray-900">{coveragePercent}%</span>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            {totalTeamMaintainers} of {totalMaintainersInProjects} total maintainers
+          </p>
+        </div>
+
+        {/* Breakdown */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center gap-2 mb-2">
+            <Crown className="w-5 h-5 text-green-500" />
+            <span className="text-sm font-medium text-gray-700">Approval Power</span>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-3xl font-bold text-green-600">
+              {summary.totalApprovers > 0 
+                ? ((summary.teamApprovers / summary.totalApprovers) * 100).toFixed(0)
+                : 0}%
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            {summary.teamApprovers} of {summary.totalApprovers} approvers are team members
+          </p>
+        </div>
+      </div>
+
+      {/* Team Leaders List */}
+      {teamLeaders.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h3 className="text-sm font-medium text-gray-600 mb-4">Team Members with Leadership Roles</h3>
+          <div className="grid md:grid-cols-2 gap-3">
+            {teamLeaders.slice(0, 6).map((member) => (
+              <LeadershipMemberCard key={member.id} member={member} />
+            ))}
+          </div>
+          {teamLeaders.length > 6 && (
+            <p className="text-sm text-gray-500 mt-4 text-center">
+              +{teamLeaders.length - 6} more team members with leadership roles
+            </p>
+          )}
+        </div>
+      )}
+
+      {teamLeaders.length === 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center">
+          <Shield className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-500">No leadership data available yet.</p>
+          <p className="text-sm text-gray-400 mt-1">
+            Sync OWNERS files to discover team leadership roles.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   
@@ -433,6 +650,11 @@ export default function Dashboard() {
             />
           </div>
         </section>
+
+        {/* Leadership Section */}
+        {data.leadership && (
+          <LeadershipSection leadership={data.leadership} />
+        )}
 
         {/* Two Column Layout */}
         <div className="grid lg:grid-cols-3 gap-8">

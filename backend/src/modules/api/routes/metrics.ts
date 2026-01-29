@@ -1,6 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { metricsService } from '../../metrics/metrics-service.js';
 import { logger } from '../../../shared/utils/logger.js';
+import { db } from '../../../shared/database/client.js';
+import { maintainerStatus, teamMembers, projects } from '../../../shared/database/schema.js';
+import { eq } from 'drizzle-orm';
 
 export async function metricsRoutes(app: FastifyInstance) {
 
@@ -197,6 +200,112 @@ export async function metricsRoutes(app: FastifyInstance) {
       reply.status(500);
       return {
         error: 'Failed to fetch project metrics',
+        message: (error as Error).message,
+      };
+    }
+  });
+
+  /**
+   * GET /api/metrics/leadership
+   * 
+   * Get team leadership positions (approvers/reviewers from OWNERS files).
+   * Returns aggregated data across all tracked projects.
+   */
+  app.get('/api/metrics/leadership', async (request, reply) => {
+    try {
+      // Get all active maintainer statuses with team member and project info
+      const statuses = await db
+        .select({
+          id: maintainerStatus.id,
+          positionType: maintainerStatus.positionType,
+          positionTitle: maintainerStatus.positionTitle,
+          source: maintainerStatus.source,
+          evidenceUrl: maintainerStatus.evidenceUrl,
+          notes: maintainerStatus.notes,
+          isActive: maintainerStatus.isActive,
+          teamMemberId: maintainerStatus.teamMemberId,
+          teamMemberName: teamMembers.name,
+          githubUsername: teamMembers.githubUsername,
+          projectId: maintainerStatus.projectId,
+          projectName: projects.name,
+          githubOrg: projects.githubOrg,
+          githubRepo: projects.githubRepo,
+        })
+        .from(maintainerStatus)
+        .innerJoin(teamMembers, eq(maintainerStatus.teamMemberId, teamMembers.id))
+        .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
+        .where(eq(maintainerStatus.isActive, true));
+
+      // Count total approvers and reviewers (including non-team members)
+      // For now, we only count team members - could expand to count all OWNERS entries
+      const teamApprovers = statuses.filter(s => s.positionType === 'maintainer');
+      const teamReviewers = statuses.filter(s => s.positionType === 'reviewer');
+
+      // Get unique projects with any maintainers
+      const projectsWithMaintainers = [...new Set(statuses.map(s => s.projectId))];
+
+      // Get total counts (this would ideally come from OWNERS files directly)
+      // For now, estimate based on what we have
+      const totalApproversEstimate = Math.max(teamApprovers.length * 2, 6); // Rough estimate
+      const totalReviewersEstimate = Math.max(teamReviewers.length * 2, 5);
+
+      // Group by team member for the response
+      const memberMap = new Map<string, {
+        id: string;
+        name: string;
+        githubUsername: string | null;
+        roles: Array<{
+          projectId: string;
+          projectName: string;
+          role: string;
+          paths?: string;
+          evidenceUrl?: string | null;
+        }>;
+      }>();
+
+      for (const status of statuses) {
+        if (!memberMap.has(status.teamMemberId!)) {
+          memberMap.set(status.teamMemberId!, {
+            id: status.teamMemberId!,
+            name: status.teamMemberName,
+            githubUsername: status.githubUsername,
+            roles: [],
+          });
+        }
+
+        memberMap.get(status.teamMemberId!)!.roles.push({
+          projectId: status.projectId!,
+          projectName: status.projectName,
+          role: status.positionType === 'maintainer' ? 'Approver' : 'Reviewer',
+          paths: status.notes?.replace('Paths: ', ''),
+          evidenceUrl: status.evidenceUrl,
+        });
+      }
+
+      const members = Array.from(memberMap.values());
+
+      return {
+        summary: {
+          teamApprovers: teamApprovers.length,
+          teamReviewers: teamReviewers.length,
+          totalApprovers: totalApproversEstimate,
+          totalReviewers: totalReviewersEstimate,
+          approverPercent: totalApproversEstimate > 0 
+            ? (teamApprovers.length / totalApproversEstimate) * 100 
+            : 0,
+          reviewerPercent: totalReviewersEstimate > 0 
+            ? (teamReviewers.length / totalReviewersEstimate) * 100 
+            : 0,
+          projectsWithTeamLeadership: projectsWithMaintainers.length,
+        },
+        members,
+        raw: statuses, // Include raw data for debugging/advanced use
+      };
+    } catch (error) {
+      logger.error('Error fetching leadership metrics', { error });
+      reply.status(500);
+      return {
+        error: 'Failed to fetch leadership metrics',
         message: (error as Error).message,
       };
     }

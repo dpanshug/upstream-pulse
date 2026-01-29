@@ -6,7 +6,7 @@
  */
 
 import { db } from '../../shared/database/client.js';
-import { contributions, projects, teamMembers } from '../../shared/database/schema.js';
+import { contributions, projects, teamMembers, maintainerStatus } from '../../shared/database/schema.js';
 import { eq, and, gte, lte, sql, count, isNotNull } from 'drizzle-orm';
 import { logger } from '../../shared/utils/logger.js';
 import type {
@@ -664,6 +664,9 @@ export class MetricsService {
       issues: { total: d.all.issues, team: d.team.issues },
     }));
 
+    // Get leadership data
+    const leadershipData = await this.getLeadershipSummary();
+
     return {
       summary: {
         periodDays: days,
@@ -680,7 +683,98 @@ export class MetricsService {
       topContributors,
       topProjects,
       dailyBreakdown,
+      leadership: leadershipData,
     };
+  }
+
+  /**
+   * Get leadership summary for dashboard
+   */
+  private async getLeadershipSummary() {
+    try {
+      // Get all active maintainer statuses with team member info
+      const statuses = await db
+        .select({
+          id: maintainerStatus.id,
+          positionType: maintainerStatus.positionType,
+          teamMemberId: maintainerStatus.teamMemberId,
+          teamMemberName: teamMembers.name,
+          githubUsername: teamMembers.githubUsername,
+          projectId: maintainerStatus.projectId,
+          projectName: projects.name,
+          isActive: maintainerStatus.isActive,
+        })
+        .from(maintainerStatus)
+        .innerJoin(teamMembers, eq(maintainerStatus.teamMemberId, teamMembers.id))
+        .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
+        .where(eq(maintainerStatus.isActive, true));
+
+      // Count team approvers and reviewers
+      const teamApprovers = statuses.filter(s => s.positionType === 'maintainer').length;
+      const teamReviewers = statuses.filter(s => s.positionType === 'reviewer').length;
+
+      // Estimate totals (could be refined with actual OWNERS data)
+      const totalApprovers = Math.max(teamApprovers * 2, 6);
+      const totalReviewers = Math.max(teamReviewers * 2, 5);
+
+      // Group by team member for leaders list
+      const memberMap = new Map<string, {
+        id: string;
+        name: string;
+        githubUsername: string | null;
+        avatarUrl?: string;
+        roles: Array<{
+          projectId: string;
+          projectName: string;
+          roleType: string;
+          isActive: boolean;
+        }>;
+      }>();
+
+      for (const status of statuses) {
+        if (!status.teamMemberId) continue;
+        
+        if (!memberMap.has(status.teamMemberId)) {
+          memberMap.set(status.teamMemberId, {
+            id: status.teamMemberId,
+            name: status.teamMemberName,
+            githubUsername: status.githubUsername,
+            avatarUrl: status.githubUsername 
+              ? `https://github.com/${status.githubUsername}.png?size=80`
+              : undefined,
+            roles: [],
+          });
+        }
+
+        memberMap.get(status.teamMemberId)!.roles.push({
+          projectId: status.projectId!,
+          projectName: status.projectName,
+          roleType: status.positionType === 'maintainer' ? 'approver' : 'reviewer',
+          isActive: status.isActive ?? true,
+        });
+      }
+
+      return {
+        summary: {
+          totalApprovers,
+          totalReviewers,
+          teamApprovers,
+          teamReviewers,
+        },
+        teamLeaders: Array.from(memberMap.values()),
+      };
+    } catch (error) {
+      logger.warn('Error fetching leadership data', { error });
+      return {
+        summary: {
+          totalApprovers: 0,
+          totalReviewers: 0,
+          teamApprovers: 0,
+          teamReviewers: 0,
+        },
+        teamLeaders: [],
+      };
+    }
   }
 }
 

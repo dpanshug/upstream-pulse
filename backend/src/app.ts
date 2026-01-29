@@ -130,17 +130,23 @@ app.post<{
     logger.info(`Created project: ${name} (${githubOrg}/${githubRepo})`);
 
     let collectionJob = null;
+    let governanceJob = null;
 
-    // Optionally start collection
+    // Import scheduler
+    const { CollectionScheduler } = await import('./jobs/scheduler.js');
+    const scheduler = new CollectionScheduler();
+
+    // Always trigger governance collection for new projects (OWNERS files)
+    governanceJob = await scheduler.triggerProjectGovernance(newProject.id, 'new_project');
+    logger.info(`Started governance collection for ${name}`);
+
+    // Optionally start contribution collection
     if (startCollection) {
-      const { CollectionScheduler } = await import('./jobs/scheduler.js');
-      const scheduler = new CollectionScheduler();
-
       // For new projects, always collect from repo creation date (sensible default)
       // There's no existing data, so full history makes sense
       collectionJob = await scheduler.triggerProjectCollection(newProject.id, repoCreatedAt);
 
-      logger.info(`Started collection for ${name}`, {
+      logger.info(`Started contribution collection for ${name}`, {
         since: repoCreatedAt.toISOString(),
       });
     }
@@ -153,6 +159,9 @@ app.post<{
         jobId: collectionJob.id,
         since: fullHistory ? repoCreatedAt.toISOString() : undefined,
       } : null,
+      governance: {
+        jobId: governanceJob.id,
+      },
     };
   } catch (error) {
     logger.error('Error creating project', { error });
@@ -326,6 +335,55 @@ app.post<{
     reply.status(500);
     return {
       error: 'Failed to trigger collection',
+      message: (error as Error).message,
+    };
+  }
+});
+
+// Trigger governance refresh (OWNERS files collection)
+app.post<{
+  Params: { projectId?: string };
+}>('/api/governance/refresh/:projectId?', async (request, reply) => {
+  try {
+    const { projectId } = request.params;
+
+    const { CollectionScheduler } = await import('./jobs/scheduler.js');
+    const scheduler = new CollectionScheduler();
+
+    let job;
+    let message;
+
+    if (projectId) {
+      // Validate project exists
+      const project = await db.query.projects.findFirst({
+        where: eq(projects.id, projectId),
+      });
+
+      if (!project) {
+        reply.status(404);
+        return { error: 'Project not found' };
+      }
+
+      job = await scheduler.triggerProjectGovernance(projectId, 'manual');
+      message = `Governance refresh queued for ${project.name}`;
+      logger.info(message);
+    } else {
+      // Refresh all projects
+      job = await scheduler.triggerGovernanceRefresh();
+      message = 'Governance refresh queued for all projects';
+      logger.info(message);
+    }
+
+    return {
+      success: true,
+      jobId: job.id,
+      message,
+    };
+  } catch (error) {
+    logger.error('Error triggering governance refresh', { error });
+    reply.status(500);
+    return {
+      error: 'Failed to trigger governance refresh',
       message: (error as Error).message,
     };
   }
