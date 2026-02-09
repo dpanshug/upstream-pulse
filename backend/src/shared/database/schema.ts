@@ -94,11 +94,18 @@ export const maintainerStatus = pgTable('maintainer_status', {
 }));
 
 // Leadership positions (steering committees, working groups)
+// Stores ALL community leadership positions - both team members and external contributors
+// For team members: teamMemberId is set
+// For external: teamMemberId is null, but githubUsername/externalName/organization are populated
 export const leadershipPositions = pgTable('leadership_positions', {
   id: uuid('id').defaultRandom().primaryKey(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
   teamMemberId: uuid('team_member_id').references(() => teamMembers.id, { onDelete: 'cascade' }),
-  positionType: varchar('position_type', { length: 100 }).notNull(), // 'steering_committee', 'working_group_lead'
+  // External member info (used when teamMemberId is null)
+  githubUsername: varchar('github_username', { length: 255 }),
+  externalName: varchar('external_name', { length: 255 }),
+  organization: varchar('organization', { length: 255 }),
+  positionType: varchar('position_type', { length: 100 }).notNull(), // 'steering_committee', 'wg_chair', 'wg_tech_lead', etc.
   committeeName: varchar('committee_name', { length: 255 }),
   roleTitle: varchar('role_title', { length: 255 }),
   startDate: date('start_date').notNull(),
@@ -112,6 +119,7 @@ export const leadershipPositions = pgTable('leadership_positions', {
 }, (table) => ({
   projectMemberIdx: index('leadership_project_member_idx').on(table.projectId, table.teamMemberId),
   activeIdx: index('leadership_active_idx').on(table.isActive),
+  githubUsernameIdx: index('leadership_github_username_idx').on(table.githubUsername),
 }));
 
 // DEPRECATED: This table is no longer used. Metrics are now calculated on-demand.

@@ -74,24 +74,19 @@ export const leadershipWorker = new Worker<LeadershipJobData>(
         .where(eq(leadershipPositions.source, 'github_community_repo'));
 
       let teamPositionsCount = 0;
-      let nonTeamPositionsCount = 0;
+      let externalPositionsCount = 0;
       let errorsCount = 0;
 
-      // Process each position
+      // Process each position (both team members and external community members)
       for (const pos of positions) {
         const teamMember = usernameToTeamMember.get(pos.githubUsername.toLowerCase());
-
-        if (!teamMember) {
-          logger.debug(`Leadership position for non-team member: @${pos.githubUsername} (${pos.positionType})`);
-          nonTeamPositionsCount++;
-          continue;
-        }
+        const isTeamMember = !!teamMember;
 
         try {
-          // Check if entry already exists
+          // Check if entry already exists - use githubUsername as the unique key for all positions
           const existing = await db.query.leadershipPositions.findFirst({
             where: and(
-              eq(leadershipPositions.teamMemberId, teamMember.id),
+              eq(leadershipPositions.githubUsername, pos.githubUsername.toLowerCase()),
               eq(leadershipPositions.positionType, pos.positionType),
               eq(leadershipPositions.committeeName, pos.groupName),
               eq(leadershipPositions.source, 'github_community_repo')
@@ -122,6 +117,9 @@ export const leadershipWorker = new Worker<LeadershipJobData>(
               .set({
                 isActive: true,
                 roleTitle,
+                teamMemberId: teamMember?.id || null,
+                externalName: pos.name,
+                organization: pos.organization || null,
                 startDate: startDate.toISOString().split('T')[0],
                 endDate: endDate ? endDate.toISOString().split('T')[0] : null,
                 evidenceUrl: pos.sourceUrl,
@@ -131,7 +129,10 @@ export const leadershipWorker = new Worker<LeadershipJobData>(
           } else {
             // Insert new entry
             await db.insert(leadershipPositions).values({
-              teamMemberId: teamMember.id,
+              teamMemberId: teamMember?.id || null,
+              githubUsername: pos.githubUsername.toLowerCase(),
+              externalName: pos.name,
+              organization: pos.organization || null,
               projectId: null, // Leadership positions are org-wide
               positionType: pos.positionType,
               committeeName: pos.groupName,
@@ -145,7 +146,11 @@ export const leadershipWorker = new Worker<LeadershipJobData>(
             });
           }
 
-          teamPositionsCount++;
+          if (isTeamMember) {
+            teamPositionsCount++;
+          } else {
+            externalPositionsCount++;
+          }
         } catch (posError) {
           logger.warn(`Error storing leadership position for @${pos.githubUsername}`, {
             error: (posError as Error).message,
@@ -162,14 +167,14 @@ export const leadershipWorker = new Worker<LeadershipJobData>(
         .set({
           status: 'completed',
           completedAt: new Date(),
-          recordsProcessed: teamPositionsCount,
+          recordsProcessed: teamPositionsCount + externalPositionsCount,
           errorsCount,
           metadata: {
             bullmqJobId: job.id,
             trigger,
             totalPositions: positions.length,
             teamPositions: teamPositionsCount,
-            nonTeamPositions: nonTeamPositionsCount,
+            externalPositions: externalPositionsCount,
           },
         })
         .where(eq(collectionJobs.id, jobRecordId));
@@ -178,7 +183,7 @@ export const leadershipWorker = new Worker<LeadershipJobData>(
         jobId: job.id,
         totalPositions: positions.length,
         teamPositions: teamPositionsCount,
-        nonTeamPositions: nonTeamPositionsCount,
+        externalPositions: externalPositionsCount,
         errorsCount,
       });
 
@@ -186,7 +191,7 @@ export const leadershipWorker = new Worker<LeadershipJobData>(
         success: true,
         totalPositions: positions.length,
         teamPositions: teamPositionsCount,
-        nonTeamPositions: nonTeamPositionsCount,
+        externalPositions: externalPositionsCount,
         errorsCount,
       };
 
