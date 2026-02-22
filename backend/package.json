@@ -10,7 +10,7 @@
     "start": "node dist/app.js",
     "worker": "tsx watch src/worker.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "tsx src/shared/database/run-migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx src/scripts/seed-sample-data.ts",
     "db:backfill-github-ids": "tsx src/scripts/backfill-github-ids.ts",

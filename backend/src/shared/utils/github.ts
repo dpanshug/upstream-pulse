@@ -54,6 +54,66 @@ export async function fetchGitHubUserId(username: string): Promise<number | null
   return user?.id ?? null;
 }
 
+interface GitHubOrgMember {
+  login: string;
+  id: number;
+  avatar_url: string;
+  type: string;
+  site_admin: boolean;
+}
+
+/**
+ * Fetch all members of a GitHub organization (handles pagination).
+ * Requires a token with `read:org` scope to include private members.
+ * Returns an empty array on failure instead of throwing.
+ */
+export async function fetchGitHubOrgMembers(org: string): Promise<GitHubOrgMember[]> {
+  const allMembers: GitHubOrgMember[] = [];
+  let page = 1;
+  const perPage = 100;
+  const token = config.githubTeamToken;
+
+  try {
+    while (true) {
+      const response = await fetch(
+        `https://api.github.com/orgs/${org}/members?per_page=${perPage}&page=${page}`,
+        {
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'upstream-pulse',
+            ...(token && { 'Authorization': `Bearer ${token}` }),
+          },
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          logger.error('GitHub API rate limited while fetching org members');
+          break;
+        }
+        if (response.status === 404) {
+          logger.error(`GitHub org not found: ${org}`);
+          return [];
+        }
+        logger.error(`GitHub API error fetching org members: ${response.status}`);
+        return [];
+      }
+
+      const members = await response.json() as GitHubOrgMember[];
+      allMembers.push(...members);
+
+      if (members.length < perPage) break;
+      page++;
+    }
+
+    logger.info(`Fetched ${allMembers.length} members from GitHub org ${org}`);
+    return allMembers;
+  } catch (error) {
+    logger.error(`Error fetching org members for ${org}:`, { error });
+    return [];
+  }
+}
+
 interface GitHubRepo {
   id: number;
   name: string;

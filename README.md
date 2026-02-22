@@ -38,17 +38,28 @@ Upstream Pulse helps Red Hat AI Organization leadership answer critical question
 
 ```bash
 # Start development environment
-docker-compose up -d
+docker-compose up -d postgres redis
 
 # Backend setup
 cd backend
 npm install
-npm run db:migrate
-npm run dev
+npm run db:migrate    # Apply database migrations (run before first start and after schema changes)
+npm run dev           # API server on :3000
+npm run worker        # BullMQ workers (in a separate terminal)
 
 # Frontend setup (in new terminal)
 cd frontend
 npm install
 npm run dev
 ```
+
+## Deployment Notes
+
+**Before deploying new code to the cluster**, run database migrations:
+
+```bash
+npm run db:migrate
+```
+
+This applies any pending schema changes. Always run this before restarting the backend or worker pods.
 

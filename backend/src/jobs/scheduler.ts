@@ -64,10 +64,24 @@ export const leadershipQueue = new Queue('leadership-refresh', {
   },
 });
 
+export const teamSyncQueue = new Queue('team-sync', {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
+    },
+    removeOnComplete: 25,
+    removeOnFail: 10,
+  },
+});
+
 export class CollectionScheduler {
   private dailySyncSchedule: cron.ScheduledTask | null = null;
   private weeklyGovernanceSchedule: cron.ScheduledTask | null = null;
   private monthlyLeadershipSchedule: cron.ScheduledTask | null = null;
+  private weeklyTeamSyncSchedule: cron.ScheduledTask | null = null;
 
   /**
    * Start scheduled jobs
@@ -98,7 +112,14 @@ export class CollectionScheduler {
       await this.triggerLeadershipRefresh();
     });
 
+    // Weekly team sync at 1 AM UTC on Sundays (before governance refresh at 3 AM)
+    this.weeklyTeamSyncSchedule = cron.schedule('0 1 * * 0', async () => {
+      logger.info('Triggering weekly team sync from GitHub org');
+      await this.triggerTeamSync();
+    });
+
     logger.info('Collection scheduler started', {
+      weeklyTeamSync: '0 1 * * 0 (1 AM UTC on Sundays)',
       dailySync: '0 2 * * * (2 AM UTC)',
       weeklyGovernance: '0 3 * * 0 (3 AM UTC on Sundays)',
       monthlyLeadership: '0 4 1 * * (4 AM UTC on 1st of month)',
@@ -121,6 +142,10 @@ export class CollectionScheduler {
 
     if (this.monthlyLeadershipSchedule) {
       this.monthlyLeadershipSchedule.stop();
+    }
+
+    if (this.weeklyTeamSyncSchedule) {
+      this.weeklyTeamSyncSchedule.stop();
     }
 
     logger.info('Collection scheduler stopped');
@@ -403,6 +428,49 @@ export class CollectionScheduler {
       leadershipQueue.getActiveCount(),
       leadershipQueue.getCompletedCount(),
       leadershipQueue.getFailedCount(),
+    ]);
+
+    return {
+      waiting,
+      active,
+      completed,
+      failed,
+      total: waiting + active + completed + failed,
+    };
+  }
+
+  /**
+   * Trigger team member sync from GitHub org
+   */
+  async triggerTeamSync(trigger: 'scheduled' | 'manual' = 'scheduled') {
+    logger.info('Triggering team sync from GitHub org');
+
+    const job = await teamSyncQueue.add(
+      `team-sync-${trigger}`,
+      {
+        trigger,
+        org: config.githubTeamOrg,
+      },
+      {
+        priority: trigger === 'manual' ? 0 : 1,
+        jobId: `team-sync-${Date.now()}`,
+      }
+    );
+
+    logger.info('Team sync job queued', { jobId: job.id });
+
+    return job;
+  }
+
+  /**
+   * Get team sync queue statistics
+   */
+  async getTeamSyncQueueStats() {
+    const [waiting, active, completed, failed] = await Promise.all([
+      teamSyncQueue.getWaitingCount(),
+      teamSyncQueue.getActiveCount(),
+      teamSyncQueue.getCompletedCount(),
+      teamSyncQueue.getFailedCount(),
     ]);
 
     return {

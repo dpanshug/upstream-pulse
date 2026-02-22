@@ -396,6 +396,32 @@ app.post<{
   }
 });
 
+// Manual team sync from GitHub org
+app.post('/api/admin/team-sync', async (request, reply) => {
+  try {
+    const { CollectionScheduler } = await import('./jobs/scheduler.js');
+    const scheduler = new CollectionScheduler();
+
+    const job = await scheduler.triggerTeamSync('manual');
+    const message = `Team sync queued for GitHub org: ${config.githubTeamOrg}`;
+    logger.info(message);
+
+    return {
+      success: true,
+      jobId: job.id,
+      org: config.githubTeamOrg,
+      message,
+    };
+  } catch (error) {
+    logger.error('Error triggering team sync', { error });
+    reply.status(500);
+    return {
+      error: 'Failed to trigger team sync',
+      message: (error as Error).message,
+    };
+  }
+});
+
 // Manual leadership refresh endpoint
 app.post('/api/leadership/refresh', async (request, reply) => {
   try {

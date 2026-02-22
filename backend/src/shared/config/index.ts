@@ -27,9 +27,13 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/upstream_pulse',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
 
-  // GitHub
+  // GitHub (public repo data)
   githubToken: process.env.GITHUB_TOKEN || '',
   githubOrg: process.env.GITHUB_ORG || 'kubernetes',
+
+  // GitHub org team sync (personal PAT with read:org)
+  githubTeamToken: process.env.GITHUB_TEAM_TOKEN || process.env.GITHUB_TOKEN || '',
+  githubTeamOrg: process.env.GITHUB_TEAM_ORG || 'opendatahub-io',
 
   // AI
   googleAIApiKey: process.env.GOOGLE_AI_API_KEY || '',

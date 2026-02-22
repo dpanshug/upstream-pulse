@@ -4,6 +4,7 @@ import { CollectionScheduler } from './jobs/scheduler.js';
 import { collectionWorker } from './jobs/workers/collection-worker.js';
 import { governanceWorker } from './jobs/workers/governance-worker.js';
 import { leadershipWorker } from './jobs/workers/leadership-worker.js';
+import { teamSyncWorker } from './jobs/workers/team-sync-worker.js';
 
 // Validate configuration on startup
 try {
@@ -26,15 +27,17 @@ scheduler.start();
 
 // Log queue stats every 5 minutes
 setInterval(async () => {
-  const [contributionStats, governanceStats, leadershipStats] = await Promise.all([
+  const [contributionStats, governanceStats, leadershipStats, teamSyncStats] = await Promise.all([
     scheduler.getQueueStats(),
     scheduler.getGovernanceQueueStats(),
     scheduler.getLeadershipQueueStats(),
+    scheduler.getTeamSyncQueueStats(),
   ]);
   logger.info('Queue statistics', {
     contributions: contributionStats,
     governance: governanceStats,
     leadership: leadershipStats,
+    teamSync: teamSyncStats,
   });
 }, 5 * 60 * 1000);
 
@@ -48,6 +51,7 @@ const shutdown = async () => {
     collectionWorker.close(),
     governanceWorker.close(),
     leadershipWorker.close(),
+    teamSyncWorker.close(),
   ]);
 
   logger.info('Worker process stopped');
