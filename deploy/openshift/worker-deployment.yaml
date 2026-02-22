@@ -58,6 +58,11 @@ spec:
                 secretKeyRef:
                   name: upstream-pulse-secrets
                   key: GOOGLE_AI_API_KEY
+            - name: GITHUB_TEAM_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: upstream-pulse-secrets
+                  key: GITHUB_TEAM_TOKEN
           envFrom:
             - configMapRef:
                 name: upstream-pulse-config

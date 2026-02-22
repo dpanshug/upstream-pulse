@@ -10,3 +10,4 @@ data:
   PORT: "3000"
   LOG_LEVEL: "info"
   PROMETHEUS_ENABLED: "true"
+  GITHUB_TEAM_ORG: "opendatahub-io"
