@@ -1,0 +1,105 @@
+# =============================================================================
+# Redis 7 — PVC + Deployment + Service
+# =============================================================================
+
+# --- Persistent Volume Claim ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  namespace: upstream-pulse
+  labels:
+    app.kubernetes.io/part-of: upstream-pulse
+    app.kubernetes.io/component: cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# --- Deployment ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: upstream-pulse
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: upstream-pulse
+    app.kubernetes.io/component: cache
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+        app.kubernetes.io/part-of: upstream-pulse
+        app.kubernetes.io/component: cache
+    spec:
+      containers:
+        - name: redis
+          image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/redis:7-alpine
+          args:
+            - redis-server
+            - --appendonly
+            - "yes"
+          ports:
+            - containerPort: 6379
+              protocol: TCP
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+      volumes:
+        - name: redis-data
+          persistentVolumeClaim:
+            claimName: redis-data
+
+---
+# --- Service ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: upstream-pulse
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: upstream-pulse
+    app.kubernetes.io/component: cache
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: redis

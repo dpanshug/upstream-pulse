@@ -16,7 +16,12 @@
     "db:studio": "cd backend && npm run db:studio",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
-    "docker:logs": "docker-compose logs -f"
+    "docker:logs": "docker-compose logs -f",
+    "deploy": "./deploy/deploy.sh deploy",
+    "deploy:build": "./deploy/deploy.sh build",
+    "deploy:push": "./deploy/deploy.sh push",
+    "deploy:apply": "./deploy/deploy.sh apply",
+    "deploy:status": "./deploy/deploy.sh status"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

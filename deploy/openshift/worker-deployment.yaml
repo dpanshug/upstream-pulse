@@ -1,0 +1,70 @@
+# =============================================================================
+# Worker Deployment
+# BullMQ consumer — same image as backend, different entrypoint
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: upstream-pulse
+  labels:
+    app.kubernetes.io/name: worker
+    app.kubernetes.io/part-of: upstream-pulse
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: worker
+        app.kubernetes.io/part-of: upstream-pulse
+        app.kubernetes.io/component: worker
+    spec:
+      containers:
+        - name: worker
+          image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/backend:latest
+          # Override the default CMD to run the worker process
+          command: ["node", "dist/worker.js"]
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_DB
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
+            - name: REDIS_URL
+              value: "redis://redis:6379"
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: upstream-pulse-secrets
+                  key: GITHUB_TOKEN
+            - name: GOOGLE_AI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: upstream-pulse-secrets
+                  key: GOOGLE_AI_API_KEY
+          envFrom:
+            - configMapRef:
+                name: upstream-pulse-config
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

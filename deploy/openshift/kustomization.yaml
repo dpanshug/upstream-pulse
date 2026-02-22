@@ -1,0 +1,34 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: upstream-pulse
+
+resources:
+  # Namespace (already created via 'oc new-project upstream-pulse')
+  # - namespace.yaml
+
+  # Configuration
+  - configmap.yaml
+  # Secrets are created via 'oc create secret' (see secrets.example.yaml)
+
+  # Data stores
+  - postgres.yaml
+  - redis.yaml
+
+  # Backend API
+  - backend-deployment.yaml
+  - backend-service.yaml
+
+  # Worker (BullMQ consumer)
+  - worker-deployment.yaml
+
+  # Frontend (nginx + React SPA)
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - frontend-route.yaml
+
+  # Backups (uncomment when ready — see postgres-backup-cronjob.yaml for setup)
+  # - postgres-backup-cronjob.yaml
+
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize

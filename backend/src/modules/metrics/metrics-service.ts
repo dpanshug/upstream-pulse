@@ -20,7 +20,13 @@ import type {
   ContributorRanking,
   ProjectMetric,
   DashboardResponse,
+  DashboardResponseWithLeadership,
   MetricsQueryOptions,
+  DailyContribution,
+  ContributorSummary,
+  ProjectSummary,
+  TrendComparison,
+  DashboardMetrics,
 } from './types.js';
 
 export class MetricsService {
@@ -552,7 +558,7 @@ export class MetricsService {
    * Get dashboard with clear, organized structure
    * This is the new preferred method for the frontend
    */
-  async getDashboard(options: MetricsQueryOptions = {}): Promise<DashboardResponse> {
+  async getDashboard(options: MetricsQueryOptions = {}): Promise<DashboardResponseWithLeadership> {
     const days = options.days ?? 0; // Default to 0 (all time)
     const dateRange = this.getDateRange({ days });
     

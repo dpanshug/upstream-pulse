@@ -183,9 +183,9 @@ export class GitHubCollector {
           author: pr.user.login,
           date: new Date(pr.created_at),
           isMerged: pr.merged_at !== null,
-          linesAdded: pr.additions,
-          linesDeleted: pr.deletions,
-          filesChanged: pr.changed_files,
+          linesAdded: (pr as any).additions,
+          linesDeleted: (pr as any).deletions,
+          filesChanged: (pr as any).changed_files,
           metadata: {
             author: pr.user.login,
             title: pr.title,

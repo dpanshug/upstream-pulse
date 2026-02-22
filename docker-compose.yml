@@ -31,40 +31,51 @@ services:
       timeout: 3s
       retries: 5
 
-  # Uncomment when backend is ready
-  # backend:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: ../Dockerfile.backend
-  #   container_name: upstream-pulse-backend
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     - NODE_ENV=development
-  #     - DATABASE_URL=postgresql://postgres:password@postgres:5432/upstream_pulse
-  #     - REDIS_URL=redis://redis:6379
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   volumes:
-  #     - ./backend/src:/app/src
-  #   command: npm run dev
+  # Backend API server
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: upstream-pulse-backend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/upstream_pulse
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
-  # Uncomment when frontend is ready
-  # frontend:
-  #   build:
-  #     context: ./frontend
-  #     dockerfile: ../Dockerfile.frontend
-  #   container_name: upstream-pulse-frontend
-  #   ports:
-  #     - "5173:5173"
-  #   environment:
-  #     - VITE_API_URL=http://localhost:3000
-  #   volumes:
-  #     - ./frontend/src:/app/src
-  #   command: npm run dev
+  # BullMQ worker
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: upstream-pulse-worker
+    command: ["node", "dist/worker.js"]
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/upstream_pulse
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Frontend dashboard
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: upstream-pulse-frontend
+    ports:
+      - "8080:8080"
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:

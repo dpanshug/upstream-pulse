@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: upstream-pulse-config
+  namespace: upstream-pulse
+  labels:
+    app.kubernetes.io/part-of: upstream-pulse
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  LOG_LEVEL: "info"
+  PROMETHEUS_ENABLED: "true"

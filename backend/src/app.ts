@@ -5,7 +5,7 @@ import { config, validateConfig } from './shared/config/index.js';
 import { logger } from './shared/utils/logger.js';
 import { db } from './shared/database/client.js';
 import { teamMembers, projects } from './shared/database/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 // Validate configuration on startup
 try {
@@ -45,7 +45,7 @@ app.get('/health', async (request, reply) => {
 app.get('/ready', async (request, reply) => {
   try {
     // Check database connection
-    await db.execute('SELECT 1');
+    await db.execute(sql`SELECT 1`);
 
     return {
       status: 'ready',
@@ -426,11 +426,10 @@ app.register(async function (fastify) {
   fastify.get('/ws/updates', { websocket: true }, (connection, req) => {
     logger.info('WebSocket connection established');
 
-    connection.socket.on('message', (message) => {
-      // Echo back for now
+    connection.socket.on('message', (message: unknown) => {
       connection.socket.send(JSON.stringify({
         type: 'echo',
-        data: message.toString(),
+        data: String(message),
         timestamp: new Date().toISOString(),
       }));
     });

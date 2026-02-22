@@ -1,0 +1,28 @@
+# =============================================================================
+# OpenShift Route — exposes the frontend to the internet with TLS
+# =============================================================================
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: upstream-pulse
+  namespace: upstream-pulse
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: upstream-pulse
+    app.kubernetes.io/component: ui
+  annotations:
+    # Allow large request bodies (for data submissions)
+    haproxy.router.openshift.io/timeout: 300s
+spec:
+  # Uncomment and set a custom hostname if desired:
+  # host: upstream-pulse.apps.your-cluster.example.com
+  to:
+    kind: Service
+    name: frontend
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None

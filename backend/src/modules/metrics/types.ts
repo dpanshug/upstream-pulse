@@ -113,3 +113,46 @@ export interface ContributionBreakdown {
   team: ContributionCounts;
   percentage: number;
 }
+
+// Daily contribution data used in trend charts
+export interface DailyContribution {
+  date: string;
+  all: ContributionCounts;
+  team: ContributionCounts;
+}
+
+// Contributor summary for leaderboards
+export interface ContributorSummary {
+  id: string;
+  name: string;
+  githubUsername: string | null;
+  contributions: ContributionCounts;
+}
+
+// Project summary for rankings
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  contributions: ContributionBreakdown;
+  activeContributors: number;
+}
+
+// Alias for TrendMetric (used in comparison methods)
+export type TrendComparison = TrendMetric;
+
+// Full dashboard metrics response (legacy format)
+export interface DashboardMetrics {
+  projectCount: number;
+  contributions: ContributionBreakdown;
+  contributionsTrend: TrendComparison;
+  activeContributors: number;
+  activeContributorsTrend: TrendComparison;
+  topContributors: ContributorSummary[];
+  topProjects: ProjectSummary[];
+  dailyTrend: DailyContribution[];
+}
+
+// Extended dashboard response with leadership data
+export interface DashboardResponseWithLeadership extends DashboardResponse {
+  leadership: unknown;
+}

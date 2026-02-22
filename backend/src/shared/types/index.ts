@@ -34,6 +34,7 @@ export type NewReport = InferInsertModel<typeof schema.reports>;
 
 // Custom types
 export interface Repository {
+  name: string;
   githubOrg: string;
   githubRepo: string;
   id?: string;
@@ -87,6 +88,6 @@ export interface RecommendationItem {
 export interface ResolvedIdentity {
   teamMember: TeamMember | null;
   confidence: number;
-  source: 'explicit_mapping' | 'email_domain' | 'fuzzy_match' | 'unresolved';
+  source: 'explicit_mapping' | 'email_domain' | 'fuzzy_match' | 'github_username' | 'unresolved';
   requiresVerification?: boolean;
 }

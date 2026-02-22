@@ -68,6 +68,7 @@ export const collectionWorker = new Worker<CollectionJobData>(
       const collector = new GitHubCollector();
       const contributionRecords = await collector.collectRepositoryContributions(
         {
+          name: project.name || `${project.githubOrg}/${project.githubRepo}`,
           githubOrg: project.githubOrg,
           githubRepo: project.githubRepo,
           id: project.id,

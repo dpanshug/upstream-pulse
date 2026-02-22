@@ -1,0 +1,156 @@
+# =============================================================================
+# PostgreSQL Backup CronJob — pg_dump to AWS S3
+#
+# STATUS: Not active yet. To enable:
+#   1. Create an S3 bucket (e.g., upstream-pulse-db-backups)
+#   2. Create an IAM user with s3:PutObject permission on that bucket
+#   3. Fill in the aws-s3-credentials secret below with real values
+#   4. Uncomment this file in kustomization.yaml
+#   5. oc apply -k deploy/openshift/
+#
+# Schedule: Daily at 2:00 AM UTC (adjust as needed)
+# Retention: Keeps last 7 daily backups in S3 (configurable below)
+# =============================================================================
+
+# --- AWS S3 credentials ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-s3-credentials
+  namespace: upstream-pulse
+  labels:
+    app.kubernetes.io/part-of: upstream-pulse
+    app.kubernetes.io/component: backup
+type: Opaque
+data:
+  # echo -n "AKIAIOSFODNN7EXAMPLE" | base64
+  AWS_ACCESS_KEY_ID: Q0hBTkdFLU1F
+  # echo -n "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" | base64
+  AWS_SECRET_ACCESS_KEY: Q0hBTkdFLU1F
+stringData:
+  AWS_DEFAULT_REGION: us-east-1
+  S3_BUCKET: upstream-pulse-db-backups
+  BACKUP_RETENTION_DAYS: "7"
+
+---
+# --- CronJob ---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: upstream-pulse
+  labels:
+    app.kubernetes.io/name: postgres-backup
+    app.kubernetes.io/part-of: upstream-pulse
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 2 * * *"  # Daily at 2:00 AM UTC
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800  # 30 min timeout
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: postgres-backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: pg-backup
+              image: amazon/aws-cli:2.15.0
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+
+                  # Install PostgreSQL client
+                  yum install -y postgresql16 > /dev/null 2>&1 || \
+                    yum install -y postgresql15 > /dev/null 2>&1
+
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  BACKUP_FILE="upstream-pulse-${TIMESTAMP}.sql.gz"
+                  S3_PATH="s3://${S3_BUCKET}/backups/${BACKUP_FILE}"
+
+                  echo "[$(date)] Starting backup..."
+
+                  # Dump and compress, stream directly to S3
+                  pg_dump "${DATABASE_URL}" \
+                    --no-owner \
+                    --no-privileges \
+                    --format=plain \
+                    | gzip \
+                    | aws s3 cp - "${S3_PATH}"
+
+                  echo "[$(date)] Backup uploaded to ${S3_PATH}"
+
+                  # Clean up old backups (keep last N days)
+                  CUTOFF_DATE=$(date -d "-${BACKUP_RETENTION_DAYS} days" +%Y%m%d 2>/dev/null || \
+                                date -v-${BACKUP_RETENTION_DAYS}d +%Y%m%d)
+                  echo "[$(date)] Pruning backups older than ${CUTOFF_DATE}..."
+
+                  aws s3 ls "s3://${S3_BUCKET}/backups/" \
+                    | awk '{print $4}' \
+                    | grep '\.sql\.gz$' \
+                    | while read -r file; do
+                        FILE_DATE=$(echo "$file" | grep -oE '[0-9]{8}')
+                        if [ "${FILE_DATE}" \< "${CUTOFF_DATE}" ]; then
+                          echo "  Deleting old backup: ${file}"
+                          aws s3 rm "s3://${S3_BUCKET}/backups/${file}"
+                        fi
+                      done
+
+                  echo "[$(date)] Backup complete."
+              env:
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: POSTGRES_USER
+                - name: POSTGRES_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: POSTGRES_PASSWORD
+                - name: POSTGRES_DB
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: POSTGRES_DB
+                - name: DATABASE_URL
+                  value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)"
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-s3-credentials
+                      key: AWS_ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-s3-credentials
+                      key: AWS_SECRET_ACCESS_KEY
+                - name: AWS_DEFAULT_REGION
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-s3-credentials
+                      key: AWS_DEFAULT_REGION
+                - name: S3_BUCKET
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-s3-credentials
+                      key: S3_BUCKET
+                - name: BACKUP_RETENTION_DAYS
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-s3-credentials
+                      key: BACKUP_RETENTION_DAYS
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
