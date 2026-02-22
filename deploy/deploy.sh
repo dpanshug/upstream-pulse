@@ -5,7 +5,7 @@
 # Usage:
 #   ./deploy/deploy.sh                    # Full deploy (build + push + apply)
 #   ./deploy/deploy.sh build              # Build images only
-#   ./deploy/deploy.sh push               # Push images to Quay.io
+#   ./deploy/deploy.sh push               # Push images to OpenShift registry
 #   ./deploy/deploy.sh apply              # Apply OpenShift manifests only
 #   ./deploy/deploy.sh status             # Show deployment status
 #   ./deploy/deploy.sh logs [component]   # Tail logs (backend|frontend|worker)
@@ -192,7 +192,7 @@ case "${1:-deploy}" in
         echo "  logs [component]  Tail logs (backend|frontend|worker)"
         echo ""
         echo "Environment variables:"
-        echo "  REGISTRY          Container registry (default: quay.io)"
+        echo "  REGISTRY          Container registry (default: OpenShift internal registry)"
         echo "  REGISTRY_ORG      Registry org/user (default: upstream-pulse)"
         echo "  IMAGE_TAG         Image tag (default: latest)"
         echo "  NAMESPACE         OpenShift namespace (default: upstream-pulse)"
