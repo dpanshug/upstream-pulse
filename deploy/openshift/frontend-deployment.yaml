@@ -26,6 +26,7 @@ spec:
       containers:
         - name: frontend
           image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/frontend:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
               protocol: TCP

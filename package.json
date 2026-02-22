@@ -21,7 +21,9 @@
     "deploy:build": "./deploy/deploy.sh build",
     "deploy:push": "./deploy/deploy.sh push",
     "deploy:apply": "./deploy/deploy.sh apply",
-    "deploy:status": "./deploy/deploy.sh status"
+    "deploy:status": "./deploy/deploy.sh status",
+    "db:pgadmin": "docker start pgadmin || docker run -d --name pgadmin -p 5050:80 -e PGADMIN_DEFAULT_EMAIL=admin@admin.com -e PGADMIN_DEFAULT_PASSWORD=admin dpage/pgadmin4",
+    "db:port-forward": "oc -n upstream-pulse port-forward svc/postgres 5433:5432"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

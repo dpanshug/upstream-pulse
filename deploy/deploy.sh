@@ -13,7 +13,7 @@
 set -euo pipefail
 
 # --- Configuration ---
-REGISTRY="${REGISTRY:-quay.io}"
+REGISTRY="${REGISTRY:-default-route-openshift-image-registry.apps.rosa.dpanshug.q62q.p3.openshiftapps.com}"
 REGISTRY_ORG="${REGISTRY_ORG:-upstream-pulse}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 NAMESPACE="${NAMESPACE:-upstream-pulse}"
@@ -41,12 +41,14 @@ info() { echo -e "${BLUE}[i]${NC} $*"; }
 build_images() {
     log "Building backend image: ${BACKEND_IMAGE}"
     docker build \
+        --platform linux/amd64 \
         -t "${BACKEND_IMAGE}" \
         -f "${PROJECT_ROOT}/backend/Dockerfile" \
         "${PROJECT_ROOT}/backend"
 
     log "Building frontend image: ${FRONTEND_IMAGE}"
     docker build \
+        --platform linux/amd64 \
         -t "${FRONTEND_IMAGE}" \
         -f "${PROJECT_ROOT}/frontend/Dockerfile" \
         "${PROJECT_ROOT}/frontend"

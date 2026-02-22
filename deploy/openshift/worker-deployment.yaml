@@ -26,6 +26,7 @@ spec:
       containers:
         - name: worker
           image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/backend:latest
+          imagePullPolicy: Always
           # Override the default CMD to run the worker process
           command: ["node", "dist/worker.js"]
           env:
