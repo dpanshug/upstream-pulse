@@ -1,6 +1,6 @@
 # Upstream Pulse
 
-**AI-Powered Upstream Open Source Contribution Insights**
+**Upstream Open Source Contribution Insights**
 
 Track and analyze your organization's contributions across upstream open source communities with AI-powered insights.
 
