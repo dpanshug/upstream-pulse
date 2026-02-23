@@ -12,7 +12,8 @@
 ### 1. Clone and Navigate
 
 ```bash
-cd /Users/dipgupta/Documents/projects/upstream-pulse
+git clone https://github.com/dpanshug/upstream-pulse.git
+cd upstream-pulse
 ```
 
 ### 2. Create Environment File
@@ -25,6 +26,8 @@ Edit `.env` and add your credentials:
 ```bash
 GITHUB_TOKEN=ghp_your_token_here
 GOOGLE_AI_API_KEY=AIzaSy_your_key_here
+ORG_NAME=Your Organization Name
+TEAM_EMAIL_DOMAIN=your-company.com
 ```
 
 ### 3. Start Database Services
@@ -48,8 +51,7 @@ npm install
 ### 5. Run Database Migrations
 
 ```bash
-npm run db:generate  # Generate migration files
-npm run db:migrate   # Apply migrations
+npm run db:migrate
 ```
 
 ### 6. Start Backend Server
@@ -73,16 +75,18 @@ curl http://localhost:3000/ready
 curl http://localhost:3000/api/projects
 ```
 
-### 8. Install Frontend Dependencies (optional)
+### 8. Start Workers (in new terminal)
 
 ```bash
-cd ../frontend
-npm install
+cd backend
+npm run worker
 ```
 
-### 9. Start Frontend (optional)
+### 9. Install and Start Frontend (in new terminal)
 
 ```bash
+cd frontend
+npm install
 npm run dev
 ```
 
@@ -90,23 +94,26 @@ Frontend should now be running on http://localhost:5173
 
 ## Next Steps
 
-### Seed Initial Data
+### Seed Sample Data
 
-You'll need to add:
-1. **Team Members**: Red Hat AI team members to track
-2. **Projects**: Upstream repositories to monitor
+To populate the database with sample projects and team members:
 
-You can do this via:
-- Direct database inserts (for now)
-- API endpoints (to be implemented)
-- Admin UI (to be implemented)
+```bash
+cd backend
+npm run db:seed
+```
+
+### Add Your Team Members
+
+Add your organization's team members to the `team_members` table with their GitHub usernames. This enables identity resolution for contribution tracking.
+
+### Add Projects to Track
+
+Add upstream repositories to the `projects` table. Each project needs a GitHub org and repo name.
 
 ### Run Your First Collection
 
-Once you have projects and team members configured, you can:
-1. Implement the collection scheduler
-2. Manually trigger a collection job
-3. View results in the database
+Once projects and team members are configured, the BullMQ workers will automatically collect contribution data on a schedule. You can also trigger collections manually through the API.
 
 ## Troubleshooting
 
@@ -140,41 +147,16 @@ lsof -i :3000
 PORT=3001
 ```
 
-## What's Been Implemented
-
-✅ **Backend Infrastructure**
-- PostgreSQL database schema (11 tables)
-- Drizzle ORM setup
-- TypeScript configuration
-- Fastify API server
-- Health check endpoints
-- WebSocket support
-
-✅ **Core Modules**
-- GitHub Collector (commits, PRs, reviews, issues)
-- Identity Resolver (email matching, fuzzy matching)
-- AI Insights Engine (Google Gemini integration)
-
-✅ **Configuration**
-- Environment management
-- Logger (Winston)
-- Type definitions
-
-## What's Next
-
-⏳ **To Implement**
-- BullMQ job queue for scheduled collections
-- Metrics calculation engine
-- Frontend dashboard components
-- Report generation
-- Admin panel for configuration
-
 ## Development Workflow
 
 ```bash
 # Backend development (with hot reload)
 cd backend
 npm run dev
+
+# Worker development (with hot reload)
+cd backend
+npm run worker
 
 # Frontend development (with hot reload)
 cd frontend
@@ -184,7 +166,3 @@ npm run dev
 cd backend
 npm run db:studio
 ```
-
-## Architecture Reference
-
-See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the complete system architecture and implementation plan.

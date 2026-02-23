@@ -26,7 +26,7 @@ spec:
       # Init container: push database schema before API starts
       initContainers:
         - name: db-migrate
-          image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/backend:latest
+          image: DEPLOY_REGISTRY/upstream-pulse/backend:latest  # Overridden by deploy.sh set_runtime_images
           imagePullPolicy: Always
           command: ["/bin/sh", "-c", "npx drizzle-kit push:pg --schema ./src/shared/database/schema.ts --driver pg --connectionString \"$DATABASE_URL\""]
           env:
@@ -58,7 +58,7 @@ spec:
               memory: 512Mi
       containers:
         - name: backend
-          image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/backend:latest
+          image: DEPLOY_REGISTRY/upstream-pulse/backend:latest  # Overridden by deploy.sh set_runtime_images
           imagePullPolicy: Always
           ports:
             - containerPort: 3000

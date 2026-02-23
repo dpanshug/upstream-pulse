@@ -14,7 +14,8 @@ set -euo pipefail
 
 # --- Configuration ---
 # Registry used for docker build/push from local machine.
-PUSH_REGISTRY="${PUSH_REGISTRY:-default-route-openshift-image-registry.apps.rosa.dpanshug.q62q.p3.openshiftapps.com}"
+# Must be set explicitly via PUSH_REGISTRY env var (e.g. your OpenShift external registry route).
+PUSH_REGISTRY="${PUSH_REGISTRY:?PUSH_REGISTRY must be set to your container registry (e.g. default-route-openshift-image-registry.apps.your-cluster.example.com)}"
 # Registry used inside the cluster by pods (must be pullable by service accounts).
 DEPLOY_REGISTRY="${DEPLOY_REGISTRY:-image-registry.openshift-image-registry.svc:5000}"
 REGISTRY_ORG="${REGISTRY_ORG:-upstream-pulse}"

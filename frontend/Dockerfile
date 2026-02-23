@@ -20,7 +20,7 @@ RUN npm run build
 # --- Stage 2: Serve with nginx ---
 FROM nginx:1.27-alpine
 
-LABEL maintainer="Red Hat AI Organization"
+LABEL maintainer="Upstream Pulse Contributors"
 LABEL description="Upstream Pulse Frontend Dashboard"
 
 # Remove default nginx config

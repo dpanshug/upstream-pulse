@@ -7,15 +7,7 @@ const __dirname = dirname(__filename);
 
 // Load .env from project root (two levels up from backend/src/shared/config)
 const envPath = join(__dirname, '../../../../.env');
-const result = dotenv.config({ path: envPath, override: true });
-console.log('[Config] Loading .env from:', envPath);
-if (result.error) {
-  console.error('[Config] Error loading .env:', result.error);
-} else {
-  console.log('[Config] Successfully loaded .env');
-  console.log('[Config] GITHUB_TOKEN present:', !!process.env.GITHUB_TOKEN);
-  console.log('[Config] GITHUB_TOKEN starts with:', process.env.GITHUB_TOKEN?.substring(0, 10));
-}
+dotenv.config({ path: envPath, override: true });
 
 export const config = {
   // Server
@@ -41,6 +33,10 @@ export const config = {
   // Auth
   jwtSecret: process.env.JWT_SECRET || 'change-me-in-production',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+
+  // Organization
+  orgName: process.env.ORG_NAME || 'My Organization',
+  teamEmailDomain: process.env.TEAM_EMAIL_DOMAIN || '',
 
   // Monitoring
   prometheusEnabled: process.env.PROMETHEUS_ENABLED === 'true',

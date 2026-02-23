@@ -25,7 +25,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/frontend:latest
+          image: DEPLOY_REGISTRY/upstream-pulse/frontend:latest  # Overridden by deploy.sh set_runtime_images
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

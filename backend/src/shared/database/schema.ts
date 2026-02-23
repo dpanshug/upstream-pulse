@@ -18,7 +18,7 @@ export const projects = pgTable('projects', {
   uniqueRepo: uniqueIndex('unique_github_repo').on(table.githubOrg, table.githubRepo),
 }));
 
-// Team members table - Red Hat AI team registry
+// Team members table - organization team registry
 export const teamMembers = pgTable('team_members', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: varchar('name', { length: 255 }).notNull(),

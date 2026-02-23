@@ -30,7 +30,8 @@ const InsightReportSchema = z.object({
   })),
 });
 
-const INSIGHTS_SYSTEM_PROMPT = `You are an open source strategy analyst for Red Hat AI Organization.
+function buildSystemPrompt(orgName: string): string {
+  return `You are an open source strategy analyst for ${orgName}.
 
 Analyze contribution data from upstream open source projects and provide:
 1. Key trends (growing/declining contributions)
@@ -47,6 +48,7 @@ Output must be structured JSON matching this schema:
 }
 
 Return ONLY the JSON object, no additional text or markdown formatting.`;
+}
 
 export class AIInsightsEngine {
   private genAI: GoogleGenerativeAI;
@@ -78,7 +80,8 @@ export class AIInsightsEngine {
 
     try {
       const prompt = this.buildInsightPrompt(data, timeRange);
-      const fullPrompt = `${INSIGHTS_SYSTEM_PROMPT}\n\n${prompt}`;
+      const systemPrompt = buildSystemPrompt(config.orgName);
+      const fullPrompt = `${systemPrompt}\n\n${prompt}`;
 
       const result = await this.model.generateContent(fullPrompt);
       const response = await result.response;
@@ -114,16 +117,17 @@ export class AIInsightsEngine {
     const startDate = timeRange.start.toISOString().split('T')[0];
     const endDate = timeRange.end.toISOString().split('T')[0];
 
+    const orgName = config.orgName;
     const projectSummaries = data.map(d => `
 Project: ${d.projectName} (${d.ecosystem})
 - Total Contributions: ${d.totalContributions}
-- Red Hat Contributions: ${d.redhatContributions} (${d.contributionPercentage.toFixed(1)}%)
-- Red Hat Maintainers: ${d.redhatMaintainers}/${d.totalMaintainers}
+- Team Contributions: ${d.redhatContributions} (${d.contributionPercentage.toFixed(1)}%)
+- Team Maintainers: ${d.redhatMaintainers}/${d.totalMaintainers}
 - Trend vs Previous Period: ${d.trendPercentage > 0 ? '+' : ''}${d.trendPercentage.toFixed(1)}%
-- Active Red Hat Contributors: ${d.activeContributors}
+- Active Team Contributors: ${d.activeContributors}
 `).join('\n');
 
-    return `Analyze the following contribution data for Red Hat AI Organization across upstream open source projects.
+    return `Analyze the following contribution data for ${orgName} across upstream open source projects.
 
 Time Range: ${startDate} to ${endDate}
 
@@ -191,12 +195,12 @@ Time Range: ${timeRange.start.toISOString().split('T')[0]} to ${timeRange.end.to
 
 Data:
 - Total Contributions: ${projectData.totalContributions}
-- Red Hat Contributions: ${projectData.redhatContributions} (${projectData.contributionPercentage.toFixed(1)}%)
-- Red Hat Maintainers: ${projectData.redhatMaintainers} out of ${projectData.totalMaintainers} total
+- Team Contributions: ${projectData.redhatContributions} (${projectData.contributionPercentage.toFixed(1)}%)
+- Team Maintainers: ${projectData.redhatMaintainers} out of ${projectData.totalMaintainers} total
 - Trend: ${projectData.trendPercentage > 0 ? '+' : ''}${projectData.trendPercentage.toFixed(1)}%
 - Active Contributors: ${projectData.activeContributors}
 
-Provide a concise analysis (2-3 sentences) about Red Hat AI's presence in this project, including strengths, weaknesses, and strategic recommendations.`;
+Provide a concise analysis (2-3 sentences) about ${config.orgName}'s presence in this project, including strengths, weaknesses, and strategic recommendations.`;
 
     try {
       const result = await this.model.generateContent(prompt);

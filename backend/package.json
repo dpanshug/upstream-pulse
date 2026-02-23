@@ -1,7 +1,7 @@
 {
   "name": "upstream-pulse-backend",
   "version": "1.0.0",
-  "description": "Backend service for upstream-pulse - OSS contribution tracking",
+  "description": "Backend service for Upstream Pulse - open source contribution tracking",
   "main": "dist/app.js",
   "type": "module",
   "scripts": {

@@ -61,15 +61,15 @@ async function seedSampleData() {
     const sampleMembers = [
       {
         name: 'Alice Johnson',
-        primaryEmail: 'alice.johnson@redhat.com',
-        githubUsername: 'alice-redhat',
+        primaryEmail: 'alice.johnson@example.com',
+        githubUsername: 'alicej',
         department: 'AI Engineering',
         role: 'Senior Engineer',
         isActive: true,
       },
       {
         name: 'Bob Smith',
-        primaryEmail: 'bob.smith@redhat.com',
+        primaryEmail: 'bob.smith@example.com',
         githubUsername: 'bsmith',
         department: 'AI Engineering',
         role: 'Staff Engineer',
@@ -77,7 +77,7 @@ async function seedSampleData() {
       },
       {
         name: 'Carol Williams',
-        primaryEmail: 'carol.williams@redhat.com',
+        primaryEmail: 'carol.williams@example.com',
         githubUsername: 'carolw',
         department: 'ML Operations',
         role: 'Principal Engineer',
@@ -85,8 +85,8 @@ async function seedSampleData() {
       },
       {
         name: 'David Brown',
-        primaryEmail: 'david.brown@redhat.com',
-        githubUsername: 'dbrown-rh',
+        primaryEmail: 'david.brown@example.com',
+        githubUsername: 'dbrown',
         department: 'AI Engineering',
         role: 'Engineer',
         isActive: true,

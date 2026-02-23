@@ -4,7 +4,7 @@
 # =============================================================================
 FROM node:20-alpine
 
-LABEL maintainer="Red Hat AI Organization"
+LABEL maintainer="Upstream Pulse Contributors"
 LABEL description="Upstream Pulse Backend API & Worker"
 
 # Create non-root user (OpenShift assigns arbitrary UIDs, but this helps locally)

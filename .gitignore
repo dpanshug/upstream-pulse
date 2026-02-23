@@ -3,8 +3,6 @@ node_modules/
 .pnp
 .pnp.js
 
-docs/ARCHITECTURE.md
-
 # Production builds
 dist/
 build/

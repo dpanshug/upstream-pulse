@@ -84,7 +84,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Upstream Pulse</h1>
-              <p className="text-sm text-gray-500">Red Hat AI Open Source Contributions</p>
+              <p className="text-sm text-gray-500">Open Source Contribution Insights</p>
             </div>
             <div className="flex items-center gap-4">
               <PeriodSelector

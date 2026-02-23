@@ -1,8 +1,7 @@
 {
   "name": "upstream-pulse",
   "version": "1.0.0",
-  "description": "AI-powered upstream OSS contribution insights for Red Hat AI Organization",
-  "private": true,
+  "description": "AI-powered upstream open source contribution insights for your organization",
   "type": "module",
   "scripts": {
     "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
@@ -33,15 +32,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/redhat-ai/upstream-pulse.git"
+    "url": "git+https://github.com/dpanshug/upstream-pulse.git"
   },
   "keywords": [
     "open-source",
     "contribution-tracking",
     "analytics",
     "ai-insights",
-    "red-hat"
+    "github",
+    "upstream"
   ],
-  "author": "Red Hat AI Organization",
-  "license": "UNLICENSED"
+  "author": "Upstream Pulse Contributors",
+  "license": "Apache-2.0"
 }

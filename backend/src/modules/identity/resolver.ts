@@ -1,6 +1,7 @@
 import { db } from '../../shared/database/client.js';
 import { teamMembers, identityMappings } from '../../shared/database/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
+import { config } from '../../shared/config/index.js';
 import { logger } from '../../shared/utils/logger.js';
 import type { ResolvedIdentity, TeamMember } from '../../shared/types/index.js';
 
@@ -92,15 +93,15 @@ export class IdentityResolver {
   }
 
   /**
-   * Match by email domain (@redhat.com)
+   * Match by email domain (configurable via TEAM_EMAIL_DOMAIN)
    */
   private async matchByEmail(
     email: string,
     githubUsername: string
   ): Promise<ResolvedIdentity | null> {
     try {
-      // Check if email ends with @redhat.com
-      if (!email.endsWith('@redhat.com')) {
+      const domain = config.teamEmailDomain;
+      if (!domain || !email.endsWith(`@${domain}`)) {
         return null;
       }
 
