@@ -13,16 +13,30 @@
 set -euo pipefail
 
 # --- Configuration ---
-REGISTRY="${REGISTRY:-default-route-openshift-image-registry.apps.rosa.dpanshug.q62q.p3.openshiftapps.com}"
+# Registry used for docker build/push from local machine.
+PUSH_REGISTRY="${PUSH_REGISTRY:-default-route-openshift-image-registry.apps.rosa.dpanshug.q62q.p3.openshiftapps.com}"
+# Registry used inside the cluster by pods (must be pullable by service accounts).
+DEPLOY_REGISTRY="${DEPLOY_REGISTRY:-image-registry.openshift-image-registry.svc:5000}"
 REGISTRY_ORG="${REGISTRY_ORG:-upstream-pulse}"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
 NAMESPACE="${NAMESPACE:-upstream-pulse}"
-
-BACKEND_IMAGE="${REGISTRY}/${REGISTRY_ORG}/backend:${IMAGE_TAG}"
-FRONTEND_IMAGE="${REGISTRY}/${REGISTRY_ORG}/frontend:${IMAGE_TAG}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+# Use immutable image tags by default for deterministic rollouts.
+# Override with IMAGE_TAG when needed (e.g. rollback/redeploy specific tag).
+if [ -z "${IMAGE_TAG:-}" ]; then
+    if git -C "${PROJECT_ROOT}" rev-parse --is-inside-work-tree &>/dev/null; then
+        IMAGE_TAG="$(git -C "${PROJECT_ROOT}" rev-parse --short=12 HEAD)"
+    else
+        IMAGE_TAG="$(date +%Y%m%d%H%M%S)"
+    fi
+fi
+
+PUSH_BACKEND_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/backend:${IMAGE_TAG}"
+PUSH_FRONTEND_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/frontend:${IMAGE_TAG}"
+DEPLOY_BACKEND_IMAGE="${DEPLOY_REGISTRY}/${NAMESPACE}/backend:${IMAGE_TAG}"
+DEPLOY_FRONTEND_IMAGE="${DEPLOY_REGISTRY}/${NAMESPACE}/frontend:${IMAGE_TAG}"
 
 # Colors
 RED='\033[0;31m'
@@ -39,17 +53,17 @@ info() { echo -e "${BLUE}[i]${NC} $*"; }
 # --- Functions ---
 
 build_images() {
-    log "Building backend image: ${BACKEND_IMAGE}"
+    log "Building backend image: ${PUSH_BACKEND_IMAGE}"
     docker build \
         --platform linux/amd64 \
-        -t "${BACKEND_IMAGE}" \
+        -t "${PUSH_BACKEND_IMAGE}" \
         -f "${PROJECT_ROOT}/backend/Dockerfile" \
         "${PROJECT_ROOT}/backend"
 
-    log "Building frontend image: ${FRONTEND_IMAGE}"
+    log "Building frontend image: ${PUSH_FRONTEND_IMAGE}"
     docker build \
         --platform linux/amd64 \
-        -t "${FRONTEND_IMAGE}" \
+        -t "${PUSH_FRONTEND_IMAGE}" \
         -f "${PROJECT_ROOT}/frontend/Dockerfile" \
         "${PROJECT_ROOT}/frontend"
 
@@ -57,13 +71,129 @@ build_images() {
 }
 
 push_images() {
-    log "Pushing backend image: ${BACKEND_IMAGE}"
-    docker push "${BACKEND_IMAGE}"
+    log "Pushing backend image: ${PUSH_BACKEND_IMAGE}"
+    docker push "${PUSH_BACKEND_IMAGE}"
 
-    log "Pushing frontend image: ${FRONTEND_IMAGE}"
-    docker push "${FRONTEND_IMAGE}"
+    log "Pushing frontend image: ${PUSH_FRONTEND_IMAGE}"
+    docker push "${PUSH_FRONTEND_IMAGE}"
 
     log "Images pushed successfully"
+}
+
+verify_deployment_spec_images() {
+    info "Verifying deployment specs match expected images"
+
+    local frontend_deploy_image
+    local backend_deploy_image
+    local worker_deploy_image
+
+    frontend_deploy_image="$(oc -n "${NAMESPACE}" get deployment/frontend -o jsonpath='{.spec.template.spec.containers[0].image}')"
+    backend_deploy_image="$(oc -n "${NAMESPACE}" get deployment/backend -o jsonpath='{.spec.template.spec.containers[0].image}')"
+    worker_deploy_image="$(oc -n "${NAMESPACE}" get deployment/worker -o jsonpath='{.spec.template.spec.containers[0].image}')"
+
+    if [ "${frontend_deploy_image}" != "${DEPLOY_FRONTEND_IMAGE}" ]; then
+        err "Frontend deployment image mismatch. Expected ${DEPLOY_FRONTEND_IMAGE}, got ${frontend_deploy_image}"
+        exit 1
+    fi
+    if [ "${backend_deploy_image}" != "${DEPLOY_BACKEND_IMAGE}" ]; then
+        err "Backend deployment image mismatch. Expected ${DEPLOY_BACKEND_IMAGE}, got ${backend_deploy_image}"
+        exit 1
+    fi
+    if [ "${worker_deploy_image}" != "${DEPLOY_BACKEND_IMAGE}" ]; then
+        err "Worker deployment image mismatch. Expected ${DEPLOY_BACKEND_IMAGE}, got ${worker_deploy_image}"
+        exit 1
+    fi
+
+    log "Deployment spec image verification passed"
+}
+
+verify_component_state() {
+    local component="$1"
+    local expected_image="$2"
+    local pod_statuses
+    local has_ready=0
+
+    pod_statuses="$(oc -n "${NAMESPACE}" get pods -l "app.kubernetes.io/name=${component}" -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.status.containerStatuses[0].ready}{"|"}{.status.containerStatuses[0].state.waiting.reason}{"|"}{.status.containerStatuses[0].image}{"\n"}{end}')"
+
+    if [ -z "${pod_statuses}" ]; then
+        err "No pods found for component '${component}'"
+        exit 1
+    fi
+
+    while IFS='|' read -r pod_name ready waiting_reason pod_image; do
+        if [ -n "${waiting_reason}" ] && [ "${waiting_reason}" != "<no value>" ]; then
+            err "Pod ${pod_name} for ${component} is waiting: ${waiting_reason}"
+            exit 1
+        fi
+
+        if [ "${ready}" = "true" ] && [ "${pod_image}" = "${expected_image}" ]; then
+            has_ready=1
+        fi
+    done <<< "${pod_statuses}"
+
+    if [ "${has_ready}" -ne 1 ]; then
+        err "No ready ${component} pod is running expected image ${expected_image}"
+        exit 1
+    fi
+}
+
+verify_running_pod_state() {
+    info "Verifying running pods are ready with expected images"
+
+    verify_component_state "backend" "${DEPLOY_BACKEND_IMAGE}"
+    verify_component_state "worker" "${DEPLOY_BACKEND_IMAGE}"
+    verify_component_state "frontend" "${DEPLOY_FRONTEND_IMAGE}"
+
+    log "Running pod verification passed"
+}
+
+set_runtime_images() {
+    info "Setting deployment images to tag: ${IMAGE_TAG}"
+
+    oc -n "${NAMESPACE}" set image deployment/backend \
+        backend="${DEPLOY_BACKEND_IMAGE}" \
+        db-migrate="${DEPLOY_BACKEND_IMAGE}"
+    oc -n "${NAMESPACE}" set image deployment/worker \
+        worker="${DEPLOY_BACKEND_IMAGE}"
+    oc -n "${NAMESPACE}" set image deployment/frontend \
+        frontend="${DEPLOY_FRONTEND_IMAGE}"
+}
+
+confirm_target_cluster() {
+    local current_cluster
+    local current_project
+    local expected_cluster="${EXPECTED_CLUSTER:-}"
+
+    current_cluster="$(oc whoami --show-server)"
+    current_project="$(oc project -q 2>/dev/null || true)"
+
+    info "Current cluster: ${current_cluster}"
+    info "Current project: ${current_project:-unknown}"
+    info "Target namespace from script: ${NAMESPACE}"
+
+    if [ -n "${expected_cluster}" ] && [ "${current_cluster}" != "${expected_cluster}" ]; then
+        err "Cluster mismatch. Expected ${expected_cluster}, got ${current_cluster}"
+        exit 1
+    fi
+
+    if [ "${SKIP_CLUSTER_CONFIRM:-false}" = "true" ]; then
+        warn "Skipping cluster confirmation (SKIP_CLUSTER_CONFIRM=true)"
+        return
+    fi
+
+    if [ ! -t 0 ]; then
+        err "Non-interactive shell detected. Set SKIP_CLUSTER_CONFIRM=true to proceed."
+        exit 1
+    fi
+
+    echo ""
+    warn "You are about to deploy to cluster: ${current_cluster}"
+    warn "Project: ${current_project:-unknown} | Namespace: ${NAMESPACE}"
+    read -r -p "Proceed with this cluster? [y/N] " cluster_confirm
+    if [[ ! "${cluster_confirm}" =~ ^[Yy]$ ]]; then
+        info "Aborted."
+        exit 1
+    fi
 }
 
 apply_manifests() {
@@ -73,11 +203,12 @@ apply_manifests() {
         exit 1
     fi
 
-    info "Current cluster: $(oc whoami --show-server)"
     info "Logged in as:    $(oc whoami)"
+    confirm_target_cluster
 
     log "Applying OpenShift manifests..."
     oc apply -k "${SCRIPT_DIR}/openshift"
+    set_runtime_images
 
     log "Waiting for PostgreSQL to be ready..."
     oc -n "${NAMESPACE}" rollout status deployment/postgres --timeout=120s
@@ -93,6 +224,9 @@ apply_manifests() {
 
     log "Waiting for frontend to be ready..."
     oc -n "${NAMESPACE}" rollout status deployment/frontend --timeout=120s
+
+    verify_deployment_spec_images
+    verify_running_pod_state
 
     echo ""
     log "Deployment complete!"
@@ -129,21 +263,6 @@ show_logs() {
     oc -n "${NAMESPACE}" logs -f "deployment/${component}" --tail=100
 }
 
-update_images() {
-    # Update image references in deployment manifests
-    info "Updating image tags in manifests to: ${IMAGE_TAG}"
-
-    if command -v sed &>/dev/null; then
-        sed -i.bak "s|image: ${REGISTRY}/${REGISTRY_ORG}/backend:.*|image: ${BACKEND_IMAGE}|g" \
-            "${SCRIPT_DIR}/openshift/backend-deployment.yaml" \
-            "${SCRIPT_DIR}/openshift/worker-deployment.yaml"
-        sed -i.bak "s|image: ${REGISTRY}/${REGISTRY_ORG}/frontend:.*|image: ${FRONTEND_IMAGE}|g" \
-            "${SCRIPT_DIR}/openshift/frontend-deployment.yaml"
-        rm -f "${SCRIPT_DIR}"/openshift/*.bak
-        log "Image tags updated in manifests"
-    fi
-}
-
 # --- Main ---
 
 case "${1:-deploy}" in
@@ -167,14 +286,13 @@ case "${1:-deploy}" in
         echo ""
         warn "This will:"
         warn "  1. Build Docker images"
-        warn "  2. Push to ${REGISTRY}/${REGISTRY_ORG}"
-        warn "  3. Apply OpenShift manifests"
+        warn "  2. Push to ${PUSH_REGISTRY}/${REGISTRY_ORG}"
+        warn "  3. Apply manifests and set runtime images at ${DEPLOY_REGISTRY}/${NAMESPACE}"
         echo ""
         read -r -p "Continue? [y/N] " confirm
         if [[ "${confirm}" =~ ^[Yy]$ ]]; then
             build_images
             push_images
-            update_images
             apply_manifests
         else
             info "Aborted."
@@ -185,17 +303,20 @@ case "${1:-deploy}" in
         echo ""
         echo "Commands:"
         echo "  build             Build Docker images locally"
-        echo "  push              Push images to ${REGISTRY}"
+        echo "  push              Push images to ${PUSH_REGISTRY}"
         echo "  apply             Apply OpenShift manifests"
         echo "  deploy            Full deploy (build + push + apply)"
         echo "  status            Show deployment status"
         echo "  logs [component]  Tail logs (backend|frontend|worker)"
         echo ""
         echo "Environment variables:"
-        echo "  REGISTRY          Container registry (default: OpenShift internal registry)"
+        echo "  PUSH_REGISTRY     Registry used for docker push from local machine"
+        echo "  DEPLOY_REGISTRY   Registry used in pod image references (cluster pull path)"
         echo "  REGISTRY_ORG      Registry org/user (default: upstream-pulse)"
-        echo "  IMAGE_TAG         Image tag (default: latest)"
+        echo "  IMAGE_TAG         Image tag (default: git short SHA)"
         echo "  NAMESPACE         OpenShift namespace (default: upstream-pulse)"
+        echo "  EXPECTED_CLUSTER  Expected oc server URL; fail if different"
+        echo "  SKIP_CLUSTER_CONFIRM  Skip interactive cluster prompt (default: false)"
         exit 1
         ;;
 esac
