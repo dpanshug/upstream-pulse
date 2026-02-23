@@ -9,3 +9,4 @@ export { PeriodSelector } from './PeriodSelector';
 export { LeadershipMemberCard } from './LeadershipMemberCard';
 export { LeadershipSection } from './LeadershipSection';
 export { PeriodSummary } from './PeriodSummary';
+export { ProjectCards } from './ProjectCards';

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import {
   GitCommit,
   GitPullRequest,
@@ -9,8 +9,8 @@ import {
   TrendingUp,
   Activity,
   Calendar,
-  Shield,
-  Crown,
+  ChevronRight,
+  ExternalLink,
 } from 'lucide-react';
 
 import {
@@ -19,28 +19,46 @@ import {
   ContributionTypeCard,
   PeriodSelector,
   ContributorList,
-  ProjectCards,
+  LeadershipSection,
+  PeriodSummary,
 } from '../components/dashboard';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
-async function fetchDashboard(days: number): Promise<DashboardData> {
-  const res = await fetch(`${API_URL}/api/metrics/dashboard?days=${days}`);
-  if (!res.ok) throw new Error('Failed to fetch dashboard');
+async function fetchProjectDashboard(projectId: string, days: number): Promise<DashboardData> {
+  const res = await fetch(
+    `${API_URL}/api/metrics/dashboard?days=${days}&projectId=${projectId}`
+  );
+  if (!res.ok) throw new Error('Failed to fetch project dashboard');
   return res.json();
 }
 
-export default function Dashboard() {
+async function fetchProjectInfo(projectId: string) {
+  const res = await fetch(`${API_URL}/api/projects`);
+  if (!res.ok) throw new Error('Failed to fetch projects');
+  const data = await res.json();
+  return data.projects?.find((p: any) => p.id === projectId) ?? null;
+}
+
+export default function ProjectDetail() {
+  const { projectId } = useParams<{ projectId: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const daysParam = searchParams.get('days');
   const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : 0;
 
+  const { data: projectInfo } = useQuery({
+    queryKey: ['project-info', projectId],
+    queryFn: () => fetchProjectInfo(projectId!),
+    enabled: !!projectId,
+  });
+
   const { data, isLoading, isFetching, error } = useQuery({
-    queryKey: ['dashboard', selectedDays],
-    queryFn: () => fetchDashboard(selectedDays),
+    queryKey: ['dashboard', selectedDays, projectId],
+    queryFn: () => fetchProjectDashboard(projectId!, selectedDays),
     refetchInterval: 60000,
     placeholderData: (previousData) => previousData,
+    enabled: !!projectId,
   });
 
   const handlePeriodChange = (days: number) => {
@@ -49,10 +67,10 @@ export default function Dashboard() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex-1 flex items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-4">
           <Activity className="w-12 h-12 text-blue-600 animate-pulse" />
-          <p className="text-gray-600">Loading dashboard...</p>
+          <p className="text-gray-600">Loading project data...</p>
         </div>
       </div>
     );
@@ -60,13 +78,10 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="flex-1 flex items-center justify-center bg-gray-50">
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 max-w-md">
-          <h3 className="text-red-800 font-semibold">Error Loading Dashboard</h3>
+          <h3 className="text-red-800 font-semibold">Error Loading Project</h3>
           <p className="text-red-600 mt-2">{(error as Error).message}</p>
-          <p className="text-sm text-red-500 mt-4">
-            Make sure the backend server is running on {API_URL}
-          </p>
         </div>
       </div>
     );
@@ -74,17 +89,41 @@ export default function Dashboard() {
 
   if (!data) return null;
 
-  const leadership = data.leadership;
+  const projectName = projectInfo?.name ?? 'Project';
+  const githubOrg = projectInfo?.githubOrg;
+  const githubRepo = projectInfo?.githubRepo;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="bg-gray-50">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          {/* Breadcrumb */}
+          <nav className="flex items-center gap-1.5 text-sm mb-3">
+            <Link
+              to={`/?days=${selectedDays}`}
+              className="text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Dashboard
+            </Link>
+            <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+            <span className="text-gray-600">{projectName}</span>
+          </nav>
+
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Upstream Pulse</h1>
-              <p className="text-sm text-gray-500">Red Hat AI Open Source Contributions</p>
+              <h1 className="text-2xl font-bold text-gray-900">{projectName}</h1>
+              {githubOrg && githubRepo && (
+                <a
+                  href={`https://github.com/${githubOrg}/${githubRepo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-gray-500 hover:text-blue-600 flex items-center gap-1 mt-0.5"
+                >
+                  {githubOrg}/{githubRepo}
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              )}
             </div>
             <div className="flex items-center gap-4">
               <PeriodSelector
@@ -126,13 +165,13 @@ export default function Dashboard() {
             icon={Users}
           />
           <StatCard
-            label="Tracked Projects"
-            value={data.summary.trackedProjects}
+            label="Total Activity"
+            value={data.contributions.all.total.toLocaleString()}
             icon={Activity}
           />
         </div>
 
-        {/* Contribution Breakdown */}
+        {/* Contribution Breakdown Section */}
         <section className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">
@@ -179,85 +218,35 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Leadership Summary (compact) */}
-        {leadership && (
-          <section className="mb-8">
-            <div className="flex items-center gap-2 mb-4">
-              <Shield className="w-5 h-5 text-amber-600" />
-              <h2 className="text-lg font-semibold text-gray-900">
-                Governance Presence
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl shadow-sm border border-purple-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Crown className="w-4 h-4 text-purple-600" />
-                  <span className="text-xs font-medium text-purple-800">Steering Committee</span>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-purple-900">{leadership.summary.steeringCommitteeCount ?? 0}</span>
-                  <span className="text-xs text-purple-600">members</span>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl shadow-sm border border-amber-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Shield className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs font-medium text-amber-800">WG Chairs</span>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-amber-900">{leadership.summary.wgChairsCount ?? 0}</span>
-                  <span className="text-xs text-amber-600">roles</span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Users className="w-4 h-4 text-blue-500" />
-                  <span className="text-xs font-medium text-gray-700">WG Tech Leads</span>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-gray-900">{leadership.summary.wgTechLeadsCount ?? 0}</span>
-                  <span className="text-xs text-gray-500">roles</span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Crown className="w-4 h-4 text-green-500" />
-                  <span className="text-xs font-medium text-gray-700">Approvers</span>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-green-600">{leadership.summary.teamApprovers}</span>
-                  <span className="text-xs text-gray-500">of {leadership.summary.totalApprovers}</span>
-                </div>
-              </div>
-            </div>
-          </section>
+        {/* Leadership Section */}
+        {data.leadership && (
+          <LeadershipSection leadership={data.leadership} />
         )}
 
-        {/* Project Cards Grid */}
-        <div className="mb-8">
-          <ProjectCards projects={data.topProjects} selectedDays={selectedDays} />
+        {/* Two Column Layout */}
+        <div className="grid lg:grid-cols-3 gap-8">
+          {/* Top Contributors */}
+          <section className="lg:col-span-2">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                Top Contributors
+              </h2>
+              <ContributorList contributors={data.topContributors} limit={10} />
+            </div>
+          </section>
+
+          {/* Quick Stats */}
+          <section>
+            <PeriodSummary data={data} />
+          </section>
         </div>
 
-        {/* Top Contributors */}
-        <section className="mb-8">
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">
-              Top Contributors
-            </h2>
-            <ContributorList contributors={data.topContributors} limit={5} />
-          </div>
-        </section>
-
-        {/* Total Summary Banner */}
-        <section>
+        {/* Summary Banner */}
+        <section className="mt-8">
           <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 text-white">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-                <p className="text-blue-100 text-sm">Total Team Impact</p>
+                <p className="text-blue-100 text-sm">{projectName} - Team Impact</p>
                 <p className="text-3xl font-bold">
                   {data.contributions.all.team.toLocaleString()} contributions
                 </p>

@@ -13,13 +13,15 @@ export async function metricsRoutes(app: FastifyInstance) {
    * Main dashboard endpoint - returns all metrics in a clear, organized structure.
    * Query params:
    *   - days: number of days to analyze (default: 30)
+   *   - projectId: filter by project (optional)
    */
   app.get<{
-    Querystring: { days?: string };
+    Querystring: { days?: string; projectId?: string };
   }>('/api/metrics/dashboard', async (request, reply) => {
     try {
       const days = parseInt(request.query.days || '30', 10);
-      const dashboard = await metricsService.getDashboard({ days });
+      const { projectId } = request.query;
+      const dashboard = await metricsService.getDashboard({ days, projectId });
       return dashboard;
     } catch (error) {
       logger.error('Error fetching dashboard', { error });

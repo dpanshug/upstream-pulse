@@ -560,9 +560,10 @@ export class MetricsService {
    */
   async getDashboard(options: MetricsQueryOptions = {}): Promise<DashboardResponseWithLeadership> {
     const days = options.days ?? 0; // Default to 0 (all time)
+    const { projectId } = options;
+    const queryOptions = { days, projectId };
     const dateRange = this.getDateRange({ days });
     
-    // For display purposes
     let startStr: string;
     let endStr: string;
     
@@ -570,17 +571,14 @@ export class MetricsService {
       startStr = this.formatDate(dateRange.start);
       endStr = this.formatDate(dateRange.end);
     } else {
-      // For "all time", show earliest contribution date or a placeholder
       endStr = this.formatDate(new Date());
       startStr = 'All time';
     }
 
-    logger.info('Building dashboard', { days, start: startStr, end: endStr });
+    logger.info('Building dashboard', { days, projectId, start: startStr, end: endStr });
 
-    // Get raw contribution data
-    const breakdown = await this.getContributionBreakdown({ days });
+    const breakdown = await this.getContributionBreakdown(queryOptions);
     
-    // Build clear contributions by type
     const contributionsByType: ContributionsByType = {
       commits: this.buildTypeMetric(breakdown.all.commits, breakdown.team.commits),
       pullRequests: this.buildTypeMetric(breakdown.all.prs, breakdown.team.prs),
@@ -589,20 +587,17 @@ export class MetricsService {
       all: this.buildTypeMetric(breakdown.all.total, breakdown.team.total),
     };
 
-    // Get trends
     const [contributionsTrend, contributorsTrend] = await Promise.all([
-      this.getContributionTrend({ days }),
-      this.getActiveContributorTrend({ days }),
+      this.getContributionTrend(queryOptions),
+      this.getActiveContributorTrend(queryOptions),
     ]);
 
-    // Get project count and active contributors
     const [projectCountResult, activeContributors] = await Promise.all([
       db.select({ count: count() }).from(projects).where(eq(projects.trackingEnabled, true)),
-      this.getActiveContributorCount({ days }),
+      this.getActiveContributorCount(queryOptions),
     ]);
 
-    // Get top contributors with rankings
-    const topContributorsRaw = await this.getTopContributors({ days, topN: 10 });
+    const topContributorsRaw = await this.getTopContributors({ ...queryOptions, topN: 10 });
     const topContributors: ContributorRanking[] = topContributorsRaw.map((c, idx) => ({
       rank: idx + 1,
       id: c.id,
@@ -618,50 +613,51 @@ export class MetricsService {
       total: c.contributions.total,
     }));
 
-    // Get top projects
-    const topProjectsRaw = await db
-      .select({
-        id: projects.id,
-        name: projects.name,
-        githubOrg: projects.githubOrg,
-        githubRepo: projects.githubRepo,
-      })
-      .from(projects)
-      .where(eq(projects.trackingEnabled, true));
+    // Only fetch per-project breakdown when viewing all projects
+    let topProjects: ProjectMetric[] = [];
+    if (!projectId) {
+      const topProjectsRaw = await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          githubOrg: projects.githubOrg,
+          githubRepo: projects.githubRepo,
+        })
+        .from(projects)
+        .where(eq(projects.trackingEnabled, true));
 
-    const topProjects: ProjectMetric[] = await Promise.all(
-      topProjectsRaw.map(async (p) => {
-        const projBreakdown = await this.getContributionBreakdown({ 
-          projectId: p.id, 
-          days,
-        });
-        const projActiveContributors = await this.getActiveContributorCount({
-          projectId: p.id,
-          days,
-        });
+      topProjects = await Promise.all(
+        topProjectsRaw.map(async (p) => {
+          const projBreakdown = await this.getContributionBreakdown({ 
+            projectId: p.id, 
+            days,
+          });
+          const projActiveContributors = await this.getActiveContributorCount({
+            projectId: p.id,
+            days,
+          });
 
-        return {
-          id: p.id,
-          name: p.name,
-          githubOrg: p.githubOrg,
-          githubRepo: p.githubRepo,
-          contributions: {
-            commits: this.buildTypeMetric(projBreakdown.all.commits, projBreakdown.team.commits),
-            pullRequests: this.buildTypeMetric(projBreakdown.all.prs, projBreakdown.team.prs),
-            reviews: this.buildTypeMetric(projBreakdown.all.reviews, projBreakdown.team.reviews),
-            issues: this.buildTypeMetric(projBreakdown.all.issues, projBreakdown.team.issues),
-            all: this.buildTypeMetric(projBreakdown.all.total, projBreakdown.team.total),
-          },
-          activeContributors: projActiveContributors,
-        };
-      })
-    );
+          return {
+            id: p.id,
+            name: p.name,
+            githubOrg: p.githubOrg,
+            githubRepo: p.githubRepo,
+            contributions: {
+              commits: this.buildTypeMetric(projBreakdown.all.commits, projBreakdown.team.commits),
+              pullRequests: this.buildTypeMetric(projBreakdown.all.prs, projBreakdown.team.prs),
+              reviews: this.buildTypeMetric(projBreakdown.all.reviews, projBreakdown.team.reviews),
+              issues: this.buildTypeMetric(projBreakdown.all.issues, projBreakdown.team.issues),
+              all: this.buildTypeMetric(projBreakdown.all.total, projBreakdown.team.total),
+            },
+            activeContributors: projActiveContributors,
+          };
+        })
+      );
 
-    // Sort projects by team contributions
-    topProjects.sort((a, b) => b.contributions.all.team - a.contributions.all.team);
+      topProjects.sort((a, b) => b.contributions.all.team - a.contributions.all.team);
+    }
 
-    // Get daily breakdown
-    const dailyRaw = await this.getDailyTrend({ days });
+    const dailyRaw = await this.getDailyTrend(queryOptions);
     const dailyBreakdown: DailyDataPoint[] = dailyRaw.map(d => ({
       date: d.date,
       commits: { total: d.all.commits, team: d.team.commits },
@@ -670,7 +666,6 @@ export class MetricsService {
       issues: { total: d.all.issues, team: d.team.issues },
     }));
 
-    // Get leadership data
     const leadershipData = await this.getLeadershipSummary();
 
     return {
