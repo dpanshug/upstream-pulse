@@ -9,8 +9,6 @@ import {
   TrendingUp,
   Activity,
   Calendar,
-  Shield,
-  Crown,
 } from 'lucide-react';
 
 import {
@@ -20,6 +18,7 @@ import {
   PeriodSelector,
   ContributorList,
   ProjectCards,
+  LeadershipSection,
 } from '../components/dashboard';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
@@ -179,62 +178,9 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Leadership Summary (compact) */}
+        {/* Team Leadership */}
         {leadership && (
-          <section className="mb-8">
-            <div className="flex items-center gap-2 mb-4">
-              <Shield className="w-5 h-5 text-amber-600" />
-              <h2 className="text-lg font-semibold text-gray-900">
-                Governance Presence
-              </h2>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl shadow-sm border border-purple-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Crown className="w-4 h-4 text-purple-600" />
-                  <span className="text-xs font-medium text-purple-800">Steering Committee</span>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-purple-900">{leadership.summary.steeringCommitteeCount ?? 0}</span>
-                  <span className="text-xs text-purple-600">members</span>
-                </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl shadow-sm border border-amber-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Shield className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs font-medium text-amber-800">WG Chairs</span>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-amber-900">{leadership.summary.wgChairsCount ?? 0}</span>
-                  <span className="text-xs text-amber-600">roles</span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Users className="w-4 h-4 text-blue-500" />
-                  <span className="text-xs font-medium text-gray-700">WG Tech Leads</span>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-gray-900">{leadership.summary.wgTechLeadsCount ?? 0}</span>
-                  <span className="text-xs text-gray-500">roles</span>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Crown className="w-4 h-4 text-green-500" />
-                  <span className="text-xs font-medium text-gray-700">Approvers</span>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-green-600">{leadership.summary.teamApprovers}</span>
-                  <span className="text-xs text-gray-500">of {leadership.summary.totalApprovers}</span>
-                </div>
-              </div>
-            </div>
-          </section>
+          <LeadershipSection leadership={leadership} />
         )}
 
         {/* Project Cards Grid */}

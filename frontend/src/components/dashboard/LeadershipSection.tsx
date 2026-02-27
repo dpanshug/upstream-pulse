@@ -32,18 +32,19 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
       </div>
 
       {/* Leadership Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {/* Steering Committee */}
-        <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl shadow-sm border border-purple-100 p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Crown className="w-4 h-4 text-purple-600" />
-            <span className="text-xs font-medium text-purple-800">Steering Committee</span>
+      <div className={`grid grid-cols-2 ${(summary.steeringCommitteeCount ?? 0) > 0 ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4 mb-6`}>
+        {(summary.steeringCommitteeCount ?? 0) > 0 && (
+          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl shadow-sm border border-purple-100 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Crown className="w-4 h-4 text-purple-600" />
+              <span className="text-xs font-medium text-purple-800">Steering Committee</span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-bold text-purple-900">{summary.steeringCommitteeCount}</span>
+              <span className="text-xs text-purple-600">members</span>
+            </div>
           </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-purple-900">{summary.steeringCommitteeCount ?? 0}</span>
-            <span className="text-xs text-purple-600">members</span>
-          </div>
-        </div>
+        )}
 
         {/* WG Chairs */}
         <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl shadow-sm border border-amber-100 p-4">

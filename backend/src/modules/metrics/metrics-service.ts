@@ -666,7 +666,15 @@ export class MetricsService {
       issues: { total: d.all.issues, team: d.team.issues },
     }));
 
-    const leadershipData = await this.getLeadershipSummary();
+    let projectRepo: string | undefined;
+    if (projectId) {
+      const proj = await db.query.projects.findFirst({
+        columns: { githubRepo: true },
+        where: eq(projects.id, projectId),
+      });
+      projectRepo = proj?.githubRepo;
+    }
+    const leadershipData = await this.getLeadershipSummary(projectId, projectRepo);
 
     return {
       summary: {
@@ -693,9 +701,37 @@ export class MetricsService {
    * Includes both OWNERS-based roles (approvers/reviewers) and 
    * org-level leadership (steering committee, WG chairs)
    */
-  private async getLeadershipSummary() {
+
+  /**
+   * Maps Kubeflow repos to their owning Working Groups.
+   * Based on official Kubeflow governance charters:
+   * https://kubeflow.org/docs/about/governance
+   */
+  private getWorkingGroupsForProject(githubRepo: string): string[] {
+    const repoToWG: Record<string, string[]> = {
+      'model-registry': ['WG Data'],
+      'spark-operator': ['WG Data'],
+      'pipelines':      ['WG Pipelines'],
+      'sdk':            ['WG Pipelines'],
+      'trainer':        ['WG Training'],
+      'training-operator': ['WG Training'],
+      'katib':          ['WG AutoML'],
+      'notebooks':      ['WG Notebooks'],
+      'manifests':      ['WG Manifests'],
+      'kserve':         ['WG Serving'],
+      'modelmesh':      ['WG Serving'],
+      'kubeflow':       ['WG Deployment', 'WG Manifests'],
+    };
+    return repoToWG[githubRepo] ?? [];
+  }
+
+  private async getLeadershipSummary(projectId?: string, githubRepo?: string) {
     try {
-      // Get all active maintainer statuses (OWNERS file roles)
+      // Get active maintainer statuses (OWNERS file roles), optionally filtered by project
+      const conditions = [eq(maintainerStatus.isActive, true)];
+      if (projectId) {
+        conditions.push(eq(maintainerStatus.projectId, projectId));
+      }
       const maintainerStatuses = await db
         .select({
           id: maintainerStatus.id,
@@ -710,10 +746,10 @@ export class MetricsService {
         .from(maintainerStatus)
         .innerJoin(teamMembers, eq(maintainerStatus.teamMemberId, teamMembers.id))
         .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
-        .where(eq(maintainerStatus.isActive, true));
+        .where(and(...conditions));
 
-      // Get all active leadership positions (steering committee, WG chairs/leads)
-      const leadershipPositionsData = await db
+      // Get active leadership positions (steering committee, WG chairs/leads)
+      const allLeadershipPositions = await db
         .select({
           id: leadershipPositions.id,
           positionType: leadershipPositions.positionType,
@@ -728,6 +764,19 @@ export class MetricsService {
         .from(leadershipPositions)
         .innerJoin(teamMembers, eq(leadershipPositions.teamMemberId, teamMembers.id))
         .where(eq(leadershipPositions.isActive, true));
+
+      // When viewing a specific project, filter leadership to the WGs that own it
+      let leadershipPositionsData = allLeadershipPositions;
+      if (projectId && githubRepo) {
+        const relevantWGs = new Set(
+          this.getWorkingGroupsForProject(githubRepo).map(wg => wg.toLowerCase())
+        );
+        leadershipPositionsData = allLeadershipPositions.filter(p => {
+          if (p.positionType === 'steering_committee') return false;
+          const name = p.committeeName?.toLowerCase() ?? '';
+          return relevantWGs.has(name);
+        });
+      }
 
       // Count OWNERS-based roles
       const teamApprovers = maintainerStatuses.filter(s => s.positionType === 'maintainer').length;
