@@ -22,12 +22,9 @@ metadata:
     app.kubernetes.io/part-of: upstream-pulse
     app.kubernetes.io/component: backup
 type: Opaque
-data:
-  # echo -n "AKIAIOSFODNN7EXAMPLE" | base64
-  AWS_ACCESS_KEY_ID: Q0hBTkdFLU1F
-  # echo -n "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" | base64
-  AWS_SECRET_ACCESS_KEY: Q0hBTkdFLU1F
 stringData:
+  AWS_ACCESS_KEY_ID: CHANGE-ME # notsecret
+  AWS_SECRET_ACCESS_KEY: CHANGE-ME # notsecret
   AWS_DEFAULT_REGION: us-east-1
   S3_BUCKET: upstream-pulse-db-backups
   BACKUP_RETENTION_DAYS: "7"
