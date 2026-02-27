@@ -95,56 +95,58 @@ export default function ProjectDetail() {
 
   return (
     <div className="bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          {/* Breadcrumb */}
-          <nav className="flex items-center gap-1.5 text-sm mb-3">
-            <Link
-              to={`/?days=${selectedDays}`}
-              className="text-blue-600 hover:text-blue-800 font-medium"
-            >
-              Dashboard
-            </Link>
-            <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-            <span className="text-gray-600">{projectName}</span>
-          </nav>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Breadcrumb */}
+        <nav className="flex items-center gap-1.5 text-sm mb-4">
+          <Link
+            to={`/?days=${selectedDays}`}
+            className="text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Dashboard
+          </Link>
+          <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+          <Link
+            to="/projects"
+            className="text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Projects
+          </Link>
+          <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
+          <span className="text-gray-600">{projectName}</span>
+        </nav>
 
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">{projectName}</h1>
-              {githubOrg && githubRepo && (
-                <a
-                  href={`https://github.com/${githubOrg}/${githubRepo}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-gray-500 hover:text-blue-600 flex items-center gap-1 mt-0.5"
-                >
-                  {githubOrg}/{githubRepo}
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              )}
-            </div>
-            <div className="flex items-center gap-4">
-              <PeriodSelector
-                selectedDays={selectedDays}
-                onSelect={handlePeriodChange}
-                isLoading={isFetching && !isLoading}
-              />
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <Calendar className="w-4 h-4" />
-                <span>
-                  {data.summary.periodStart === 'All time'
-                    ? 'All time'
-                    : `${data.summary.periodStart} to ${data.summary.periodEnd}`}
-                </span>
-              </div>
+        {/* Page header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{projectName}</h1>
+            {githubOrg && githubRepo && (
+              <a
+                href={`https://github.com/${githubOrg}/${githubRepo}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-gray-500 hover:text-blue-600 flex items-center gap-1 mt-0.5"
+              >
+                {githubOrg}/{githubRepo}
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <PeriodSelector
+              selectedDays={selectedDays}
+              onSelect={handlePeriodChange}
+              isLoading={isFetching && !isLoading}
+            />
+            <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg">
+              <Calendar className="w-3.5 h-3.5" />
+              <span>
+                {data.summary.periodStart === 'All time'
+                  ? 'All time'
+                  : `${data.summary.periodStart} – ${data.summary.periodEnd}`}
+              </span>
             </div>
           </div>
         </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Summary Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           <StatCard
@@ -275,7 +277,7 @@ export default function ProjectDetail() {
             </div>
           </div>
         </section>
-      </main>
+      </div>
     </div>
   );
 }

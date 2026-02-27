@@ -597,7 +597,7 @@ export class MetricsService {
       this.getActiveContributorCount(queryOptions),
     ]);
 
-    const topContributorsRaw = await this.getTopContributors({ ...queryOptions, topN: 10 });
+    const topContributorsRaw = await this.getTopContributors({ ...queryOptions, topN: 50 });
     const topContributors: ContributorRanking[] = topContributorsRaw.map((c, idx) => ({
       rank: idx + 1,
       id: c.id,

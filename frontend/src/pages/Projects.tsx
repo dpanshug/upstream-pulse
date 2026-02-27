@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { Folder, ExternalLink } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
@@ -10,15 +11,19 @@ async function fetchProjects() {
 }
 
 export default function Projects() {
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['projects'],
     queryFn: fetchProjects,
   });
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-6">Projects</h1>
+    <div className="bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Tracked upstream repositories</p>
+        </div>
 
         {isLoading ? (
           <p>Loading projects...</p>
@@ -43,7 +48,11 @@ export default function Projects() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {data?.projects?.map((project: any) => (
-                  <tr key={project.id}>
+                  <tr
+                    key={project.id}
+                    onClick={() => navigate(`/projects/${project.id}`)}
+                    className="hover:bg-gray-50 cursor-pointer transition-colors"
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <Folder className="w-5 h-5 text-gray-400 mr-2" />
@@ -62,6 +71,7 @@ export default function Projects() {
                         href={`https://github.com/${project.githubOrg}/${project.githubRepo}`}
                         target="_blank"
                         rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
                         className="text-sm text-blue-600 hover:text-blue-800 flex items-center"
                       >
                         {project.githubOrg}/{project.githubRepo}
