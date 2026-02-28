@@ -91,6 +91,17 @@
 .sidebar-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.12); }
 .sidebar-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.06) transparent; }
 
+/* ── Sign-out dialog ── */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes dialog-in {
+  from { opacity: 0; transform: scale(0.95) translateY(4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
 /* ── Page loading spinner ── */
 
 .loader-entrance {

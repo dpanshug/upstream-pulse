@@ -1,0 +1,19 @@
+# =============================================================================
+# OAuth Proxy — ServiceAccount for OpenShift OAuth integration
+#
+# The annotation tells OpenShift's OAuth server which Route is allowed as a
+# redirect target after login.  The ServiceAccount is used by the oauth-proxy
+# sidecar container in the frontend Deployment.
+# =============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend-proxy
+  namespace: upstream-pulse
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: upstream-pulse
+    app.kubernetes.io/component: auth
+  annotations:
+    serviceaccounts.openshift.io/oauth-redirectreference.primary: >-
+      {"kind":"OAuthRedirectReference","apiVersion":"v1","reference":{"kind":"Route","name":"upstream-pulse"}}

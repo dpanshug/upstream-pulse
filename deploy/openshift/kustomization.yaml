@@ -22,7 +22,8 @@ resources:
   # Worker (BullMQ consumer)
   - worker-deployment.yaml
 
-  # Frontend (nginx + React SPA)
+  # Frontend (nginx + React SPA) with OAuth Proxy
+  - oauth-proxy.yaml
   - frontend-deployment.yaml
   - frontend-service.yaml
   - frontend-route.yaml

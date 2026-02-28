@@ -81,9 +81,9 @@ verify_deployment_spec_images() {
     local backend_deploy_image
     local worker_deploy_image
 
-    frontend_deploy_image="$(oc -n "${NAMESPACE}" get deployment/frontend -o jsonpath='{.spec.template.spec.containers[0].image}')"
-    backend_deploy_image="$(oc -n "${NAMESPACE}" get deployment/backend -o jsonpath='{.spec.template.spec.containers[0].image}')"
-    worker_deploy_image="$(oc -n "${NAMESPACE}" get deployment/worker -o jsonpath='{.spec.template.spec.containers[0].image}')"
+    frontend_deploy_image="$(oc -n "${NAMESPACE}" get deployment/frontend -o jsonpath='{.spec.template.spec.containers[?(@.name=="frontend")].image}')"
+    backend_deploy_image="$(oc -n "${NAMESPACE}" get deployment/backend -o jsonpath='{.spec.template.spec.containers[?(@.name=="backend")].image}')"
+    worker_deploy_image="$(oc -n "${NAMESPACE}" get deployment/worker -o jsonpath='{.spec.template.spec.containers[?(@.name=="worker")].image}')"
 
     if [ "${frontend_deploy_image}" != "${DEPLOY_FRONTEND_IMAGE}" ]; then
         err "Frontend deployment image mismatch. Expected ${DEPLOY_FRONTEND_IMAGE}, got ${frontend_deploy_image}"
@@ -107,22 +107,31 @@ verify_component_state() {
     local pod_statuses
     local has_ready=0
 
-    pod_statuses="$(oc -n "${NAMESPACE}" get pods -l "app.kubernetes.io/name=${component}" -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{.status.containerStatuses[0].ready}{"|"}{.status.containerStatuses[0].state.waiting.reason}{"|"}{.status.containerStatuses[0].image}{"\n"}{end}')"
+    # Filter containerStatuses by the component name to handle multi-container pods (e.g. oauth-proxy sidecar)
+    pod_statuses="$(oc -n "${NAMESPACE}" get pods -l "app.kubernetes.io/name=${component}" -o jsonpath='{range .items[*]}{.metadata.name}{"|"}{range .status.containerStatuses[*]}{.name}={.ready}={.state.waiting.reason}={.image},{end}{"\n"}{end}')"
 
     if [ -z "${pod_statuses}" ]; then
         err "No pods found for component '${component}'"
         exit 1
     fi
 
-    while IFS='|' read -r pod_name ready waiting_reason pod_image; do
-        if [ -n "${waiting_reason}" ] && [ "${waiting_reason}" != "<no value>" ]; then
-            err "Pod ${pod_name} for ${component} is waiting: ${waiting_reason}"
-            exit 1
-        fi
+    while IFS='|' read -r pod_name container_info; do
+        [ -z "${pod_name}" ] && continue
+        IFS=',' read -ra containers <<< "${container_info}"
+        for entry in "${containers[@]}"; do
+            [ -z "${entry}" ] && continue
+            IFS='=' read -r cname cready cwaiting cimage <<< "${entry}"
+            [ "${cname}" != "${component}" ] && continue
 
-        if [ "${ready}" = "true" ] && [ "${pod_image}" = "${expected_image}" ]; then
-            has_ready=1
-        fi
+            if [ -n "${cwaiting}" ] && [ "${cwaiting}" != "<no value>" ]; then
+                err "Pod ${pod_name} container ${cname} is waiting: ${cwaiting}"
+                exit 1
+            fi
+
+            if [ "${cready}" = "true" ] && [ "${cimage}" = "${expected_image}" ]; then
+                has_ready=1
+            fi
+        done
     done <<< "${pod_statuses}"
 
     if [ "${has_ready}" -ne 1 ]; then
@@ -292,7 +301,7 @@ show_status() {
 show_logs() {
     local component="${1:-backend}"
     info "Tailing logs for ${component}..."
-    oc -n "${NAMESPACE}" logs -f "deployment/${component}" --tail=100
+    oc -n "${NAMESPACE}" logs -f "deployment/${component}" -c "${component}" --tail=100
 }
 
 # --- Main ---

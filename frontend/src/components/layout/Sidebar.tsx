@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -9,6 +9,7 @@ import {
   ChevronRight,
   X,
   Info,
+  LogOut,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -18,6 +19,66 @@ interface SidebarProps {
   onMobileClose: () => void;
 }
 
+function SignOutDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (open) cancelRef.current?.focus();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+      <div
+        className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-[fade-in_150ms_ease-out]"
+        onClick={onClose}
+      />
+      <div role="dialog" aria-modal="true" aria-labelledby="sign-out-title" className="relative bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.15),0_0_0_1px_rgba(0,0,0,0.04)] w-[360px] max-w-[calc(100vw-2rem)] p-6 animate-[dialog-in_200ms_cubic-bezier(0.16,1,0.3,1)]">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center flex-shrink-0">
+            <LogOut className="w-5 h-5 text-red-500" strokeWidth={1.7} />
+          </div>
+          <div>
+            <h3 id="sign-out-title" className="text-[15px] font-semibold text-gray-900">Sign out</h3>
+            <p className="text-[13px] text-gray-500 mt-0.5">End your current session</p>
+          </div>
+        </div>
+        <p className="text-[13px] text-gray-500 mb-5 leading-relaxed">
+          You'll be redirected to the login page and will need to authenticate again to access Upstream Pulse.
+        </p>
+        <div className="flex gap-2.5 justify-end">
+          <button
+            ref={cancelRef}
+            onClick={onClose}
+            className="px-4 py-2 text-[13px] font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              fetch('/oauth/sign_out', { redirect: 'manual' })
+                .finally(() => { window.location.replace('/'); });
+            }}
+            className="px-4 py-2 text-[13px] font-medium text-white bg-red-500 hover:bg-red-600 rounded-xl transition-colors shadow-sm"
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const navItems = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, end: true },
   { label: 'Projects', path: '/projects', icon: FolderGit2 },
@@ -25,6 +86,7 @@ const navItems = [
 ];
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
+  const [signOutOpen, setSignOutOpen] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -50,6 +112,8 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
   return (
     <>
+      <SignOutDialog open={signOutOpen} onClose={() => setSignOutOpen(false)} />
+
       {/* Mobile backdrop */}
       <div
         className={`
@@ -190,6 +254,27 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                 About
               </span>
             </NavLink>
+            <button
+              onClick={() => setSignOutOpen(true)}
+              data-tooltip="Sign out"
+              className={`
+                sidebar-nav-item group flex items-center rounded-xl w-full
+                transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
+                ${collapsed ? 'justify-center aspect-square p-0' : 'px-3 py-2'}
+                text-gray-400 hover:bg-red-50 hover:text-red-500
+              `}
+            >
+              <LogOut className="w-[17px] h-[17px] flex-shrink-0" strokeWidth={1.7} />
+              <span
+                className={`
+                  text-[13px] font-medium whitespace-nowrap overflow-hidden
+                  transition-[opacity,max-width,margin] duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
+                  ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[160px] opacity-100 ml-3'}
+                `}
+              >
+                Sign out
+              </span>
+            </button>
           </div>
         </aside>
       </div>

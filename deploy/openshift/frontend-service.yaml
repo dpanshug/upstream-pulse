@@ -7,9 +7,17 @@ metadata:
     app.kubernetes.io/name: frontend
     app.kubernetes.io/part-of: upstream-pulse
     app.kubernetes.io/component: ui
+  annotations:
+    # OpenShift auto-generates a TLS cert/key pair and stores it in the
+    # named secret.  The oauth-proxy sidecar mounts this for its HTTPS listener.
+    service.beta.openshift.io/serving-cert-secret-name: frontend-proxy-tls
 spec:
   type: ClusterIP
   ports:
+    - port: 4180
+      targetPort: 4180
+      protocol: TCP
+      name: proxy
     - port: 8080
       targetPort: 8080
       protocol: TCP
