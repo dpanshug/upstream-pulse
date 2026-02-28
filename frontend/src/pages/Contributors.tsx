@@ -9,6 +9,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
+import { PageLoading } from '../components/common/PageLoading';
+import { PageError } from '../components/common/PageError';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -67,7 +69,7 @@ function getPageRange(current: number, total: number): (number | 'ellipsis')[] {
 }
 
 export default function Contributors() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['team-members'],
     queryFn: fetchTeamMembers,
   });
@@ -148,7 +150,13 @@ export default function Contributors() {
         </div>
 
         {isLoading ? (
-          <p>Loading contributors...</p>
+          <PageLoading message="Loading contributors…" />
+        ) : error ? (
+          <PageError
+            title="Error Loading Contributors"
+            message={(error as Error).message}
+            onRetry={() => refetch()}
+          />
         ) : (
           <>
             {/* Search bar */}

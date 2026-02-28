@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Folder, ExternalLink } from 'lucide-react';
+import { PageLoading } from '../components/common/PageLoading';
+import { PageError } from '../components/common/PageError';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -12,7 +14,7 @@ async function fetchProjects() {
 
 export default function Projects() {
   const navigate = useNavigate();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['projects'],
     queryFn: fetchProjects,
   });
@@ -26,7 +28,13 @@ export default function Projects() {
         </div>
 
         {isLoading ? (
-          <p>Loading projects...</p>
+          <PageLoading message="Loading projects…" />
+        ) : error ? (
+          <PageError
+            title="Error Loading Projects"
+            message={(error as Error).message}
+            onRetry={() => refetch()}
+          />
         ) : (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">

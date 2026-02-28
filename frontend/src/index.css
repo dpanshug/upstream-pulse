@@ -90,3 +90,51 @@
 .sidebar-scrollbar::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.06); border-radius: 3px; }
 .sidebar-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.12); }
 .sidebar-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.06) transparent; }
+
+/* ── Page loading spinner ── */
+
+.loader-entrance {
+  animation: loader-fade-up 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes loader-fade-up {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.loader-spin {
+  animation: loader-rotate 1.15s linear infinite;
+}
+@keyframes loader-rotate {
+  to { transform: rotate(360deg); }
+}
+
+.loader-spin-reverse {
+  animation: loader-rotate-rev 1.8s linear infinite;
+}
+@keyframes loader-rotate-rev {
+  to { transform: rotate(-360deg); }
+}
+
+.loader-glow {
+  animation: loader-glow-pulse 2.5s ease-in-out infinite;
+}
+@keyframes loader-glow-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(0.92); }
+  50%      { opacity: 1;   transform: scale(1.08); }
+}
+
+.loader-center-pulse {
+  animation: loader-orb 2s ease-in-out infinite;
+}
+@keyframes loader-orb {
+  0%, 100% { transform: scale(0.82); opacity: 0.75; }
+  50%      { transform: scale(1);    opacity: 1; }
+}
+
+.loader-dot {
+  animation: loader-bounce 1.4s ease-in-out infinite both;
+}
+@keyframes loader-bounce {
+  0%, 80%, 100% { transform: scale(0.55); opacity: 0.35; }
+  40%           { transform: scale(1);    opacity: 1; }
+}

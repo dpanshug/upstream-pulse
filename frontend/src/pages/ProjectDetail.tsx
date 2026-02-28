@@ -22,6 +22,8 @@ import {
   LeadershipSection,
   PeriodSummary,
 } from '../components/dashboard';
+import { PageLoading } from '../components/common/PageLoading';
+import { PageError } from '../components/common/PageError';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -53,7 +55,7 @@ export default function ProjectDetail() {
     enabled: !!projectId,
   });
 
-  const { data, isLoading, isFetching, error } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['dashboard', selectedDays, projectId],
     queryFn: () => fetchProjectDashboard(projectId!, selectedDays),
     refetchInterval: 60000,
@@ -66,24 +68,16 @@ export default function ProjectDetail() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-4">
-          <Activity className="w-12 h-12 text-blue-600 animate-pulse" />
-          <p className="text-gray-600">Loading project data...</p>
-        </div>
-      </div>
-    );
+    return <PageLoading message="Loading project data…" />;
   }
 
   if (error) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 max-w-md">
-          <h3 className="text-red-800 font-semibold">Error Loading Project</h3>
-          <p className="text-red-600 mt-2">{(error as Error).message}</p>
-        </div>
-      </div>
+      <PageError
+        title="Error Loading Project"
+        message={(error as Error).message}
+        onRetry={() => refetch()}
+      />
     );
   }
 

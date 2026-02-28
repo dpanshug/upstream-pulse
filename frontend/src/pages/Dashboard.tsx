@@ -20,6 +20,8 @@ import {
   ProjectCards,
   LeadershipSection,
 } from '../components/dashboard';
+import { PageLoading } from '../components/common/PageLoading';
+import { PageError } from '../components/common/PageError';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -35,7 +37,7 @@ export default function Dashboard() {
   const daysParam = searchParams.get('days');
   const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : 0;
 
-  const { data, isLoading, isFetching, error } = useQuery({
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['dashboard', selectedDays],
     queryFn: () => fetchDashboard(selectedDays),
     refetchInterval: 60000,
@@ -47,27 +49,17 @@ export default function Dashboard() {
   };
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-4">
-          <Activity className="w-12 h-12 text-blue-600 animate-pulse" />
-          <p className="text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
+    return <PageLoading message="Loading dashboard…" />;
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-red-50 border border-red-200 rounded-xl p-6 max-w-md">
-          <h3 className="text-red-800 font-semibold">Error Loading Dashboard</h3>
-          <p className="text-red-600 mt-2">{(error as Error).message}</p>
-          <p className="text-sm text-red-500 mt-4">
-            Make sure the backend server is running on {API_URL}
-          </p>
-        </div>
-      </div>
+      <PageError
+        title="Error Loading Dashboard"
+        message={(error as Error).message}
+        hint={`Make sure the backend server is running on ${API_URL || 'the configured host'}`}
+        onRetry={() => refetch()}
+      />
     );
   }
 
