@@ -13,10 +13,7 @@
 set -euo pipefail
 
 # --- Configuration ---
-# Registry used for docker build/push from local machine.
-# Must be set explicitly via PUSH_REGISTRY env var (e.g. your OpenShift external registry route).
-PUSH_REGISTRY="${PUSH_REGISTRY:?PUSH_REGISTRY must be set to your container registry (e.g. default-route-openshift-image-registry.apps.your-cluster.example.com)}"
-# Registry used inside the cluster by pods (must be pullable by service accounts).
+PUSH_REGISTRY="${PUSH_REGISTRY:-}"
 DEPLOY_REGISTRY="${DEPLOY_REGISTRY:-image-registry.openshift-image-registry.svc:5000}"
 REGISTRY_ORG="${REGISTRY_ORG:-upstream-pulse}"
 NAMESPACE="${NAMESPACE:-upstream-pulse}"
@@ -24,8 +21,6 @@ NAMESPACE="${NAMESPACE:-upstream-pulse}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Use immutable image tags by default for deterministic rollouts.
-# Override with IMAGE_TAG when needed (e.g. rollback/redeploy specific tag).
 if [ -z "${IMAGE_TAG:-}" ]; then
     if git -C "${PROJECT_ROOT}" rev-parse --is-inside-work-tree &>/dev/null; then
         IMAGE_TAG="$(git -C "${PROJECT_ROOT}" rev-parse --short=12 HEAD)"
@@ -34,8 +29,6 @@ if [ -z "${IMAGE_TAG:-}" ]; then
     fi
 fi
 
-PUSH_BACKEND_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/backend:${IMAGE_TAG}"
-PUSH_FRONTEND_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/frontend:${IMAGE_TAG}"
 DEPLOY_BACKEND_IMAGE="${DEPLOY_REGISTRY}/${NAMESPACE}/backend:${IMAGE_TAG}"
 DEPLOY_FRONTEND_IMAGE="${DEPLOY_REGISTRY}/${NAMESPACE}/frontend:${IMAGE_TAG}"
 
@@ -160,25 +153,33 @@ set_runtime_images() {
         frontend="${DEPLOY_FRONTEND_IMAGE}"
 }
 
-confirm_target_cluster() {
-    local current_cluster
-    local current_project
+ensure_cluster_context() {
+    local confirm_prompt="${1:-true}"
+
+    if ! oc whoami &>/dev/null; then
+        err "Not logged in to OpenShift. Run 'oc login' first."
+        exit 1
+    fi
+
+    local current_user current_cluster current_project
     local expected_cluster="${EXPECTED_CLUSTER:-}"
 
+    current_user="$(oc whoami)"
     current_cluster="$(oc whoami --show-server)"
     current_project="$(oc project -q 2>/dev/null || true)"
 
+    info "Logged in as:    ${current_user}"
     info "Current cluster: ${current_cluster}"
     info "Current project: ${current_project:-unknown}"
-    info "Target namespace from script: ${NAMESPACE}"
+    info "Target namespace: ${NAMESPACE}"
 
     if [ -n "${expected_cluster}" ] && [ "${current_cluster}" != "${expected_cluster}" ]; then
         err "Cluster mismatch. Expected ${expected_cluster}, got ${current_cluster}"
         exit 1
     fi
 
-    if [ "${SKIP_CLUSTER_CONFIRM:-false}" = "true" ]; then
-        warn "Skipping cluster confirmation (SKIP_CLUSTER_CONFIRM=true)"
+    if [ "${confirm_prompt}" != "true" ] || [ "${SKIP_CLUSTER_CONFIRM:-false}" = "true" ]; then
+        [ "${SKIP_CLUSTER_CONFIRM:-false}" = "true" ] && warn "Skipping cluster confirmation (SKIP_CLUSTER_CONFIRM=true)"
         return
     fi
 
@@ -188,27 +189,57 @@ confirm_target_cluster() {
     fi
 
     echo ""
-    warn "You are about to deploy to cluster: ${current_cluster}"
+    warn "You are about to target cluster: ${current_cluster}"
     warn "Project: ${current_project:-unknown} | Namespace: ${NAMESPACE}"
-    read -r -p "Proceed with this cluster? [y/N] " cluster_confirm
+    read -r -p "Proceed? [y/N] " cluster_confirm
     if [[ ! "${cluster_confirm}" =~ ^[Yy]$ ]]; then
         info "Aborted."
         exit 1
     fi
 }
 
-apply_manifests() {
-    # Check if logged in to OpenShift
-    if ! oc whoami &>/dev/null; then
-        err "Not logged in to OpenShift. Run 'oc login' first."
-        exit 1
+ensure_push_registry() {
+    if [ -n "${PUSH_REGISTRY}" ]; then
+        info "Using PUSH_REGISTRY from environment: ${PUSH_REGISTRY}"
+    else
+        info "PUSH_REGISTRY not set — auto-discovering from cluster..."
+        PUSH_REGISTRY="$(oc get route default-route -n openshift-image-registry -o jsonpath='{.spec.host}' 2>/dev/null || true)"
+        if [ -z "${PUSH_REGISTRY}" ]; then
+            err "Could not auto-discover the image registry route."
+            err "Ensure the default-route exists in openshift-image-registry, or set PUSH_REGISTRY manually."
+            exit 1
+        fi
+        log "Auto-discovered PUSH_REGISTRY: ${PUSH_REGISTRY}"
     fi
 
-    info "Logged in as:    $(oc whoami)"
-    confirm_target_cluster
+    PUSH_BACKEND_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/backend:${IMAGE_TAG}"
+    PUSH_FRONTEND_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/frontend:${IMAGE_TAG}"
+}
 
+apply_manifests() {
     log "Applying OpenShift manifests..."
     oc apply -k "${SCRIPT_DIR}/openshift"
+
+    # Patch configmap with org-specific values from environment
+    if [ -n "${ORG_NAME:-}" ] || [ -n "${ORG_DESCRIPTION:-}" ]; then
+        info "Patching configmap with org-specific values..."
+        local patch_data="{\"data\":{"
+        local needs_comma=false
+        if [ -n "${ORG_NAME:-}" ]; then
+            patch_data+="\"ORG_NAME\":\"${ORG_NAME}\""
+            needs_comma=true
+        fi
+        if [ -n "${ORG_DESCRIPTION:-}" ]; then
+            ${needs_comma} && patch_data+=","
+            patch_data+="\"ORG_DESCRIPTION\":\"${ORG_DESCRIPTION}\""
+        fi
+        patch_data+="}}"
+        oc -n "${NAMESPACE}" patch configmap upstream-pulse-config --type merge -p "${patch_data}"
+        log "ConfigMap patched with ORG_NAME / ORG_DESCRIPTION"
+    else
+        warn "ORG_NAME and ORG_DESCRIPTION not set — skipping configmap patch"
+    fi
+
     set_runtime_images
 
     log "Waiting for PostgreSQL to be ready..."
@@ -268,21 +299,30 @@ show_logs() {
 
 case "${1:-deploy}" in
     build)
+        ensure_push_registry
         build_images
         ;;
     push)
+        ensure_cluster_context
+        ensure_push_registry
         push_images
         ;;
     apply)
+        ensure_cluster_context
         apply_manifests
         ;;
     status)
+        ensure_cluster_context false
         show_status
         ;;
     logs)
+        ensure_cluster_context false
         show_logs "${2:-backend}"
         ;;
     deploy)
+        ensure_cluster_context
+        ensure_push_registry
+
         warn "=== Full Deployment ==="
         echo ""
         warn "This will:"
@@ -304,20 +344,22 @@ case "${1:-deploy}" in
         echo ""
         echo "Commands:"
         echo "  build             Build Docker images locally"
-        echo "  push              Push images to ${PUSH_REGISTRY}"
+        echo "  push              Push images to registry"
         echo "  apply             Apply OpenShift manifests"
         echo "  deploy            Full deploy (build + push + apply)"
         echo "  status            Show deployment status"
         echo "  logs [component]  Tail logs (backend|frontend|worker)"
         echo ""
         echo "Environment variables:"
-        echo "  PUSH_REGISTRY     Registry used for docker push from local machine"
-        echo "  DEPLOY_REGISTRY   Registry used in pod image references (cluster pull path)"
-        echo "  REGISTRY_ORG      Registry org/user (default: upstream-pulse)"
-        echo "  IMAGE_TAG         Image tag (default: git short SHA)"
-        echo "  NAMESPACE         OpenShift namespace (default: upstream-pulse)"
-        echo "  EXPECTED_CLUSTER  Expected oc server URL; fail if different"
+        echo "  PUSH_REGISTRY         Registry for docker push (auto-discovered from cluster if not set)"
+        echo "  DEPLOY_REGISTRY       Registry used in pod image references (default: internal cluster registry)"
+        echo "  REGISTRY_ORG          Registry org/user (default: upstream-pulse)"
+        echo "  IMAGE_TAG             Image tag (default: git short SHA)"
+        echo "  NAMESPACE             OpenShift namespace (default: upstream-pulse)"
+        echo "  EXPECTED_CLUSTER      Expected oc server URL; fail if different"
         echo "  SKIP_CLUSTER_CONFIRM  Skip interactive cluster prompt (default: false)"
+        echo "  ORG_NAME              Organization name (patched into configmap)"
+        echo "  ORG_DESCRIPTION       Organization description (patched into configmap)"
         exit 1
         ;;
 esac

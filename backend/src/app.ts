@@ -7,7 +7,7 @@ import websocket from '@fastify/websocket';
 import { config, validateConfig } from './shared/config/index.js';
 
 const __app_dirname = dirname(fileURLToPath(import.meta.url));
-const pkg = JSON.parse(readFileSync(join(__app_dirname, '../../package.json'), 'utf-8'));
+const pkg = JSON.parse(readFileSync(join(__app_dirname, '../package.json'), 'utf-8'));
 import { logger } from './shared/utils/logger.js';
 import { db } from './shared/database/client.js';
 import { teamMembers, projects } from './shared/database/schema.js';
