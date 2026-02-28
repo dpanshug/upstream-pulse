@@ -435,6 +435,186 @@ app.post('/api/admin/team-sync', async (request, reply) => {
   }
 });
 
+// System status endpoint — exposes worker health, queue stats, job history, schedules
+app.get('/api/system/status', async (request, reply) => {
+  try {
+    const { CollectionScheduler, contributionQueue, governanceQueue, leadershipQueue, teamSyncQueue } = await import('./jobs/scheduler.js');
+    const { collectionJobs } = await import('./shared/database/schema.js');
+
+    const scheduler = new CollectionScheduler();
+
+    // Gather queue stats for all workers in parallel
+    const [collectionStats, governanceStats, leadershipStats, teamSyncStats] = await Promise.all([
+      scheduler.getQueueStats(),
+      scheduler.getGovernanceQueueStats(),
+      scheduler.getLeadershipQueueStats(),
+      scheduler.getTeamSyncQueueStats(),
+    ]);
+
+    // Fetch recent jobs (last 50) from the database
+    const recentJobs = await db.query.collectionJobs.findMany({
+      orderBy: (jobs, { desc }) => [desc(jobs.createdAt)],
+      limit: 50,
+    });
+
+    // Aggregate job stats by status
+    const jobStatusCounts = recentJobs.reduce((acc, job) => {
+      acc[job.status] = (acc[job.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    // Fetch last successful sync per job type
+    const jobTypes = ['sync', 'full_sync', 'governance_refresh', 'leadership_refresh', 'team_sync'];
+    const lastSuccessful: Record<string, typeof recentJobs[0] | null> = {};
+    for (const jt of jobTypes) {
+      const found = recentJobs.find(j => j.jobType === jt && j.status === 'completed');
+      lastSuccessful[jt] = found || null;
+    }
+
+    // Compute next run times from cron schedules
+    const now = new Date();
+    function nextCronRun(cronExpr: string): string {
+      const parts = cronExpr.split(' ');
+      const [minute, hour, dayOfMonth, month, dayOfWeek] = parts.map(p => (p === '*' ? null : parseInt(p, 10)));
+
+      const next = new Date(now);
+      next.setSeconds(0, 0);
+      if (minute !== null) next.setMinutes(minute);
+      if (hour !== null) next.setHours(hour);
+
+      if (dayOfWeek !== null) {
+        // Weekly: advance to next matching day of week
+        const currentDay = next.getDay();
+        let daysAhead = dayOfWeek - currentDay;
+        if (daysAhead < 0 || (daysAhead === 0 && next <= now)) daysAhead += 7;
+        next.setDate(next.getDate() + daysAhead);
+      } else if (dayOfMonth !== null) {
+        // Monthly: advance to next matching day of month
+        next.setDate(dayOfMonth);
+        if (next <= now) next.setMonth(next.getMonth() + 1);
+      } else {
+        // Daily: if already past today, advance to tomorrow
+        if (next <= now) next.setDate(next.getDate() + 1);
+      }
+
+      return next.toISOString();
+    }
+
+    // Compute uptime
+    const uptimeSeconds = process.uptime();
+
+    const workers = [
+      {
+        id: 'contribution-collection',
+        name: 'Contribution Collector',
+        description: 'Collects commits, PRs, reviews, and issues from GitHub',
+        schedule: { cron: '0 2 * * *', human: 'Daily at 2:00 AM UTC', nextRun: nextCronRun('0 2 * * *') },
+        queue: collectionStats,
+        lastSuccess: lastSuccessful['sync']?.completedAt || lastSuccessful['full_sync']?.completedAt || null,
+        jobTypes: ['sync', 'full_sync'],
+      },
+      {
+        id: 'governance-refresh',
+        name: 'Governance Scanner',
+        description: 'Refreshes OWNERS files to track maintainer/reviewer roles',
+        schedule: { cron: '0 3 * * 0', human: 'Weekly on Sundays at 3:00 AM UTC', nextRun: nextCronRun('0 3 * * 0') },
+        queue: governanceStats,
+        lastSuccess: lastSuccessful['governance_refresh']?.completedAt || null,
+        jobTypes: ['governance_refresh'],
+      },
+      {
+        id: 'leadership-refresh',
+        name: 'Leadership Tracker',
+        description: 'Collects steering committee and WG/SIG leadership positions',
+        schedule: { cron: '0 4 1 * *', human: 'Monthly on the 1st at 4:00 AM UTC', nextRun: nextCronRun('0 4 1 * *') },
+        queue: leadershipStats,
+        lastSuccess: lastSuccessful['leadership_refresh']?.completedAt || null,
+        jobTypes: ['leadership_refresh'],
+      },
+      {
+        id: 'team-sync',
+        name: 'Team Synchronizer',
+        description: 'Syncs team members from the GitHub organization',
+        schedule: { cron: '0 1 * * 0', human: 'Weekly on Sundays at 1:00 AM UTC', nextRun: nextCronRun('0 1 * * 0') },
+        queue: teamSyncStats,
+        lastSuccess: lastSuccessful['team_sync']?.completedAt || null,
+        jobTypes: ['team_sync'],
+      },
+    ];
+
+    // Derive per-worker health status
+    const workersWithHealth = workers.map(w => {
+      let health: 'healthy' | 'warning' | 'error' | 'idle' = 'healthy';
+
+      if (w.queue.failed > 0 && w.queue.failed > w.queue.completed) {
+        health = 'error';
+      } else if (w.queue.failed > 0) {
+        health = 'warning';
+      } else if (w.queue.active > 0) {
+        health = 'healthy';
+      }
+
+      // Check data staleness: if last success is too old relative to schedule
+      if (w.lastSuccess) {
+        const lastMs = new Date(w.lastSuccess).getTime();
+        const ageHours = (now.getTime() - lastMs) / (1000 * 60 * 60);
+
+        const cronParts = w.schedule.cron.split(' ');
+        const hasDayOfWeek = cronParts[4] !== '*';
+        const hasDayOfMonth = cronParts[2] !== '*';
+        const isMonthly = hasDayOfMonth;
+        const isWeekly = !hasDayOfMonth && hasDayOfWeek;
+        const isDaily = !hasDayOfMonth && !hasDayOfWeek;
+
+        if (isDaily && ageHours > 48) health = 'warning';
+        if (isWeekly && ageHours > 14 * 24) health = 'warning';
+        if (isMonthly && ageHours > 60 * 24) health = 'warning';
+      }
+
+      return { ...w, health };
+    });
+
+    // Overall system health
+    const hasErrors = workersWithHealth.some(w => w.health === 'error');
+    const hasWarnings = workersWithHealth.some(w => w.health === 'warning');
+    const overallHealth = hasErrors ? 'degraded' : hasWarnings ? 'warning' : 'operational';
+
+    return {
+      system: {
+        status: overallHealth,
+        timestamp: now.toISOString(),
+        uptime: uptimeSeconds,
+        version: pkg.version,
+      },
+      workers: workersWithHealth,
+      recentJobs: recentJobs.map(j => ({
+        id: j.id,
+        jobType: j.jobType,
+        status: j.status,
+        startedAt: j.startedAt,
+        completedAt: j.completedAt,
+        recordsProcessed: j.recordsProcessed,
+        errorsCount: j.errorsCount,
+        errorDetails: j.errorDetails,
+        metadata: j.metadata,
+        createdAt: j.createdAt,
+        projectId: j.projectId,
+      })),
+      jobSummary: {
+        total: recentJobs.length,
+        ...jobStatusCounts,
+      },
+    };
+  } catch (error) {
+    logger.error('Error fetching system status', { error });
+    reply.status(500);
+    return {
+      error: 'Failed to fetch system status',
+      message: (error as Error).message,
+    };
+  }
+});
+
 // Manual leadership refresh endpoint
 app.post('/api/leadership/refresh', async (request, reply) => {
   try {

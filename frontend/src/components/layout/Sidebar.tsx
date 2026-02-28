@@ -5,6 +5,7 @@ import {
   FolderGit2,
   Users,
   Activity,
+  Cpu,
   ChevronLeft,
   ChevronRight,
   X,
@@ -83,6 +84,7 @@ const navItems = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, end: true },
   { label: 'Projects', path: '/projects', icon: FolderGit2 },
   { label: 'Contributors', path: '/contributors', icon: Users },
+  { label: 'System', path: '/system', icon: Cpu, end: true },
 ];
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
