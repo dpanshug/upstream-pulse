@@ -40,6 +40,10 @@ export const config = {
   orgDocsUrl: process.env.ORG_DOCS_URL || '',
   teamEmailDomain: process.env.TEAM_EMAIL_DOMAIN || '',
 
+  // Instance admin (shown on About page when set)
+  adminContactName: process.env.ADMIN_CONTACT_NAME || '',
+  adminContactUrl: process.env.ADMIN_CONTACT_URL || '',
+
   // Monitoring
   prometheusEnabled: process.env.PROMETHEUS_ENABLED === 'true',
 } as const;

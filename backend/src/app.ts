@@ -74,6 +74,8 @@ app.get('/api/config', async () => ({
   orgName: config.orgName,
   orgDescription: config.orgDescription,
   orgDocsUrl: config.orgDocsUrl,
+  adminContactName: config.adminContactName || undefined,
+  adminContactUrl: config.adminContactUrl || undefined,
   version: pkg.version,
 }));
 

@@ -230,7 +230,7 @@ apply_manifests() {
     oc apply -k "${SCRIPT_DIR}/openshift"
 
     # Patch configmap with org-specific values from environment
-    if [ -n "${ORG_NAME:-}" ] || [ -n "${ORG_DESCRIPTION:-}" ]; then
+    if [ -n "${ORG_NAME:-}" ] || [ -n "${ORG_DESCRIPTION:-}" ] || [ -n "${ADMIN_CONTACT_NAME:-}" ]; then
         info "Patching configmap with org-specific values..."
         local patch_data="{\"data\":{"
         local needs_comma=false
@@ -241,10 +241,20 @@ apply_manifests() {
         if [ -n "${ORG_DESCRIPTION:-}" ]; then
             ${needs_comma} && patch_data+=","
             patch_data+="\"ORG_DESCRIPTION\":\"${ORG_DESCRIPTION}\""
+            needs_comma=true
+        fi
+        if [ -n "${ADMIN_CONTACT_NAME:-}" ]; then
+            ${needs_comma} && patch_data+=","
+            patch_data+="\"ADMIN_CONTACT_NAME\":\"${ADMIN_CONTACT_NAME}\""
+            needs_comma=true
+        fi
+        if [ -n "${ADMIN_CONTACT_URL:-}" ]; then
+            ${needs_comma} && patch_data+=","
+            patch_data+="\"ADMIN_CONTACT_URL\":\"${ADMIN_CONTACT_URL}\""
         fi
         patch_data+="}}"
         oc -n "${NAMESPACE}" patch configmap upstream-pulse-config --type merge -p "${patch_data}"
-        log "ConfigMap patched with ORG_NAME / ORG_DESCRIPTION"
+        log "ConfigMap patched with org / admin contact values"
     else
         warn "ORG_NAME and ORG_DESCRIPTION not set — skipping configmap patch"
     fi
@@ -369,6 +379,8 @@ case "${1:-deploy}" in
         echo "  SKIP_CLUSTER_CONFIRM  Skip interactive cluster prompt (default: false)"
         echo "  ORG_NAME              Organization name (patched into configmap)"
         echo "  ORG_DESCRIPTION       Organization description (patched into configmap)"
+        echo "  ADMIN_CONTACT_NAME    Admin name shown on About page (patched into configmap)"
+        echo "  ADMIN_CONTACT_URL     Admin contact URL, e.g. mailto: (patched into configmap)"
         exit 1
         ;;
 esac

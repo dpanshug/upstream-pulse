@@ -14,6 +14,7 @@ import {
   ExternalLink,
   BookOpen,
   Github,
+  Mail,
 } from 'lucide-react';
 import { PageLoading } from '../components/common/PageLoading';
 
@@ -23,6 +24,8 @@ interface AppConfig {
   orgName: string;
   orgDescription: string;
   orgDocsUrl: string;
+  adminContactName?: string;
+  adminContactUrl?: string;
   version: string;
 }
 
@@ -256,6 +259,39 @@ export default function About() {
             ))}
           </div>
         </section>
+
+        {/* Admin contact — only shown when configured */}
+        {config?.adminContactName && (
+          <section className="mb-10">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-100/60 p-5">
+              <div className="flex items-start gap-4">
+                <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <Mail className="w-[18px] h-[18px] text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] text-gray-700 leading-relaxed">
+                    Need an upstream project onboarded to the tracking pipeline, or want to adjust contribution metrics and coverage?{' '}
+                    {config.adminContactUrl ? (
+                      <a
+                        href={config.adminContactUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2 decoration-blue-300 hover:decoration-blue-500 transition-colors"
+                      >
+                        Reach out to {config.adminContactName}
+                      </a>
+                    ) : (
+                      <span className="font-semibold text-gray-900">
+                        Reach out to {config.adminContactName}
+                      </span>
+                    )}
+                    {' '}to get it configured.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Footer meta */}
         <div className="text-center pb-4">
