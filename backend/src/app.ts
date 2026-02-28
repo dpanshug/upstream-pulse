@@ -546,10 +546,12 @@ app.get('/api/system/status', async (request, reply) => {
     const workersWithHealth = workers.map(w => {
       let health: 'healthy' | 'warning' | 'error' | 'idle' = 'healthy';
 
-      if (w.queue.failed > 0 && w.queue.failed > w.queue.completed) {
+      // Only flag failures if they're significant relative to total throughput
+      const totalProcessed = w.queue.completed + w.queue.failed;
+      const failureRate = totalProcessed > 0 ? w.queue.failed / totalProcessed : 0;
+
+      if (failureRate > 0.5 && w.queue.failed > 3) {
         health = 'error';
-      } else if (w.queue.failed > 0) {
-        health = 'warning';
       } else if (w.queue.active > 0) {
         health = 'healthy';
       }
