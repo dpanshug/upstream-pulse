@@ -100,8 +100,8 @@ export class CollectionScheduler {
       await this.triggerDailySync();
     });
 
-    // Weekly governance refresh at 3 AM UTC on Sundays
-    this.weeklyGovernanceSchedule = cron.schedule('0 3 * * 0', async () => {
+    // Weekly governance refresh at 3 AM UTC on Mondays
+    this.weeklyGovernanceSchedule = cron.schedule('0 3 * * 1', async () => {
       logger.info('Triggering weekly governance refresh');
       await this.triggerGovernanceRefresh();
     });
@@ -112,16 +112,16 @@ export class CollectionScheduler {
       await this.triggerLeadershipRefresh();
     });
 
-    // Weekly team sync at 1 AM UTC on Sundays (before governance refresh at 3 AM)
-    this.weeklyTeamSyncSchedule = cron.schedule('0 1 * * 0', async () => {
+    // Weekly team sync at 1 AM UTC on Mondays (before governance refresh at 3 AM)
+    this.weeklyTeamSyncSchedule = cron.schedule('0 1 * * 1', async () => {
       logger.info('Triggering weekly team sync from GitHub org');
       await this.triggerTeamSync();
     });
 
     logger.info('Collection scheduler started', {
-      weeklyTeamSync: '0 1 * * 0 (1 AM UTC on Sundays)',
+      weeklyTeamSync: '0 1 * * 1 (1 AM UTC on Mondays)',
       dailySync: '0 2 * * * (2 AM UTC)',
-      weeklyGovernance: '0 3 * * 0 (3 AM UTC on Sundays)',
+      weeklyGovernance: '0 3 * * 1 (3 AM UTC on Mondays)',
       monthlyLeadership: '0 4 1 * * (4 AM UTC on 1st of month)',
     });
   }
