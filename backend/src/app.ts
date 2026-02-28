@@ -1,7 +1,13 @@
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { config, validateConfig } from './shared/config/index.js';
+
+const __app_dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__app_dirname, '../../package.json'), 'utf-8'));
 import { logger } from './shared/utils/logger.js';
 import { db } from './shared/database/client.js';
 import { teamMembers, projects } from './shared/database/schema.js';
@@ -62,6 +68,14 @@ app.get('/ready', async (request, reply) => {
     };
   }
 });
+
+// Public config (safe to expose — no secrets)
+app.get('/api/config', async () => ({
+  orgName: config.orgName,
+  orgDescription: config.orgDescription,
+  orgDocsUrl: config.orgDocsUrl,
+  version: pkg.version,
+}));
 
 // Register API routes
 import { metricsRoutes } from './modules/api/routes/metrics.js';

@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Projects from './pages/Projects';
 import ProjectDetail from './pages/ProjectDetail';
 import Contributors from './pages/Contributors';
+import About from './pages/About';
 import './App.css';
 
 const queryClient = new QueryClient({
@@ -27,6 +28,7 @@ function App() {
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
             <Route path="/contributors" element={<Contributors />} />
+            <Route path="/about" element={<About />} />
           </Route>
         </Routes>
       </Router>

@@ -36,6 +36,8 @@ export const config = {
 
   // Organization
   orgName: process.env.ORG_NAME || 'My Organization',
+  orgDescription: process.env.ORG_DESCRIPTION || '',
+  orgDocsUrl: process.env.ORG_DOCS_URL || '',
   teamEmailDomain: process.env.TEAM_EMAIL_DOMAIN || '',
 
   // Monitoring

@@ -8,7 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  Github,
+  Info,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -166,14 +166,20 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
           {/* Footer */}
           <div className={`flex-shrink-0 pb-3 pt-1 ${collapsed ? 'px-1.5' : 'px-2.5'}`}>
             <div className="h-px bg-gray-100 mb-2" />
-            <a
-              href="https://github.com/dpanshug/upstream-pulse"
-              target="_blank"
-              rel="noopener noreferrer"
-              data-tooltip="GitHub"
-              className={`sidebar-nav-item group flex items-center rounded-xl transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)] text-gray-400 hover:bg-gray-100/80 hover:text-gray-600 ${collapsed ? 'justify-center aspect-square p-0' : 'px-3 py-2'}`}
+            <NavLink
+              to="/about"
+              data-tooltip="About"
+              className={({ isActive }) => `
+                sidebar-nav-item group flex items-center rounded-xl
+                transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
+                ${collapsed ? 'justify-center aspect-square p-0' : 'px-3 py-2'}
+                ${isActive
+                  ? 'bg-gray-900 text-white shadow-sm'
+                  : 'text-gray-400 hover:bg-gray-100/80 hover:text-gray-600'
+                }
+              `}
             >
-              <Github className="w-[17px] h-[17px] flex-shrink-0" strokeWidth={1.7} />
+              <Info className="w-[17px] h-[17px] flex-shrink-0" strokeWidth={1.7} />
               <span
                 className={`
                   text-[13px] font-medium whitespace-nowrap overflow-hidden
@@ -181,9 +187,9 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                   ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[160px] opacity-100 ml-3'}
                 `}
               >
-                GitHub
+                About
               </span>
-            </a>
+            </NavLink>
           </div>
         </aside>
       </div>
