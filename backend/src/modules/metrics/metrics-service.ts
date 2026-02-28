@@ -748,7 +748,7 @@ export class MetricsService {
         .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
         .where(and(...conditions));
 
-      // Get active leadership positions (steering committee, WG chairs/leads)
+      // Get active leadership positions held by team members
       const allLeadershipPositions = await db
         .select({
           id: leadershipPositions.id,
@@ -764,6 +764,18 @@ export class MetricsService {
         .from(leadershipPositions)
         .innerJoin(teamMembers, eq(leadershipPositions.teamMemberId, teamMembers.id))
         .where(eq(leadershipPositions.isActive, true));
+
+      // Count total chair/lead positions (seats) org-wide.
+      // We count positions, not unique people, because the dashboard measures
+      // influence: one person chairing 3 WGs = 3 seats of influence.
+      const totalLeadershipCounts = await db
+        .select({
+          positionType: leadershipPositions.positionType,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(leadershipPositions)
+        .where(eq(leadershipPositions.isActive, true))
+        .groupBy(leadershipPositions.positionType);
 
       // When viewing a specific project, filter leadership to the WGs that own it
       let leadershipPositionsData = allLeadershipPositions;
@@ -782,14 +794,20 @@ export class MetricsService {
       const teamApprovers = maintainerStatuses.filter(s => s.positionType === 'maintainer').length;
       const teamReviewers = maintainerStatuses.filter(s => s.positionType === 'reviewer').length;
 
-      // Count leadership positions
+      // Count team leadership positions (seats held, not unique people)
       const steeringCommittee = leadershipPositionsData.filter(p => p.positionType === 'steering_committee');
-      const wgChairs = leadershipPositionsData.filter(p => 
+      const wgChairPositions = leadershipPositionsData.filter(p => 
         p.positionType === 'wg_chair' || p.positionType === 'sig_chair'
       );
-      const wgTechLeads = leadershipPositionsData.filter(p => 
+      const wgTechLeadPositions = leadershipPositionsData.filter(p => 
         p.positionType === 'wg_tech_lead' || p.positionType === 'sig_tech_lead'
       );
+
+      // Build org-wide totals (all positions/seats)
+      const totalCountMap = new Map(totalLeadershipCounts.map(r => [r.positionType, r.count]));
+      const totalSteeringCommittee = totalCountMap.get('steering_committee') ?? 0;
+      const totalWgChairs = (totalCountMap.get('wg_chair') ?? 0) + (totalCountMap.get('sig_chair') ?? 0);
+      const totalWgTechLeads = (totalCountMap.get('wg_tech_lead') ?? 0) + (totalCountMap.get('sig_tech_lead') ?? 0);
 
       // Estimate totals (could be refined with actual data)
       const totalApprovers = Math.max(teamApprovers * 2, 6);
@@ -864,8 +882,11 @@ export class MetricsService {
           teamApprovers,
           teamReviewers,
           steeringCommitteeCount: steeringCommittee.length,
-          wgChairsCount: wgChairs.length,
-          wgTechLeadsCount: wgTechLeads.length,
+          totalSteeringCommittee,
+          wgChairsCount: wgChairPositions.length,
+          totalWgChairs,
+          wgTechLeadsCount: wgTechLeadPositions.length,
+          totalWgTechLeads,
         },
         teamLeaders: Array.from(memberMap.values()),
         steeringCommittee: steeringCommittee.map(s => ({
@@ -887,8 +908,11 @@ export class MetricsService {
           teamApprovers: 0,
           teamReviewers: 0,
           steeringCommitteeCount: 0,
+          totalSteeringCommittee: 0,
           wgChairsCount: 0,
+          totalWgChairs: 0,
           wgTechLeadsCount: 0,
+          totalWgTechLeads: 0,
         },
         teamLeaders: [],
         steeringCommittee: [],

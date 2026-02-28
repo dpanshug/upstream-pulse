@@ -41,7 +41,9 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
             </div>
             <div className="flex items-baseline gap-1">
               <span className="text-2xl font-bold text-purple-900">{summary.steeringCommitteeCount}</span>
-              <span className="text-xs text-purple-600">members</span>
+              {(summary.totalSteeringCommittee ?? 0) > 0 && (
+                <span className="text-xs text-purple-600">of {summary.totalSteeringCommittee}</span>
+              )}
             </div>
           </div>
         )}
@@ -54,7 +56,9 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
           </div>
           <div className="flex items-baseline gap-1">
             <span className="text-2xl font-bold text-amber-900">{summary.wgChairsCount ?? 0}</span>
-            <span className="text-xs text-amber-600">roles</span>
+            {(summary.totalWgChairs ?? 0) > 0 && (
+              <span className="text-xs text-amber-600">of {summary.totalWgChairs}</span>
+            )}
           </div>
         </div>
 
@@ -66,7 +70,9 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
           </div>
           <div className="flex items-baseline gap-1">
             <span className="text-2xl font-bold text-gray-900">{summary.wgTechLeadsCount ?? 0}</span>
-            <span className="text-xs text-gray-500">roles</span>
+            {(summary.totalWgTechLeads ?? 0) > 0 && (
+              <span className="text-xs text-gray-500">of {summary.totalWgTechLeads}</span>
+            )}
           </div>
         </div>
 
@@ -90,13 +96,13 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
             <Crown className="w-4 h-4" />
             Kubeflow Steering Committee
           </h3>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-4">
             {steeringCommittee.map((member) => (
-              <div key={member.id} className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 shadow-sm">
+              <div key={member.id} className="flex items-center gap-3 bg-white rounded-lg px-4 py-3 shadow-sm">
                 <img
                   src={member.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=e5e7eb&color=374151`}
                   alt={member.name}
-                  className="w-8 h-8 rounded-full ring-2 ring-purple-200"
+                  className="w-10 h-10 rounded-full ring-2 ring-purple-200"
                 />
                 <div>
                   <p className="text-sm font-medium text-gray-900">{member.name}</p>
@@ -111,11 +117,6 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
                     </a>
                   )}
                 </div>
-                {member.votingRights && (
-                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
-                    Voting
-                  </span>
-                )}
               </div>
             ))}
           </div>
@@ -154,9 +155,11 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
                       <span
                         key={idx}
                         className={`text-xs px-2 py-0.5 rounded border ${
-                          role.positionType.includes('chair')
-                            ? 'bg-amber-50 text-amber-700 border-amber-200'
-                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                          role.positionType === 'steering_committee'
+                            ? 'bg-purple-50 text-purple-700 border-purple-200'
+                            : role.positionType.includes('chair')
+                              ? 'bg-amber-50 text-amber-700 border-amber-200'
+                              : 'bg-blue-50 text-blue-700 border-blue-200'
                         }`}
                         title={role.roleTitle}
                       >

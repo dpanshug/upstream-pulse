@@ -64,8 +64,11 @@ export interface LeadershipData {
     teamApprovers: number;
     teamReviewers: number;
     steeringCommitteeCount?: number;
+    totalSteeringCommittee?: number;
     wgChairsCount?: number;
+    totalWgChairs?: number;
     wgTechLeadsCount?: number;
+    totalWgTechLeads?: number;
   };
   teamLeaders: LeadershipMember[];
   steeringCommittee?: SteeringCommitteeMember[];
