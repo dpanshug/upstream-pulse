@@ -5,24 +5,36 @@
   "type": "module",
   "scripts": {
     "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+
+    "dev": "npm run dev:kill-pf && npm run dev:infra && concurrently -k -n db,api,ui -c blue,green,magenta \"npm run dev:infra:logs\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:cluster": "npm run dev:stop-docker-db && concurrently -k -n pf,api,ui -c blue,green,magenta \"npm run db:port-forward\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
+    "dev:infra": "docker compose up -d postgres redis && npm run dev:infra:wait",
+    "dev:infra:wait": "until docker compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; do sleep 1; done && echo 'Postgres ready'",
+    "dev:infra:logs": "docker compose logs -f postgres redis",
+    "dev:stop": "npm run dev:kill-pf; docker compose down",
+    "dev:kill-pf": "pkill -f 'port-forward.*5433' 2>/dev/null; true",
+    "dev:stop-docker-db": "docker compose stop postgres 2>/dev/null; true",
+
     "build": "npm run build:backend && npm run build:frontend",
     "build:backend": "cd backend && npm run build",
     "build:frontend": "cd frontend && npm run build",
+
     "db:migrate": "cd backend && npm run db:migrate",
     "db:studio": "cd backend && npm run db:studio",
-    "docker:up": "docker-compose up -d",
-    "docker:down": "docker-compose down",
-    "docker:logs": "docker-compose logs -f",
+    "db:pgadmin": "docker start pgadmin 2>/dev/null || docker run -d --name pgadmin -p 5050:80 -e PGADMIN_DEFAULT_EMAIL=admin@admin.com -e PGADMIN_DEFAULT_PASSWORD=admin dpage/pgadmin4",
+    "db:port-forward": "oc -n upstream-pulse port-forward svc/postgres 5433:5432",
+
+    "docker:up": "docker compose --profile app up -d",
+    "docker:down": "docker compose --profile app down",
+    "docker:logs": "docker compose --profile app logs -f",
+
     "deploy": "./deploy/deploy.sh deploy",
     "deploy:build": "./deploy/deploy.sh build",
     "deploy:push": "./deploy/deploy.sh push",
     "deploy:apply": "./deploy/deploy.sh apply",
-    "deploy:status": "./deploy/deploy.sh status",
-    "db:pgadmin": "docker start pgadmin || docker run -d --name pgadmin -p 5050:80 -e PGADMIN_DEFAULT_EMAIL=admin@admin.com -e PGADMIN_DEFAULT_PASSWORD=admin dpage/pgadmin4",
-    "db:port-forward": "oc -n upstream-pulse port-forward svc/postgres 5433:5432"
+    "deploy:status": "./deploy/deploy.sh status"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

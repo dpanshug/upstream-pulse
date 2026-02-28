@@ -1,6 +1,5 @@
-version: '3.8'
-
 services:
+  # ── Infrastructure (used by both local dev and full-stack docker) ──
   postgres:
     image: postgres:16-alpine
     container_name: upstream-pulse-db
@@ -9,7 +8,7 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: upstream_pulse
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -22,7 +21,7 @@ services:
     image: redis:7-alpine
     container_name: upstream-pulse-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -31,16 +30,18 @@ services:
       timeout: 3s
       retries: 5
 
-  # Backend API server
+  # ── Application containers (only used with `docker-compose --profile app`) ──
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: upstream-pulse-backend
+    profiles: ["app"]
     ports:
-      - "3000:3000"
+      - "4321:4321"
     environment:
       - NODE_ENV=development
+      - PORT=4321
       - DATABASE_URL=postgresql://postgres:password@postgres:5432/upstream_pulse
       - REDIS_URL=redis://redis:6379
     depends_on:
@@ -49,12 +50,12 @@ services:
       redis:
         condition: service_healthy
 
-  # BullMQ worker
   worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: upstream-pulse-worker
+    profiles: ["app"]
     command: ["node", "dist/worker.js"]
     environment:
       - NODE_ENV=development
@@ -66,12 +67,12 @@ services:
       redis:
         condition: service_healthy
 
-  # Frontend dashboard
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: upstream-pulse-frontend
+    profiles: ["app"]
     ports:
       - "8080:8080"
     depends_on:

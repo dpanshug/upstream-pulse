@@ -186,7 +186,6 @@ app.get('/api/team-members', async (request, reply) => {
   try {
     const members = await db.query.teamMembers.findMany({
       where: (teamMembers, { eq }) => eq(teamMembers.isActive, true),
-      limit: 100,
     });
 
     return {

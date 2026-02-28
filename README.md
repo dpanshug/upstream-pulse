@@ -50,24 +50,22 @@ cd upstream-pulse
 cp .env.example .env
 # Edit .env with your credentials (GitHub token, Google AI key, etc.)
 
-# Start database services
-docker-compose up -d postgres redis
+# Install all dependencies
+npm run install:all
 
-# Backend setup
-cd backend
-npm install
+# Run database migrations
 npm run db:migrate
-npm run dev           # API server on :3000
 
-# In a separate terminal — start workers
-cd backend
-npm run worker
-
-# Frontend setup (in another terminal)
-cd frontend
-npm install
-npm run dev           # Dashboard on :5173
+# Start everything (infra + backend + frontend)
+npm run dev           # Postgres on :5433, API on :4321, UI on :5173
 ```
+
+> **Note:** `npm run dev` starts Postgres and Redis via Docker, then launches the
+> backend API server and frontend dev server concurrently. Postgres is exposed on
+> port **5433** (not the default 5432) to avoid conflicts with any local Postgres
+> installation.
+>
+> To develop against an OpenShift cluster database instead, use `npm run dev:cluster`.
 
 See [QUICKSTART.md](QUICKSTART.md) for a more detailed walkthrough.
 
