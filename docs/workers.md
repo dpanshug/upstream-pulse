@@ -1,6 +1,6 @@
 # Workers & Job System
 
-Upstream Pulse uses **BullMQ** (backed by Redis) for background job processing. This allows long-running tasks like GitHub data collection and AI analysis to run asynchronously without blocking the API.
+Upstream Pulse uses **BullMQ** (backed by Redis) for background job processing. This allows long-running tasks like GitHub data collection and insight generation to run asynchronously without blocking the API.
 
 ---
 
@@ -37,7 +37,7 @@ Handles GitHub data collection for tracked projects.
 
 ### 2. `insight-generation`
 
-Handles AI-powered analysis using Google Gemini.
+Generates insights from contribution data using Google Gemini (optional).
 
 | Property | Value |
 |----------|-------|

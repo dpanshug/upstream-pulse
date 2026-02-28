@@ -283,10 +283,10 @@ export class CollectionScheduler {
   }
 
   /**
-   * Trigger AI insights generation
+   * Trigger insight generation (uses Gemini when configured)
    */
   async triggerInsightGeneration(timeRange?: { start: Date; end: Date }) {
-    logger.info('Triggering AI insights generation');
+    logger.info('Triggering insight generation');
 
     const defaultEnd = new Date();
     const defaultStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // Last 30 days

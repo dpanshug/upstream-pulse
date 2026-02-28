@@ -149,7 +149,7 @@ export const metricsDaily = pgTable('metrics_daily', {
   dateIdx: index('metrics_date_idx').on(table.metricDate),
 }));
 
-// AI-generated insights
+// Generated insights (via Gemini or statistical analysis)
 export const insights = pgTable('insights', {
   id: uuid('id').defaultRandom().primaryKey(),
   insightType: varchar('insight_type', { length: 100 }).notNull(), // 'trend', 'opportunity', 'anomaly', 'summary'

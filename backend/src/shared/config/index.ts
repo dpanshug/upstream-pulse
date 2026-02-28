@@ -27,7 +27,7 @@ export const config = {
   githubTeamToken: process.env.GITHUB_TEAM_TOKEN || process.env.GITHUB_TOKEN || '',
   githubTeamOrg: process.env.GITHUB_TEAM_ORG || 'opendatahub-io',
 
-  // AI
+  // Insight generation (Google Gemini)
   googleAIApiKey: process.env.GOOGLE_AI_API_KEY || '',
 
   // Auth
@@ -50,7 +50,7 @@ export const config = {
 
 // Validate required environment variables
 export function validateConfig() {
-  const required: (keyof typeof config)[] = ['githubToken', 'googleAIApiKey'];
+  const required: (keyof typeof config)[] = ['githubToken'];
 
   for (const key of required) {
     if (!config[key]) {

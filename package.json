@@ -1,7 +1,7 @@
 {
   "name": "upstream-pulse",
   "version": "1.0.0",
-  "description": "AI-powered upstream open source contribution insights for your organization",
+  "description": "Automated upstream open source contribution tracking and insights for your organization",
   "type": "module",
   "scripts": {
     "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
@@ -50,7 +50,7 @@
     "open-source",
     "contribution-tracking",
     "analytics",
-    "ai-insights",
+    "insights",
     "github",
     "upstream"
   ],

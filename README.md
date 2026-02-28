@@ -2,7 +2,7 @@
 
 **Upstream Open Source Contribution Insights**
 
-Track and analyze your organization's contributions across upstream open source communities with AI-powered insights.
+Track and analyze your organization's contributions across upstream open source communities with automated, data-driven insights.
 
 ## Overview
 
@@ -18,7 +18,7 @@ Upstream Pulse helps engineering leadership answer critical questions about thei
 - **Automated Data Collection** from GitHub (commits, PRs, reviews, issues)
 - **Identity Resolution** mapping contributors to team members
 - **Leadership Tracking** for maintainer status and steering committee positions
-- **AI-Powered Insights** using Google Gemini
+- **Automated Insights** with optional Google Gemini integration for trend analysis
 - **Executive Dashboard** with KPIs and trend visualizations
 
 ## Tech Stack
@@ -27,7 +27,7 @@ Upstream Pulse helps engineering leadership answer critical questions about thei
 |-------|-------------|
 | **Backend** | Node.js, TypeScript, Fastify, PostgreSQL, Redis, BullMQ, Drizzle ORM |
 | **Frontend** | React, Vite, Tailwind CSS, shadcn/ui |
-| **AI** | Google Gemini |
+| **Insights** | Google Gemini (optional) |
 | **Deployment** | Docker, OpenShift / Kubernetes |
 
 ## Quick Start
@@ -37,7 +37,7 @@ Upstream Pulse helps engineering leadership answer critical questions about thei
 - Node.js 20+
 - Docker & Docker Compose
 - GitHub Personal Access Token with `repo` and `read:org` scopes
-- Google AI API key (Gemini)
+- Google Gemini API key (optional — needed only for automated insight generation)
 
 ### Setup
 
@@ -48,7 +48,7 @@ cd upstream-pulse
 
 # Create environment file
 cp .env.example .env
-# Edit .env with your credentials (GitHub token, Google AI key, etc.)
+# Edit .env with your credentials (GitHub token, optional Gemini key, etc.)
 
 # Install all dependencies
 npm run install:all
@@ -76,8 +76,8 @@ All configuration is done via environment variables. See [.env.example](.env.exa
 | Variable | Description |
 |----------|-------------|
 | `GITHUB_TOKEN` | GitHub PAT for collecting contribution data |
-| `GOOGLE_AI_API_KEY` | Google Gemini API key for AI insights |
-| `ORG_NAME` | Your organization name (used in AI prompts and reports) |
+| `GOOGLE_AI_API_KEY` | Google Gemini API key (optional — enables automated insight generation) |
+| `ORG_NAME` | Your organization name (used in reports and insight generation) |
 | `TEAM_EMAIL_DOMAIN` | Email domain for team member matching (e.g. `example.com`) |
 | `GITHUB_TEAM_ORG` | GitHub org for team member sync |
 

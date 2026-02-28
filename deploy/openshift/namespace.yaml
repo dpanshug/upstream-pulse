@@ -5,5 +5,5 @@ metadata:
   labels:
     app.kubernetes.io/part-of: upstream-pulse
   annotations:
-    openshift.io/description: "AI-powered upstream OSS contribution insights"
+    openshift.io/description: "Automated upstream OSS contribution tracking and insights"
     openshift.io/display-name: "Upstream Pulse"

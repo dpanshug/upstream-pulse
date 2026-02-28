@@ -4,7 +4,7 @@ import { logger } from '../../shared/utils/logger.js';
 import type { ContributionData, InsightReport } from '../../shared/types/index.js';
 import { z } from 'zod';
 
-// Zod schema for validating AI responses
+// Zod schema for validating Gemini responses
 const InsightReportSchema = z.object({
   trends: z.array(z.object({
     type: z.enum(['growth', 'decline']),
@@ -73,7 +73,7 @@ export class AIInsightsEngine {
     data: ContributionData[],
     timeRange: { start: Date; end: Date }
   ): Promise<InsightReport> {
-    logger.info('Generating AI insights', {
+    logger.info('Generating insights via Gemini', {
       projectCount: data.length,
       timeRange,
     });
@@ -87,12 +87,12 @@ export class AIInsightsEngine {
       const response = await result.response;
       const text = response.text();
 
-      logger.debug('Raw AI response', { text: text.substring(0, 200) });
+      logger.debug('Raw Gemini response', { text: text.substring(0, 200) });
 
       // Parse and validate JSON response
       const insights = this.parseInsightsResponse(text);
 
-      logger.info('AI insights generated successfully', {
+      logger.info('Insights generated successfully', {
         trends: insights.trends.length,
         opportunities: insights.opportunities.length,
         anomalies: insights.anomalies.length,
@@ -102,13 +102,13 @@ export class AIInsightsEngine {
       return insights;
 
     } catch (error) {
-      logger.error('Error generating AI insights', { error });
+      logger.error('Error generating insights via Gemini', { error });
       throw error;
     }
   }
 
   /**
-   * Build the prompt for AI insight generation
+   * Build the prompt for Gemini insight generation
    */
   private buildInsightPrompt(
     data: ContributionData[],
@@ -138,7 +138,7 @@ Provide strategic insights following the JSON schema defined in the system promp
   }
 
   /**
-   * Parse and validate AI response
+   * Parse and validate Gemini response
    */
   private parseInsightsResponse(text: string): InsightReport {
     try {
@@ -161,7 +161,7 @@ Provide strategic insights following the JSON schema defined in the system promp
       return validated;
 
     } catch (error) {
-      logger.error('Error parsing AI insights response', {
+      logger.error('Error parsing Gemini insights response', {
         error,
         responsePreview: text.substring(0, 500),
       });
@@ -172,8 +172,8 @@ Provide strategic insights following the JSON schema defined in the system promp
         opportunities: [],
         anomalies: [],
         recommendations: [{
-          title: 'AI Insight Generation Failed',
-          description: 'Unable to parse AI response. Please check logs for details.',
+          title: 'Insight Generation Failed',
+          description: 'Unable to parse Gemini response. Please check logs for details.',
           priority: 'low',
         }],
       };

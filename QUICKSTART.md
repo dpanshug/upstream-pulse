@@ -5,7 +5,7 @@
 - Node.js 20+ installed
 - Docker & Docker Compose installed
 - GitHub Personal Access Token with `repo` and `read:org` scopes
-- Google AI API key (Gemini)
+- Google Gemini API key (optional — for automated insight generation)
 
 ## Initial Setup
 

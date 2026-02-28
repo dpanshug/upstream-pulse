@@ -6,7 +6,7 @@ import {
   MessageSquare,
   AlertCircle,
   Database,
-  Brain,
+  TrendingUp,
   BarChart3,
   Shield,
   Users,
@@ -51,9 +51,9 @@ const pipelineSteps = [
     bg: 'bg-blue-50',
   },
   {
-    icon: Brain,
+    icon: TrendingUp,
     title: 'Analyze',
-    description: 'AI-powered analysis using Google Gemini surfaces trends and generates insights',
+    description: 'Automated trend detection and insight generation from aggregated contribution data',
     color: 'text-purple-600',
     bg: 'bg-purple-50',
   },
@@ -116,7 +116,7 @@ export default function About() {
           ) : (
             <p className="text-gray-600 text-[15px] leading-relaxed max-w-2xl">
               Track and analyze your organization's contributions across upstream open source
-              communities with AI-powered insights.
+              communities with automated, data-driven insights.
             </p>
           )}
         </div>
