@@ -167,10 +167,11 @@ save_access_stats() {
         count="$(wc -l < "${tmp_stats}" | tr -d ' ')"
         if [ "${count}" -gt 0 ]; then
             if [ -f "${stats_file}" ]; then
-                # Append only lines not already present
                 local new_lines
-                new_lines="$(grep -vFxf "${stats_file}" "${tmp_stats}" 2>/dev/null | wc -l | tr -d ' ')"
-                grep -vFxf "${stats_file}" "${tmp_stats}" >> "${stats_file}" 2>/dev/null || true
+                new_lines="$(grep -vFxf "${stats_file}" "${tmp_stats}" 2>/dev/null | wc -l | tr -d ' ' || echo "0")"
+                if [ "${new_lines}" -gt 0 ]; then
+                    grep -vFxf "${stats_file}" "${tmp_stats}" >> "${stats_file}" 2>/dev/null || true
+                fi
                 log "Appended ${new_lines} new entries to ${stats_file}"
             else
                 cp "${tmp_stats}" "${stats_file}"
