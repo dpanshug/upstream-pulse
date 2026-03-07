@@ -1,9 +1,10 @@
 /**
  * Leadership Worker
- * 
- * Collects leadership positions (Steering Committee, WG/SIG Chairs and Tech Leads)
- * from the kubeflow/community repository.
- * 
+ *
+ * Collects leadership positions from a community repository for a given org.
+ * Dispatches to the appropriate parsers via LeadershipCollector based on the
+ * org registry config.
+ *
  * Runs monthly (separate from the weekly OWNERS collection in governance-worker).
  */
 
@@ -15,10 +16,12 @@ import { logger } from '../../shared/utils/logger.js';
 import { db } from '../../shared/database/client.js';
 import { collectionJobs, leadershipPositions, teamMembers } from '../../shared/database/schema.js';
 import { LeadershipCollector } from '../../modules/collection/leadership-collector.js';
+import { getOrgConfig, getOrgsWithCommunityRepo } from '../../shared/config/org-registry.js';
 import { eq, and } from 'drizzle-orm';
 
 interface LeadershipJobData {
   trigger: 'scheduled' | 'manual';
+  githubOrg?: string;
 }
 
 const redisConnection = new Redis(config.redisUrl, {
@@ -28,11 +31,12 @@ const redisConnection = new Redis(config.redisUrl, {
 export const leadershipWorker = new Worker<LeadershipJobData>(
   'leadership-refresh',
   async (job: Job<LeadershipJobData>) => {
-    const { trigger } = job.data;
+    const { trigger, githubOrg } = job.data;
 
     logger.info('Starting leadership refresh job', {
       jobId: job.id,
       trigger,
+      githubOrg: githubOrg || 'all',
     });
 
     // Create job record
@@ -40,158 +44,167 @@ export const leadershipWorker = new Worker<LeadershipJobData>(
     await db.insert(collectionJobs).values({
       id: jobRecordId,
       jobType: 'leadership_refresh',
-      projectId: null, // Leadership is org-wide, not project-specific
+      projectId: null,
       status: 'running',
       startedAt: new Date(),
-      metadata: { bullmqJobId: job.id, trigger },
+      metadata: { bullmqJobId: job.id, trigger, githubOrg },
     });
 
     try {
+      // Determine which orgs to process
+      const orgsToProcess = githubOrg
+        ? [getOrgConfig(githubOrg)].filter(Boolean)
+        : getOrgsWithCommunityRepo();
+
+      if (orgsToProcess.length === 0) {
+        throw new Error(githubOrg
+          ? `Org ${githubOrg} not found in registry or has no communityRepo`
+          : 'No orgs with communityRepo configured');
+      }
+
       // Get all active team members for matching
       const allTeamMembers = await db.query.teamMembers.findMany({
         where: eq(teamMembers.isActive, true),
       });
-
-      // Create a map of GitHub usernames (lowercase) to team member IDs
       const usernameToTeamMember = new Map(
         allTeamMembers
           .filter(m => m.githubUsername)
-          .map(m => [m.githubUsername!.toLowerCase(), m])
+          .map(m => [m.githubUsername!.toLowerCase(), m]),
       );
 
       logger.info(`Found ${allTeamMembers.length} team members for matching`);
 
-      // Collect all leadership positions
-      const collector = new LeadershipCollector();
-      const positions = await collector.getAllLeadershipPositions();
-
-      logger.info(`Collected ${positions.length} leadership positions from community repo`);
-
-      // Mark all existing leadership positions as inactive before updating
-      // This handles cases where someone was removed from leadership
-      await db.update(leadershipPositions)
-        .set({ isActive: false, updatedAt: new Date() })
-        .where(eq(leadershipPositions.source, 'github_community_repo'));
-
-      let teamPositionsCount = 0;
-      let externalPositionsCount = 0;
+      let totalTeamPositions = 0;
+      let totalExternalPositions = 0;
       let errorsCount = 0;
 
-      // Process each position (both team members and external community members)
-      for (const pos of positions) {
-        const teamMember = usernameToTeamMember.get(pos.githubUsername.toLowerCase());
-        const isTeamMember = !!teamMember;
+      for (const orgCfg of orgsToProcess) {
+        if (!orgCfg?.communityRepo) continue;
+        const orgSlug = orgCfg.githubOrg;
 
         try {
-          // Check if entry already exists - use githubUsername as the unique key for all positions
-          const existing = await db.query.leadershipPositions.findFirst({
-            where: and(
-              eq(leadershipPositions.githubUsername, pos.githubUsername.toLowerCase()),
-              eq(leadershipPositions.positionType, pos.positionType),
-              eq(leadershipPositions.committeeName, pos.groupName),
-              eq(leadershipPositions.source, 'github_community_repo')
-            ),
-          });
+          const collector = new LeadershipCollector(orgSlug, orgCfg.communityRepo);
+          const positions = await collector.getAllLeadershipPositions();
 
-          // Format dates if provided (steering committee has term dates)
-          const startDate = pos.termStart 
-            ? new Date(pos.termStart.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$1-$2'))
-            : new Date();
+          logger.info(`Collected ${positions.length} leadership positions for ${orgSlug}`);
 
-          const endDate = pos.termEnd
-            ? new Date(pos.termEnd.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$1-$2'))
-            : null;
+          // Mark existing positions for this org as inactive
+          await db.update(leadershipPositions)
+            .set({ isActive: false, updatedAt: new Date() })
+            .where(
+              and(
+                eq(leadershipPositions.source, 'github_community_repo'),
+                eq(leadershipPositions.communityOrg, orgSlug),
+              ),
+            );
 
-          // Map position type to role title
-          const roleTitle = {
-            'steering_committee': 'Steering Committee Member',
-            'wg_chair': 'Working Group Chair',
-            'wg_tech_lead': 'Working Group Tech Lead',
-            'sig_chair': 'SIG Chair',
-            'sig_tech_lead': 'SIG Tech Lead',
-          }[pos.positionType];
+          for (const pos of positions) {
+            const teamMember = usernameToTeamMember.get(pos.githubUsername.toLowerCase());
 
-          if (existing) {
-            // Update existing entry
-            await db.update(leadershipPositions)
-              .set({
-                isActive: true,
-                roleTitle,
-                teamMemberId: teamMember?.id || null,
-                externalName: pos.name,
-                organization: pos.organization || null,
-                startDate: startDate.toISOString().split('T')[0],
-                endDate: endDate ? endDate.toISOString().split('T')[0] : null,
-                evidenceUrl: pos.sourceUrl,
-                updatedAt: new Date(),
-              })
-              .where(eq(leadershipPositions.id, existing.id));
-          } else {
-            // Insert new entry
-            await db.insert(leadershipPositions).values({
-              teamMemberId: teamMember?.id || null,
-              githubUsername: pos.githubUsername.toLowerCase(),
-              externalName: pos.name,
-              organization: pos.organization || null,
-              projectId: null, // Leadership positions are org-wide
-              positionType: pos.positionType,
-              committeeName: pos.groupName,
-              roleTitle,
-              startDate: startDate.toISOString().split('T')[0],
-              endDate: endDate ? endDate.toISOString().split('T')[0] : null,
-              isActive: true,
-              votingRights: pos.positionType === 'steering_committee', // Only SC has voting rights
-              source: 'github_community_repo',
-              evidenceUrl: pos.sourceUrl,
-            });
+            try {
+              const existing = await db.query.leadershipPositions.findFirst({
+                where: and(
+                  eq(leadershipPositions.githubUsername, pos.githubUsername.toLowerCase()),
+                  eq(leadershipPositions.positionType, pos.positionType),
+                  eq(leadershipPositions.committeeName, pos.groupName),
+                  eq(leadershipPositions.source, 'github_community_repo'),
+                  eq(leadershipPositions.communityOrg, orgSlug),
+                ),
+              });
+
+              const startDate = pos.termStart
+                ? new Date(pos.termStart.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$1-$2'))
+                : new Date();
+              const endDate = pos.termEnd
+                ? new Date(pos.termEnd.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$1-$2'))
+                : null;
+
+              // Use the positionType directly as part of the role title
+              const roleTitle = pos.positionType
+                .replace(/_/g, ' ')
+                .replace(/\b\w/g, c => c.toUpperCase());
+
+              if (existing) {
+                await db.update(leadershipPositions)
+                  .set({
+                    isActive: pos.isActive,
+                    roleTitle,
+                    teamMemberId: teamMember?.id || null,
+                    externalName: pos.name,
+                    organization: pos.organization || null,
+                    startDate: startDate.toISOString().split('T')[0],
+                    endDate: endDate ? endDate.toISOString().split('T')[0] : null,
+                    evidenceUrl: pos.sourceUrl,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(leadershipPositions.id, existing.id));
+              } else {
+                await db.insert(leadershipPositions).values({
+                  teamMemberId: teamMember?.id || null,
+                  githubUsername: pos.githubUsername.toLowerCase(),
+                  externalName: pos.name,
+                  organization: pos.organization || null,
+                  communityOrg: orgSlug,
+                  projectId: null,
+                  positionType: pos.positionType,
+                  committeeName: pos.groupName,
+                  roleTitle,
+                  startDate: startDate.toISOString().split('T')[0],
+                  endDate: endDate ? endDate.toISOString().split('T')[0] : null,
+                  isActive: pos.isActive,
+                  votingRights: false,
+                  source: 'github_community_repo',
+                  evidenceUrl: pos.sourceUrl,
+                });
+              }
+
+              if (teamMember) totalTeamPositions++;
+              else totalExternalPositions++;
+            } catch (posError) {
+              logger.warn(`Error storing leadership position for @${pos.githubUsername}`, {
+                error: (posError as Error).message,
+              });
+              errorsCount++;
+            }
           }
-
-          if (isTeamMember) {
-            teamPositionsCount++;
-          } else {
-            externalPositionsCount++;
-          }
-        } catch (posError) {
-          logger.warn(`Error storing leadership position for @${pos.githubUsername}`, {
-            error: (posError as Error).message,
+        } catch (orgError) {
+          logger.error(`Error processing org ${orgSlug}`, {
+            error: (orgError as Error).message,
           });
           errorsCount++;
         }
       }
 
-      // Update job progress
       await job.updateProgress(100);
 
-      // Mark job as completed
       await db.update(collectionJobs)
         .set({
           status: 'completed',
           completedAt: new Date(),
-          recordsProcessed: teamPositionsCount + externalPositionsCount,
+          recordsProcessed: totalTeamPositions + totalExternalPositions,
           errorsCount,
           metadata: {
             bullmqJobId: job.id,
             trigger,
-            totalPositions: positions.length,
-            teamPositions: teamPositionsCount,
-            externalPositions: externalPositionsCount,
+            githubOrg,
+            teamPositions: totalTeamPositions,
+            externalPositions: totalExternalPositions,
+            orgsProcessed: orgsToProcess.length,
           },
         })
         .where(eq(collectionJobs.id, jobRecordId));
 
       logger.info('Leadership refresh job completed', {
         jobId: job.id,
-        totalPositions: positions.length,
-        teamPositions: teamPositionsCount,
-        externalPositions: externalPositionsCount,
+        teamPositions: totalTeamPositions,
+        externalPositions: totalExternalPositions,
         errorsCount,
       });
 
       return {
         success: true,
-        totalPositions: positions.length,
-        teamPositions: teamPositionsCount,
-        externalPositions: externalPositionsCount,
+        teamPositions: totalTeamPositions,
+        externalPositions: totalExternalPositions,
         errorsCount,
       };
 
@@ -201,7 +214,6 @@ export const leadershipWorker = new Worker<LeadershipJobData>(
         error: (error as Error).message,
       });
 
-      // Mark job as failed
       await db.update(collectionJobs)
         .set({
           status: 'failed',
@@ -218,8 +230,8 @@ export const leadershipWorker = new Worker<LeadershipJobData>(
   },
   {
     connection: redisConnection,
-    concurrency: 1, // Only one leadership job at a time
-  }
+    concurrency: 1,
+  },
 );
 
 leadershipWorker.on('completed', (job) => {

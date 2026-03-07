@@ -1,20 +1,108 @@
 import { Shield, Crown, Users, ArrowUpRight } from 'lucide-react';
-import { LeadershipData } from './types';
+import { LeadershipData, OrgLeadership, OrgPositionGroup } from './types';
 import { LeadershipMemberCard } from './LeadershipMemberCard';
 
 interface LeadershipSectionProps {
   leadership: LeadershipData;
 }
 
+function positionColor(type: string) {
+  if (type.includes('steering') || type.includes('tsc'))
+    return { bg: 'from-purple-50 to-indigo-50', border: 'border-purple-100', text: 'text-purple-800', badge: 'bg-purple-50 text-purple-700 border-purple-200' };
+  if (type.includes('chair'))
+    return { bg: 'from-amber-50 to-orange-50', border: 'border-amber-100', text: 'text-amber-800', badge: 'bg-amber-50 text-amber-700 border-amber-200' };
+  return { bg: 'from-blue-50 to-sky-50', border: 'border-blue-100', text: 'text-blue-800', badge: 'bg-blue-50 text-blue-700 border-blue-200' };
+}
+
+function PositionStatCard({ group }: { group: OrgPositionGroup }) {
+  const color = positionColor(group.positionType);
+  return (
+    <div className={`bg-gradient-to-br ${color.bg} rounded-xl shadow-sm border ${color.border} p-4`}>
+      <div className="flex items-center gap-2 mb-2">
+        <Crown className={`w-4 h-4 ${color.text}`} />
+        <span className={`text-xs font-medium ${color.text}`}>{group.roleTitle}</span>
+      </div>
+      <div className="flex items-baseline gap-1">
+        <span className="text-2xl font-bold text-gray-900">{group.teamCount}</span>
+        {group.totalCount > 0 && (
+          <span className="text-xs text-gray-500">of {group.totalCount}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OrgLeadershipBlock({ orgData }: { orgData: OrgLeadership }) {
+  return (
+    <div className="mb-6">
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">{orgData.orgName}</h3>
+
+      {/* Stat cards */}
+      {orgData.positions.length > 0 && (
+        <div className={`grid grid-cols-2 gap-3 mb-4 ${
+          orgData.positions.length >= 4 ? 'md:grid-cols-4' :
+          orgData.positions.length === 3 ? 'md:grid-cols-3' :
+          'md:grid-cols-2'
+        }`}>
+          {orgData.positions.map(group => (
+            <PositionStatCard key={group.positionType} group={group} />
+          ))}
+        </div>
+      )}
+
+      {/* Member chips per position */}
+      {orgData.positions.map(group => {
+        if (group.members.length === 0) return null;
+        const color = positionColor(group.positionType);
+        return (
+          <div
+            key={group.positionType}
+            className={`bg-gradient-to-r ${color.bg} rounded-xl shadow-sm border ${color.border} p-5 mb-3`}
+          >
+            <h4 className={`text-sm font-medium ${color.text} mb-3 flex items-center gap-2`}>
+              <Crown className="w-4 h-4" />
+              {group.roleTitle}
+              {group.members[0]?.groupName && group.members[0].groupName !== orgData.orgName && (
+                <span className="text-xs font-normal opacity-70">— {group.members[0].groupName}</span>
+              )}
+            </h4>
+            <div className="flex flex-wrap gap-4">
+              {group.members.map(member => (
+                <div key={member.id + group.positionType} className="flex items-center gap-3 bg-white rounded-lg px-4 py-3 shadow-sm">
+                  <img
+                    src={member.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=e5e7eb&color=374151`}
+                    alt={member.name}
+                    className="w-10 h-10 rounded-full ring-2 ring-white shadow-sm"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{member.name}</p>
+                    {member.githubUsername && (
+                      <a
+                        href={`https://github.com/${member.githubUsername}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-gray-500 hover:text-blue-600 inline-flex items-center gap-0.5"
+                      >
+                        @{member.githubUsername}
+                        <ArrowUpRight className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function LeadershipSection({ leadership }: LeadershipSectionProps) {
-  const { summary, teamLeaders, steeringCommittee } = leadership;
+  const { byOrg, maintainers, teamLeaders } = leadership;
+  const hasOrgLeadership = byOrg.some(o => o.positions.length > 0);
 
-  // Count org-level leadership
-  const hasOrgLeadership = (summary.steeringCommitteeCount ?? 0) > 0 || 
-                           (summary.wgChairsCount ?? 0) > 0 || 
-                           (summary.wgTechLeadsCount ?? 0) > 0;
-
-  // Get members with org-level leadership roles
+  // Members with WG/org leadership roles
   const orgLeaders = teamLeaders.filter(m => m.leadershipRoles && m.leadershipRoles.length > 0);
 
   return (
@@ -22,109 +110,46 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Shield className="w-5 h-5 text-amber-600" />
-          <h2 className="text-lg font-semibold text-gray-900">
-            Team Leadership
-          </h2>
+          <h2 className="text-lg font-semibold text-gray-900">Team Leadership</h2>
         </div>
         <p className="text-sm text-gray-500">
-          Team influence in Kubeflow governance
+          Team influence in upstream governance
         </p>
       </div>
 
-      {/* Leadership Stats */}
-      <div className={`grid grid-cols-2 ${(summary.steeringCommitteeCount ?? 0) > 0 ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4 mb-6`}>
-        {(summary.steeringCommitteeCount ?? 0) > 0 && (
-          <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-xl shadow-sm border border-purple-100 p-4">
+      {/* Per-org leadership blocks */}
+      {byOrg.map(orgData => (
+        <OrgLeadershipBlock key={orgData.org} orgData={orgData} />
+      ))}
+
+      {/* Approvers stat */}
+      {(maintainers.teamApprovers > 0 || maintainers.teamReviewers > 0) && (
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Crown className="w-4 h-4 text-purple-600" />
-              <span className="text-xs font-medium text-purple-800">Steering Committee</span>
+              <Crown className="w-4 h-4 text-green-500" />
+              <span className="text-xs font-medium text-gray-700">Approvers</span>
             </div>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-purple-900">{summary.steeringCommitteeCount}</span>
-              {(summary.totalSteeringCommittee ?? 0) > 0 && (
-                <span className="text-xs text-purple-600">of {summary.totalSteeringCommittee}</span>
-              )}
+              <span className="text-2xl font-bold text-green-600">{maintainers.teamApprovers}</span>
+              <span className="text-xs text-gray-500">of {maintainers.totalApprovers}</span>
             </div>
           </div>
-        )}
-
-        {/* WG Chairs */}
-        <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl shadow-sm border border-amber-100 p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Shield className="w-4 h-4 text-amber-600" />
-            <span className="text-xs font-medium text-amber-800">WG Chairs</span>
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-amber-900">{summary.wgChairsCount ?? 0}</span>
-            {(summary.totalWgChairs ?? 0) > 0 && (
-              <span className="text-xs text-amber-600">of {summary.totalWgChairs}</span>
-            )}
-          </div>
-        </div>
-
-        {/* WG Tech Leads */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Users className="w-4 h-4 text-blue-500" />
-            <span className="text-xs font-medium text-gray-700">WG Tech Leads</span>
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-gray-900">{summary.wgTechLeadsCount ?? 0}</span>
-            {(summary.totalWgTechLeads ?? 0) > 0 && (
-              <span className="text-xs text-gray-500">of {summary.totalWgTechLeads}</span>
-            )}
-          </div>
-        </div>
-
-        {/* Approvers */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Crown className="w-4 h-4 text-green-500" />
-            <span className="text-xs font-medium text-gray-700">Approvers</span>
-          </div>
-          <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-bold text-green-600">{summary.teamApprovers}</span>
-            <span className="text-xs text-gray-500">of {summary.totalApprovers}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Steering Committee Members */}
-      {steeringCommittee && steeringCommittee.length > 0 && (
-        <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl shadow-sm border border-purple-100 p-5 mb-4">
-          <h3 className="text-sm font-medium text-purple-800 mb-3 flex items-center gap-2">
-            <Crown className="w-4 h-4" />
-            Kubeflow Steering Committee
-          </h3>
-          <div className="flex flex-wrap gap-4">
-            {steeringCommittee.map((member) => (
-              <div key={member.id} className="flex items-center gap-3 bg-white rounded-lg px-4 py-3 shadow-sm">
-                <img
-                  src={member.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=e5e7eb&color=374151`}
-                  alt={member.name}
-                  className="w-10 h-10 rounded-full ring-2 ring-purple-200"
-                />
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{member.name}</p>
-                  {member.githubUsername && (
-                    <a
-                      href={`https://github.com/${member.githubUsername}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-purple-600 hover:underline"
-                    >
-                      @{member.githubUsername}
-                    </a>
-                  )}
-                </div>
-              </div>
-            ))}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Users className="w-4 h-4 text-blue-500" />
+              <span className="text-xs font-medium text-gray-700">Reviewers</span>
+            </div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-2xl font-bold text-blue-600">{maintainers.teamReviewers}</span>
+              <span className="text-xs text-gray-500">of {maintainers.totalReviewers}</span>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Org-Level Leaders (WG Chairs/Tech Leads) */}
-      {orgLeaders.length > 0 && (
+      {/* Org-Level Leaders (WG Chairs/Tech Leads not shown above) */}
+      {orgLeaders.length > 0 && !hasOrgLeadership && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-4">
           <h3 className="text-sm font-medium text-gray-600 mb-4">Working Group Leadership</h3>
           <div className="grid md:grid-cols-2 gap-3">
@@ -136,9 +161,7 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
                   className="w-10 h-10 rounded-full ring-2 ring-white shadow-sm"
                 />
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="font-medium text-gray-900">{member.name}</p>
-                  </div>
+                  <p className="font-medium text-gray-900">{member.name}</p>
                   {member.githubUsername && (
                     <a
                       href={`https://github.com/${member.githubUsername}`}
@@ -151,21 +174,18 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
                     </a>
                   )}
                   <div className="mt-1.5 flex flex-wrap gap-1">
-                    {member.leadershipRoles?.map((role, idx) => (
-                      <span
-                        key={idx}
-                        className={`text-xs px-2 py-0.5 rounded border ${
-                          role.positionType === 'steering_committee'
-                            ? 'bg-purple-50 text-purple-700 border-purple-200'
-                            : role.positionType.includes('chair')
-                              ? 'bg-amber-50 text-amber-700 border-amber-200'
-                              : 'bg-blue-50 text-blue-700 border-blue-200'
-                        }`}
-                        title={role.roleTitle}
-                      >
-                        {role.groupName}
-                      </span>
-                    ))}
+                    {member.leadershipRoles?.map((role, idx) => {
+                      const c = positionColor(role.positionType);
+                      return (
+                        <span
+                          key={idx}
+                          className={`text-xs px-2 py-0.5 rounded border ${c.badge}`}
+                          title={role.roleTitle}
+                        >
+                          {role.groupName}
+                        </span>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -173,13 +193,13 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
           </div>
           {orgLeaders.length > 8 && (
             <p className="text-sm text-gray-500 mt-4 text-center">
-              +{orgLeaders.length - 8} more WG leaders
+              +{orgLeaders.length - 8} more leaders
             </p>
           )}
         </div>
       )}
 
-      {/* Project Approvers/Reviewers - only show members with OWNERS roles */}
+      {/* Project Approvers/Reviewers */}
       {(() => {
         const approversReviewers = teamLeaders.filter(m => m.roles && m.roles.length > 0);
         return approversReviewers.length > 0 && (

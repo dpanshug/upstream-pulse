@@ -1,3 +1,12 @@
+/**
+ * Governance Worker
+ *
+ * Collects maintainer/reviewer data from OWNERS or CODEOWNERS files
+ * depending on the org's configured governance model.
+ *
+ * Runs weekly to refresh maintainer status for all tracked projects.
+ */
+
 import { Worker, Job } from 'bullmq';
 import { Redis } from 'ioredis';
 import { randomUUID } from 'crypto';
@@ -6,10 +15,12 @@ import { logger } from '../../shared/utils/logger.js';
 import { db } from '../../shared/database/client.js';
 import { projects, collectionJobs, maintainerStatus, teamMembers } from '../../shared/database/schema.js';
 import { GitHubCollector } from '../../modules/collection/github-collector.js';
+import { CodeownersParser } from '../../modules/collection/codeowners-parser.js';
+import { getOrgConfig } from '../../shared/config/org-registry.js';
 import { eq, and } from 'drizzle-orm';
 
 interface GovernanceJobData {
-  projectId?: string; // If provided, only refresh this project; otherwise refresh all
+  projectId?: string;
   trigger: 'new_project' | 'scheduled' | 'manual';
 }
 
@@ -28,7 +39,6 @@ export const governanceWorker = new Worker<GovernanceJobData>(
       trigger,
     });
 
-    // Create job record
     const jobRecordId = randomUUID();
     await db.insert(collectionJobs).values({
       id: jobRecordId,
@@ -40,14 +50,9 @@ export const governanceWorker = new Worker<GovernanceJobData>(
     });
 
     try {
-      // Get projects to process
       const projectsToProcess = projectId
-        ? await db.query.projects.findMany({
-            where: eq(projects.id, projectId),
-          })
-        : await db.query.projects.findMany({
-            where: eq(projects.trackingEnabled, true),
-          });
+        ? await db.query.projects.findMany({ where: eq(projects.id, projectId) })
+        : await db.query.projects.findMany({ where: eq(projects.trackingEnabled, true) });
 
       if (projectsToProcess.length === 0) {
         throw new Error(projectId ? `Project not found: ${projectId}` : 'No projects to process');
@@ -55,116 +60,162 @@ export const governanceWorker = new Worker<GovernanceJobData>(
 
       logger.info(`Processing ${projectsToProcess.length} project(s) for governance refresh`);
 
-      // Get all active team members for matching
       const allTeamMembers = await db.query.teamMembers.findMany({
         where: eq(teamMembers.isActive, true),
       });
-
-      // Create a map of GitHub usernames (lowercase) to team member IDs
       const usernameToTeamMember = new Map(
         allTeamMembers
           .filter(m => m.githubUsername)
-          .map(m => [m.githubUsername!.toLowerCase(), m])
+          .map(m => [m.githubUsername!.toLowerCase(), m]),
       );
 
-      const collector = new GitHubCollector();
+      const ownersCollector = new GitHubCollector();
+      const codeownersParser = new CodeownersParser();
       let totalOwnersProcessed = 0;
       let totalProjectsProcessed = 0;
       let errorsCount = 0;
 
       for (const project of projectsToProcess) {
         try {
-          logger.info(`Collecting OWNERS for ${project.githubOrg}/${project.githubRepo}`);
+          // Determine governance model from org registry; default to 'owners'
+          const orgCfg = getOrgConfig(project.githubOrg);
+          const model = orgCfg?.governanceModel ?? 'owners';
 
-          const ownersMaintainers = await collector.getOwnersAsMaintainers(
-            project.githubOrg,
-            project.githubRepo
-          );
+          if (model === 'none') {
+            logger.debug(`Skipping governance for ${project.name} (model=none)`);
+            totalProjectsProcessed++;
+            continue;
+          }
 
-          logger.info(`Found ${ownersMaintainers.length} maintainers in OWNERS files for ${project.name}`);
+          logger.info(`Collecting ${model} for ${project.githubOrg}/${project.githubRepo}`);
 
-          // Mark existing OWNERS-sourced entries as inactive before updating
-          // This handles cases where someone was removed from OWNERS files
+          // Mark ALL existing governance entries as inactive for this project
+          // (scope by projectId only, not source, so switching models doesn't orphan rows)
           await db.update(maintainerStatus)
             .set({ isActive: false, updatedAt: new Date() })
             .where(
               and(
                 eq(maintainerStatus.projectId, project.id),
-                eq(maintainerStatus.source, 'OWNERS_file')
-              )
+                // Only clear entries from automated governance parsers
+                eq(maintainerStatus.source, model === 'codeowners' ? 'CODEOWNERS' : 'OWNERS_file'),
+              ),
             );
 
-          // Store maintainer status for each owner
-          for (const owner of ownersMaintainers) {
-            const teamMember = usernameToTeamMember.get(owner.username.toLowerCase());
+          if (model === 'owners') {
+            const ownersMaintainers = await ownersCollector.getOwnersAsMaintainers(
+              project.githubOrg,
+              project.githubRepo,
+            );
 
-            if (!teamMember) {
-              logger.debug(`OWNERS entry for non-team member: @${owner.username} (${owner.role})`);
-              continue;
-            }
+            logger.info(`Found ${ownersMaintainers.length} maintainers in OWNERS files for ${project.name}`);
 
-            // Map role to position type
-            const positionType = owner.role === 'approver' ? 'maintainer' : 'reviewer';
+            for (const owner of ownersMaintainers) {
+              const teamMember = usernameToTeamMember.get(owner.username.toLowerCase());
+              if (!teamMember) continue;
 
-            try {
-              // Check if entry already exists
-              const existing = await db.query.maintainerStatus.findFirst({
-                where: and(
-                  eq(maintainerStatus.projectId, project.id),
-                  eq(maintainerStatus.teamMemberId, teamMember.id),
-                  eq(maintainerStatus.source, 'OWNERS_file')
-                ),
-              });
+              const positionType = owner.role === 'approver' ? 'maintainer' : 'reviewer';
 
-              if (existing) {
-                // Update existing entry
-                await db.update(maintainerStatus)
-                  .set({
+              try {
+                const existing = await db.query.maintainerStatus.findFirst({
+                  where: and(
+                    eq(maintainerStatus.projectId, project.id),
+                    eq(maintainerStatus.teamMemberId, teamMember.id),
+                    eq(maintainerStatus.source, 'OWNERS_file'),
+                  ),
+                });
+
+                if (existing) {
+                  await db.update(maintainerStatus)
+                    .set({
+                      positionType,
+                      isActive: true,
+                      evidenceUrl: owner.sources[0],
+                      notes: `Paths: ${owner.paths.join(', ')}`,
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(maintainerStatus.id, existing.id));
+                } else {
+                  await db.insert(maintainerStatus).values({
+                    projectId: project.id,
+                    teamMemberId: teamMember.id,
                     positionType,
+                    positionTitle: owner.role === 'approver' ? 'Approver' : 'Reviewer',
                     isActive: true,
+                    source: 'OWNERS_file',
                     evidenceUrl: owner.sources[0],
                     notes: `Paths: ${owner.paths.join(', ')}`,
-                    updatedAt: new Date(),
-                  })
-                  .where(eq(maintainerStatus.id, existing.id));
-              } else {
-                // Insert new entry
-                await db.insert(maintainerStatus).values({
-                  projectId: project.id,
-                  teamMemberId: teamMember.id,
-                  positionType,
-                  positionTitle: owner.role === 'approver' ? 'Approver' : 'Reviewer',
-                  isActive: true,
-                  source: 'OWNERS_file',
-                  evidenceUrl: owner.sources[0],
-                  notes: `Paths: ${owner.paths.join(', ')}`,
+                  });
+                }
+                totalOwnersProcessed++;
+              } catch (ownerError) {
+                logger.warn(`Error storing maintainer status for @${owner.username}`, {
+                  error: (ownerError as Error).message,
                 });
+                errorsCount++;
               }
+            }
+          } else if (model === 'codeowners') {
+            const entries = await codeownersParser.parse(project.githubOrg, project.githubRepo);
 
-              totalOwnersProcessed++;
-            } catch (ownerError) {
-              logger.warn(`Error storing maintainer status for @${owner.username}`, {
-                error: (ownerError as Error).message,
-              });
-              errorsCount++;
+            logger.info(`Found ${entries.length} CODEOWNERS entries for ${project.name}`);
+
+            for (const entry of entries) {
+              const teamMember = usernameToTeamMember.get(entry.username.toLowerCase());
+              if (!teamMember) continue;
+
+              try {
+                const existing = await db.query.maintainerStatus.findFirst({
+                  where: and(
+                    eq(maintainerStatus.projectId, project.id),
+                    eq(maintainerStatus.teamMemberId, teamMember.id),
+                    eq(maintainerStatus.source, 'CODEOWNERS'),
+                  ),
+                });
+
+                if (existing) {
+                  await db.update(maintainerStatus)
+                    .set({
+                      positionType: 'maintainer',
+                      isActive: true,
+                      evidenceUrl: entry.source,
+                      notes: `Paths: ${entry.paths.join(', ')}`,
+                      updatedAt: new Date(),
+                    })
+                    .where(eq(maintainerStatus.id, existing.id));
+                } else {
+                  await db.insert(maintainerStatus).values({
+                    projectId: project.id,
+                    teamMemberId: teamMember.id,
+                    positionType: 'maintainer',
+                    positionTitle: 'Code Owner',
+                    isActive: true,
+                    source: 'CODEOWNERS',
+                    evidenceUrl: entry.source,
+                    notes: `Paths: ${entry.paths.join(', ')}`,
+                  });
+                }
+                totalOwnersProcessed++;
+              } catch (entryError) {
+                logger.warn(`Error storing CODEOWNERS status for @${entry.username}`, {
+                  error: (entryError as Error).message,
+                });
+                errorsCount++;
+              }
             }
           }
 
           totalProjectsProcessed++;
 
-          // Update progress
           const progress = Math.round((totalProjectsProcessed / projectsToProcess.length) * 100);
           await job.updateProgress(progress);
-
         } catch (projectError) {
-          logger.warn(`Error processing OWNERS for ${project.name}`, {
+          logger.warn(`Error processing governance for ${project.name}`, {
             error: (projectError as Error).message,
           });
           errorsCount++;
         }
       }
 
-      // Mark job as completed
       await db.update(collectionJobs)
         .set({
           status: 'completed',
@@ -199,7 +250,6 @@ export const governanceWorker = new Worker<GovernanceJobData>(
         error: (error as Error).message,
       });
 
-      // Mark job as failed
       await db.update(collectionJobs)
         .set({
           status: 'failed',
@@ -216,8 +266,8 @@ export const governanceWorker = new Worker<GovernanceJobData>(
   },
   {
     connection: redisConnection,
-    concurrency: 1, // Only one governance job at a time
-  }
+    concurrency: 1,
+  },
 );
 
 governanceWorker.on('completed', (job) => {

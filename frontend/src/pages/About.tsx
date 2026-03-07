@@ -199,9 +199,10 @@ export default function About() {
                 Leadership & governance
               </h3>
               <p className="text-[13px] text-gray-500 leading-relaxed">
-                Upstream Pulse tracks maintainer status, OWNERS file entries, steering committee
-                membership, and working group chairs/leads. This data is collected from project
-                governance files and GitHub organization roles.
+                Upstream Pulse tracks community leadership positions and governance roles across
+                upstream organizations — including maintainer status from OWNERS and CODEOWNERS files,
+                steering committees, TSCs, and working group chairs. Data is collected automatically
+                from project governance files.
               </p>
             </div>
             {/* Identity resolution */}

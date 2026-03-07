@@ -148,6 +148,7 @@ app.post<{
 
     let collectionJob = null;
     let governanceJob = null;
+    let leadershipJob = null;
 
     // Import scheduler
     const { CollectionScheduler } = await import('./jobs/scheduler.js');
@@ -156,6 +157,20 @@ app.post<{
     // Always trigger governance collection for new projects (OWNERS files)
     governanceJob = await scheduler.triggerProjectGovernance(newProject.id, 'new_project');
     logger.info(`Started governance collection for ${name}`);
+
+    // Auto-trigger leadership refresh if org has a communityRepo and no leadership data yet
+    const { getOrgConfig } = await import('./shared/config/org-registry.js');
+    const orgCfg = getOrgConfig(githubOrg);
+    if (orgCfg?.communityRepo) {
+      const { leadershipPositions: lpTable } = await import('./shared/database/schema.js');
+      const existingLeadership = await db.query.leadershipPositions.findFirst({
+        where: eq(lpTable.communityOrg, githubOrg),
+      });
+      if (!existingLeadership) {
+        leadershipJob = await scheduler.triggerManualLeadershipRefresh(githubOrg);
+        logger.info(`Auto-triggered leadership refresh for org ${githubOrg}`);
+      }
+    }
 
     // Optionally start contribution collection
     if (startCollection) {
@@ -179,6 +194,7 @@ app.post<{
       governance: {
         jobId: governanceJob.id,
       },
+      leadership: leadershipJob ? { jobId: leadershipJob.id } : null,
     };
   } catch (error) {
     logger.error('Error creating project', { error });
@@ -620,18 +636,24 @@ app.get('/api/system/status', async (request, reply) => {
 });
 
 // Manual leadership refresh endpoint
-app.post('/api/leadership/refresh', async (request, reply) => {
+app.post<{
+  Body: { githubOrg?: string };
+}>('/api/leadership/refresh', async (request, reply) => {
   try {
+    const { githubOrg } = (request.body as { githubOrg?: string }) || {};
+
     const { CollectionScheduler } = await import('./jobs/scheduler.js');
     const scheduler = new CollectionScheduler();
 
-    const job = await scheduler.triggerManualLeadershipRefresh();
-    const message = 'Leadership refresh queued (steering committee, WG chairs/leads)';
+    const job = await scheduler.triggerManualLeadershipRefresh(githubOrg);
+    const message = githubOrg
+      ? `Leadership refresh queued for ${githubOrg}`
+      : 'Leadership refresh queued for all configured orgs';
     logger.info(message);
 
     return {
       success: true,
-      jobId: job.id,
+      jobId: job?.id,
       message,
     };
   } catch (error) {
@@ -642,6 +664,19 @@ app.post('/api/leadership/refresh', async (request, reply) => {
       message: (error as Error).message,
     };
   }
+});
+
+// Org registry endpoint
+app.get('/api/orgs', async () => {
+  const { ORG_REGISTRY } = await import('./shared/config/org-registry.js');
+  return {
+    orgs: ORG_REGISTRY.map(o => ({
+      name: o.name,
+      githubOrg: o.githubOrg,
+      governanceModel: o.governanceModel,
+      hasCommunityRepo: !!o.communityRepo,
+    })),
+  };
 });
 
 // WebSocket endpoint for real-time updates

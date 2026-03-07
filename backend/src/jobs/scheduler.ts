@@ -375,48 +375,60 @@ export class CollectionScheduler {
   }
 
   /**
-   * Trigger leadership refresh (steering committee, WG chairs/leads)
-   * Runs monthly to update leadership positions from community repo
+   * Trigger leadership refresh for all orgs with a communityRepo configured.
+   * Dispatches one job per org.
    */
   async triggerLeadershipRefresh() {
-    logger.info('Triggering leadership refresh');
+    const { getOrgsWithCommunityRepo } = await import('../shared/config/org-registry.js');
+    const orgs = getOrgsWithCommunityRepo();
 
-    const job = await leadershipQueue.add(
-      'monthly-leadership',
-      {
-        trigger: 'scheduled',
-      },
-      {
-        priority: 1,
-        jobId: `monthly-leadership-${Date.now()}`,
-      }
-    );
+    logger.info(`Triggering leadership refresh for ${orgs.length} orgs`);
 
-    logger.info('Leadership refresh job queued', { jobId: job.id });
+    const jobs = [];
+    for (const org of orgs) {
+      const job = await leadershipQueue.add(
+        `monthly-leadership-${org.githubOrg}`,
+        {
+          trigger: 'scheduled' as const,
+          githubOrg: org.githubOrg,
+        },
+        {
+          priority: 1,
+          jobId: `monthly-leadership-${org.githubOrg}-${Date.now()}`,
+        },
+      );
+      jobs.push(job);
+    }
 
-    return job;
+    logger.info(`Leadership refresh jobs queued: ${jobs.length}`);
+    return jobs;
   }
 
   /**
-   * Manually trigger leadership refresh
+   * Manually trigger leadership refresh for a specific org or all orgs.
    */
-  async triggerManualLeadershipRefresh() {
-    logger.info('Manually triggering leadership refresh');
+  async triggerManualLeadershipRefresh(githubOrg?: string) {
+    if (githubOrg) {
+      logger.info(`Manually triggering leadership refresh for ${githubOrg}`);
+      const job = await leadershipQueue.add(
+        `manual-leadership-${githubOrg}`,
+        {
+          trigger: 'manual' as const,
+          githubOrg,
+        },
+        {
+          priority: 0,
+          jobId: `manual-leadership-${githubOrg}-${Date.now()}`,
+        },
+      );
+      logger.info('Manual leadership refresh job queued', { jobId: job.id });
+      return job;
+    }
 
-    const job = await leadershipQueue.add(
-      'manual-leadership',
-      {
-        trigger: 'manual',
-      },
-      {
-        priority: 0, // Highest priority for manual triggers
-        jobId: `manual-leadership-${Date.now()}`,
-      }
-    );
-
-    logger.info('Manual leadership refresh job queued', { jobId: job.id });
-
-    return job;
+    // No org specified — refresh all
+    logger.info('Manually triggering leadership refresh for all orgs');
+    const jobs = await this.triggerLeadershipRefresh();
+    return jobs[0]; // return first for backward compat (jobId in response)
   }
 
   /**

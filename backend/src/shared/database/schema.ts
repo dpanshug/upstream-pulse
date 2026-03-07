@@ -106,6 +106,7 @@ export const leadershipPositions = pgTable('leadership_positions', {
   githubUsername: varchar('github_username', { length: 255 }),
   externalName: varchar('external_name', { length: 255 }),
   organization: varchar('organization', { length: 255 }),
+  communityOrg: varchar('community_org', { length: 100 }),
   positionType: varchar('position_type', { length: 100 }).notNull(), // 'steering_committee', 'wg_chair', 'wg_tech_lead', etc.
   committeeName: varchar('committee_name', { length: 255 }),
   roleTitle: varchar('role_title', { length: 255 }),
@@ -121,6 +122,7 @@ export const leadershipPositions = pgTable('leadership_positions', {
   projectMemberIdx: index('leadership_project_member_idx').on(table.projectId, table.teamMemberId),
   activeIdx: index('leadership_active_idx').on(table.isActive),
   githubUsernameIdx: index('leadership_github_username_idx').on(table.githubUsername),
+  communityOrgIdx: index('leadership_community_org_idx').on(table.communityOrg),
 }));
 
 // DEPRECATED: This table is no longer used. Metrics are now calculated on-demand.

@@ -103,15 +103,30 @@ Build an AI-powered web application to track Red Hat AI Organization's contribut
 - Handles rate limiting (5000 requests/hour)
 - Scheduled runs: Daily full sync (2 AM UTC) + hourly incremental updates
 
-**Governance Parser (`src/modules/collection/governance-parser.ts`)**
-- Parses MAINTAINERS files (YAML/JSON/Markdown)
-- Extracts steering committee members from GOVERNANCE.md
-- Identifies working group leads and voting rights
+**Org Registry (`src/shared/config/org-registry.ts`)**
+- Static config declaring all supported upstream organizations
+- Each entry specifies the GitHub org slug, governance model (`owners` | `codeowners` | `none`), community repo location, leadership files, and optional WG YAML path
+- Adding a new org = PR to this file (see [adding-an-org.md](adding-an-org.md))
+
+**Leadership Collector (`src/modules/collection/leadership-collector.ts`)**
+- Config-driven collector that accepts an `UpstreamOrgConfig` and dispatches to the appropriate parser
+- **Markdown table parser** — unified parser for leadership tables; supports uniform-role files (e.g. `KUBEFLOW-STEERING-COMMITTEE.md` where every row is `steering_committee`) and mixed-role files (e.g. `MAINTAINERS.md` where each row has its own role column)
+- **WGs YAML parser** — parameterized via `communityRepo.wgFile`; extracts chairs and tech leads from `sigs`, `workinggroups`, `usergroups`, and `committees` sections
+- Results are stored in `leadershipPositions` with a `communityOrg` column to scope data per org
+
+**CODEOWNERS Parser (`src/modules/collection/codeowners-parser.ts`)**
+- Parses GitHub-native `CODEOWNERS` files to extract per-user maintainer entries
+- Checks `.github/CODEOWNERS`, then root `CODEOWNERS`, then `docs/CODEOWNERS`
+- Skips `@org/team` references (resolving team membership requires `read:org` scope on external orgs)
+
+**Governance Worker (`src/jobs/workers/governance-worker.ts`)**
+- Looks up `governanceModel` from the org registry to decide whether to parse OWNERS files, CODEOWNERS files, or skip governance for each project
 
 **Collection Scheduler (`src/jobs/scheduler.ts`)**
 - node-cron based scheduling
 - BullMQ job queue for reliable execution
 - Retry logic with exponential backoff
+- Dispatches one leadership job per org that has a `communityRepo` configured
 
 ### 2. Identity Resolution Engine
 
@@ -126,11 +141,11 @@ Build an AI-powered web application to track Red Hat AI Organization's contribut
 
 ### 3. Metrics Calculation Engine
 
-**Metrics Calculator (`src/modules/metrics/calculator.ts`)**
+**Metrics Calculator (`src/modules/metrics/calculator.ts`) + Metrics Service (`src/modules/metrics/metrics-service.ts`)**
 - **Contribution Percentage:** Red Hat commits/PRs/reviews vs total
-- **Leadership Metrics:** Maintainer seats, steering committee positions
+- **Leadership Metrics:** Maintainer seats, steering committee, TSC, and WG positions — returned per org (`byOrg[]`) instead of hardcoded Kubeflow fields
 - **Trend Analysis:** Month-over-month, quarter-over-quarter, year-over-year
-- Pre-calculated aggregates stored in `metrics_daily` table for dashboard performance
+- **Working Group mapping:** driven by `repoToWorkingGroup` in the org registry
 
 ### 4. AI Insights Engine
 
@@ -148,7 +163,10 @@ Build an AI-powered web application to track Red Hat AI Organization's contribut
 ### 5. API Layer
 
 **Fastify Server (`src/app.ts`)**
-- REST endpoints: `/api/contributions`, `/api/insights`, `/api/reports`, `/api/projects`
+- REST endpoints: `/api/contributions`, `/api/insights`, `/api/reports`, `/api/projects`, `/api/orgs`, `/api/leadership/refresh`
+- `GET /api/orgs` returns org registry entries
+- `POST /api/leadership/refresh` accepts optional `githubOrg` to scope the refresh
+- `POST /api/projects` auto-triggers leadership refresh for the new project's org
 - WebSocket endpoint: `/ws/updates` for real-time job status
 - Built-in validation using Zod schemas
 - Prometheus metrics endpoint: `/metrics`
@@ -191,8 +209,9 @@ Build an AI-powered web application to track Red Hat AI Organization's contribut
 - Columns: id, project_id, team_member_id, position_type, granted_date, revoked_date, is_active, source, evidence_url
 
 **leadership_positions**
-- Tracks steering committee and working group positions
-- Columns: id, project_id, team_member_id, position_type, committee_name, start_date, end_date, voting_rights
+- Tracks steering committee, working group, and TSC positions across all upstream orgs
+- Stores both team members (via `team_member_id`) and external contributors (via `github_username`, `external_name`, `organization`)
+- Columns: id, project_id, team_member_id, github_username, external_name, organization, community_org, position_type, committee_name, role_title, start_date, end_date, is_active, voting_rights, source, evidence_url
 
 **metrics_daily**
 - Pre-calculated daily aggregates for dashboard performance
@@ -776,9 +795,9 @@ upstream-pulse/
 │   ├── src/
 │   │   ├── modules/
 │   │   │   ├── collection/
-│   │   │   │   ├── github-collector.ts  # GitHub API integration (CRITICAL FILE #2)
-│   │   │   │   ├── governance-parser.ts # MAINTAINERS/GOVERNANCE file parsing
-│   │   │   │   └── scheduler.ts         # Collection scheduling logic
+│   │   │   │   ├── github-collector.ts    # GitHub API integration (CRITICAL FILE #2)
+│   │   │   │   ├── leadership-collector.ts # Config-driven leadership parser (markdown tables, WG YAML)
+│   │   │   │   └── codeowners-parser.ts   # GitHub CODEOWNERS file parser
 │   │   │   │
 │   │   │   ├── identity/
 │   │   │   │   └── resolver.ts          # Identity resolution (CRITICAL FILE #3)
@@ -810,14 +829,17 @@ upstream-pulse/
 │   │   │   │   └── metrics.ts           # Prometheus metrics
 │   │   │   │
 │   │   │   └── config/
-│   │   │       └── index.ts             # Environment configuration
+│   │   │       ├── index.ts             # Environment configuration
+│   │   │       └── org-registry.ts      # Upstream org registry (add new orgs here)
 │   │   │
 │   │   ├── jobs/
 │   │   │   ├── workers/                 # BullMQ worker processors
 │   │   │   │   ├── collection-worker.ts
+│   │   │   │   ├── governance-worker.ts # OWNERS/CODEOWNERS refresh (checks org registry)
+│   │   │   │   ├── leadership-worker.ts # Per-org leadership refresh
 │   │   │   │   ├── insights-worker.ts
 │   │   │   │   └── reports-worker.ts
-│   │   │   └── scheduler.ts             # Main scheduler entry point
+│   │   │   └── scheduler.ts             # Main scheduler entry point (dispatches per-org jobs)
 │   │   │
 │   │   ├── app.ts                       # Fastify application entry
 │   │   └── worker.ts                    # Worker process entry

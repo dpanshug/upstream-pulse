@@ -8,6 +8,7 @@
 import { db } from '../../shared/database/client.js';
 import { contributions, projects, teamMembers, maintainerStatus, leadershipPositions } from '../../shared/database/schema.js';
 import { eq, and, gte, lte, sql, count, isNotNull } from 'drizzle-orm';
+import { getOrgConfig } from '../../shared/config/org-registry.js';
 import { logger } from '../../shared/utils/logger.js';
 import type {
   DateRange,
@@ -697,41 +698,28 @@ export class MetricsService {
   }
 
   /**
-   * Get leadership summary for dashboard
-   * Includes both OWNERS-based roles (approvers/reviewers) and 
-   * org-level leadership (steering committee, WG chairs)
+   * Get working groups for a repo using the org registry config.
    */
-
-  /**
-   * Maps Kubeflow repos to their owning Working Groups.
-   * Based on official Kubeflow governance charters:
-   * https://kubeflow.org/docs/about/governance
-   */
-  private getWorkingGroupsForProject(githubRepo: string): string[] {
-    const repoToWG: Record<string, string[]> = {
-      'model-registry': ['WG Data'],
-      'spark-operator': ['WG Data'],
-      'pipelines':      ['WG Pipelines'],
-      'sdk':            ['WG Pipelines'],
-      'trainer':        ['WG Training'],
-      'training-operator': ['WG Training'],
-      'katib':          ['WG AutoML'],
-      'notebooks':      ['WG Notebooks'],
-      'manifests':      ['WG Manifests'],
-      'kserve':         ['WG Serving'],
-      'modelmesh':      ['WG Serving'],
-      'kubeflow':       ['WG Deployment', 'WG Manifests'],
-    };
-    return repoToWG[githubRepo] ?? [];
+  private getWorkingGroupsForProject(githubOrg: string, githubRepo: string): string[] {
+    const orgCfg = getOrgConfig(githubOrg);
+    if (!orgCfg?.repoToWorkingGroup) return [];
+    return orgCfg.repoToWorkingGroup[githubRepo] ?? [];
   }
 
+  /**
+   * Leadership summary for dashboard — returns per-org leadership groups.
+   *
+   * Structure:
+   *   byOrg[].positions[] — grouped by positionType within each org
+   *   maintainers — OWNERS/CODEOWNERS based approvers/reviewers
+   *   teamLeaders — all team members with any governance role
+   */
   private async getLeadershipSummary(projectId?: string, githubRepo?: string) {
     try {
-      // Get active maintainer statuses (OWNERS file roles), optionally filtered by project
-      const conditions = [eq(maintainerStatus.isActive, true)];
-      if (projectId) {
-        conditions.push(eq(maintainerStatus.projectId, projectId));
-      }
+      // ── maintainerStatus (OWNERS/CODEOWNERS) ──
+      const msConditions = [eq(maintainerStatus.isActive, true)];
+      if (projectId) msConditions.push(eq(maintainerStatus.projectId, projectId));
+
       const maintainerStatuses = await db
         .select({
           id: maintainerStatus.id,
@@ -746,15 +734,16 @@ export class MetricsService {
         .from(maintainerStatus)
         .innerJoin(teamMembers, eq(maintainerStatus.teamMemberId, teamMembers.id))
         .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
-        .where(and(...conditions));
+        .where(and(...msConditions));
 
-      // Get active leadership positions held by team members
-      const allLeadershipPositions = await db
+      // ── leadershipPositions (community repo leadership) ──
+      const allLp = await db
         .select({
           id: leadershipPositions.id,
           positionType: leadershipPositions.positionType,
           committeeName: leadershipPositions.committeeName,
           roleTitle: leadershipPositions.roleTitle,
+          communityOrg: leadershipPositions.communityOrg,
           teamMemberId: leadershipPositions.teamMemberId,
           teamMemberName: teamMembers.name,
           githubUsername: teamMembers.githubUsername,
@@ -765,157 +754,163 @@ export class MetricsService {
         .innerJoin(teamMembers, eq(leadershipPositions.teamMemberId, teamMembers.id))
         .where(eq(leadershipPositions.isActive, true));
 
-      // Count total chair/lead positions (seats) org-wide.
-      // We count positions, not unique people, because the dashboard measures
-      // influence: one person chairing 3 WGs = 3 seats of influence.
-      const totalLeadershipCounts = await db
+      // When viewing a specific project, filter leadership to relevant WGs
+      let filteredLp = allLp;
+      if (projectId && githubRepo) {
+        const project = await db.query.projects.findFirst({
+          columns: { githubOrg: true },
+          where: eq(projects.id, projectId),
+        });
+        if (project) {
+          const relevantWGs = new Set(
+            this.getWorkingGroupsForProject(project.githubOrg, githubRepo)
+              .map(wg => wg.toLowerCase()),
+          );
+          filteredLp = allLp.filter(p => {
+            if (p.communityOrg !== project.githubOrg) return false;
+            const name = p.committeeName?.toLowerCase() ?? '';
+            return relevantWGs.has(name);
+          });
+        }
+      }
+
+      // ── Build byOrg structure ──
+      type OrgPositionGroup = {
+        positionType: string;
+        roleTitle: string;
+        teamCount: number;
+        totalCount: number;
+        members: Array<{
+          id: string;
+          name: string;
+          githubUsername: string | null;
+          avatarUrl?: string;
+          groupName: string;
+          votingRights: boolean;
+        }>;
+      };
+
+      const orgMap = new Map<string, {
+        org: string;
+        orgName: string;
+        positions: Map<string, OrgPositionGroup>;
+      }>();
+
+      // Count total positions (all, not just team) by org+type
+      const totalLpCounts = await db
         .select({
+          communityOrg: leadershipPositions.communityOrg,
           positionType: leadershipPositions.positionType,
           count: sql<number>`count(*)::int`,
         })
         .from(leadershipPositions)
         .where(eq(leadershipPositions.isActive, true))
-        .groupBy(leadershipPositions.positionType);
+        .groupBy(leadershipPositions.communityOrg, leadershipPositions.positionType);
 
-      // When viewing a specific project, filter leadership to the WGs that own it
-      let leadershipPositionsData = allLeadershipPositions;
-      if (projectId && githubRepo) {
-        const relevantWGs = new Set(
-          this.getWorkingGroupsForProject(githubRepo).map(wg => wg.toLowerCase())
-        );
-        leadershipPositionsData = allLeadershipPositions.filter(p => {
-          if (p.positionType === 'steering_committee') return false;
-          const name = p.committeeName?.toLowerCase() ?? '';
-          return relevantWGs.has(name);
+      const totalKey = (org: string, type: string) => `${org}::${type}`;
+      const totalMap = new Map(totalLpCounts.map(r => [totalKey(r.communityOrg ?? '', r.positionType), r.count]));
+
+      for (const pos of filteredLp) {
+        const orgSlug = pos.communityOrg ?? 'unknown';
+        if (!orgMap.has(orgSlug)) {
+          const orgCfg = getOrgConfig(orgSlug);
+          orgMap.set(orgSlug, {
+            org: orgSlug,
+            orgName: orgCfg?.name ?? orgSlug,
+            positions: new Map(),
+          });
+        }
+        const orgEntry = orgMap.get(orgSlug)!;
+
+        if (!orgEntry.positions.has(pos.positionType)) {
+          const roleTitle = pos.roleTitle
+            || pos.positionType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+          orgEntry.positions.set(pos.positionType, {
+            positionType: pos.positionType,
+            roleTitle,
+            teamCount: 0,
+            totalCount: totalMap.get(totalKey(orgSlug, pos.positionType)) ?? 0,
+            members: [],
+          });
+        }
+
+        const group = orgEntry.positions.get(pos.positionType)!;
+        group.teamCount++;
+        group.members.push({
+          id: pos.teamMemberId!,
+          name: pos.teamMemberName,
+          githubUsername: pos.githubUsername,
+          avatarUrl: pos.githubUsername
+            ? `https://github.com/${pos.githubUsername}.png?size=80`
+            : undefined,
+          groupName: pos.committeeName || 'Unknown',
+          votingRights: pos.votingRights ?? false,
         });
       }
 
-      // Count OWNERS-based roles
+      const byOrg = Array.from(orgMap.values()).map(o => ({
+        org: o.org,
+        orgName: o.orgName,
+        positions: Array.from(o.positions.values()),
+      }));
+
+      // ── Maintainer counts ──
       const teamApprovers = maintainerStatuses.filter(s => s.positionType === 'maintainer').length;
       const teamReviewers = maintainerStatuses.filter(s => s.positionType === 'reviewer').length;
-
-      // Count team leadership positions (seats held, not unique people)
-      const steeringCommittee = leadershipPositionsData.filter(p => p.positionType === 'steering_committee');
-      const wgChairPositions = leadershipPositionsData.filter(p => 
-        p.positionType === 'wg_chair' || p.positionType === 'sig_chair'
-      );
-      const wgTechLeadPositions = leadershipPositionsData.filter(p => 
-        p.positionType === 'wg_tech_lead' || p.positionType === 'sig_tech_lead'
-      );
-
-      // Build org-wide totals (all positions/seats)
-      const totalCountMap = new Map(totalLeadershipCounts.map(r => [r.positionType, r.count]));
-      const totalSteeringCommittee = totalCountMap.get('steering_committee') ?? 0;
-      const totalWgChairs = (totalCountMap.get('wg_chair') ?? 0) + (totalCountMap.get('sig_chair') ?? 0);
-      const totalWgTechLeads = (totalCountMap.get('wg_tech_lead') ?? 0) + (totalCountMap.get('sig_tech_lead') ?? 0);
-
-      // Estimate totals (could be refined with actual data)
       const totalApprovers = Math.max(teamApprovers * 2, 6);
       const totalReviewers = Math.max(teamReviewers * 2, 5);
 
-      // Build comprehensive member map with all roles
+      // ── teamLeaders — comprehensive member map ──
       const memberMap = new Map<string, {
         id: string;
         name: string;
         githubUsername: string | null;
         avatarUrl?: string;
-        roles: Array<{
-          projectId?: string;
-          projectName?: string;
-          roleType: string;
-          groupName?: string;
-          isActive: boolean;
-        }>;
-        leadershipRoles: Array<{
-          positionType: string;
-          groupName: string;
-          roleTitle: string;
-          votingRights: boolean;
-        }>;
+        roles: Array<{ projectId?: string; projectName?: string; roleType: string; isActive: boolean }>;
+        leadershipRoles: Array<{ positionType: string; groupName: string; roleTitle: string; votingRights: boolean }>;
       }>();
 
-      // Helper to get or create member entry
-      const getMember = (teamMemberId: string, name: string, githubUsername: string | null) => {
-        if (!memberMap.has(teamMemberId)) {
-          memberMap.set(teamMemberId, {
-            id: teamMemberId,
-            name,
-            githubUsername,
-            avatarUrl: githubUsername 
-              ? `https://github.com/${githubUsername}.png?size=80`
-              : undefined,
-            roles: [],
-            leadershipRoles: [],
+      const getMember = (id: string, name: string, ghUser: string | null) => {
+        if (!memberMap.has(id)) {
+          memberMap.set(id, {
+            id, name, githubUsername: ghUser,
+            avatarUrl: ghUser ? `https://github.com/${ghUser}.png?size=80` : undefined,
+            roles: [], leadershipRoles: [],
           });
         }
-        return memberMap.get(teamMemberId)!;
+        return memberMap.get(id)!;
       };
 
-      // Add OWNERS-based roles
-      for (const status of maintainerStatuses) {
-        if (!status.teamMemberId) continue;
-        const member = getMember(status.teamMemberId, status.teamMemberName, status.githubUsername);
-        member.roles.push({
-          projectId: status.projectId!,
-          projectName: status.projectName,
-          roleType: status.positionType === 'maintainer' ? 'approver' : 'reviewer',
-          isActive: status.isActive ?? true,
+      for (const s of maintainerStatuses) {
+        if (!s.teamMemberId) continue;
+        getMember(s.teamMemberId, s.teamMemberName, s.githubUsername).roles.push({
+          projectId: s.projectId!, projectName: s.projectName,
+          roleType: s.positionType === 'maintainer' ? 'approver' : 'reviewer',
+          isActive: s.isActive ?? true,
         });
       }
 
-      // Add leadership positions
-      for (const pos of leadershipPositionsData) {
-        if (!pos.teamMemberId) continue;
-        const member = getMember(pos.teamMemberId, pos.teamMemberName, pos.githubUsername);
-        member.leadershipRoles.push({
-          positionType: pos.positionType,
-          groupName: pos.committeeName || 'Unknown',
-          roleTitle: pos.roleTitle || pos.positionType,
-          votingRights: pos.votingRights ?? false,
+      for (const p of filteredLp) {
+        if (!p.teamMemberId) continue;
+        getMember(p.teamMemberId, p.teamMemberName, p.githubUsername).leadershipRoles.push({
+          positionType: p.positionType,
+          groupName: p.committeeName || 'Unknown',
+          roleTitle: p.roleTitle || p.positionType,
+          votingRights: p.votingRights ?? false,
         });
       }
 
       return {
-        summary: {
-          totalApprovers,
-          totalReviewers,
-          teamApprovers,
-          teamReviewers,
-          steeringCommitteeCount: steeringCommittee.length,
-          totalSteeringCommittee,
-          wgChairsCount: wgChairPositions.length,
-          totalWgChairs,
-          wgTechLeadsCount: wgTechLeadPositions.length,
-          totalWgTechLeads,
-        },
+        byOrg,
+        maintainers: { teamApprovers, teamReviewers, totalApprovers, totalReviewers },
         teamLeaders: Array.from(memberMap.values()),
-        steeringCommittee: steeringCommittee.map(s => ({
-          id: s.teamMemberId,
-          name: s.teamMemberName,
-          githubUsername: s.githubUsername,
-          avatarUrl: s.githubUsername 
-            ? `https://github.com/${s.githubUsername}.png?size=80`
-            : undefined,
-          votingRights: s.votingRights,
-        })),
       };
     } catch (error) {
       logger.warn('Error fetching leadership data', { error });
       return {
-        summary: {
-          totalApprovers: 0,
-          totalReviewers: 0,
-          teamApprovers: 0,
-          teamReviewers: 0,
-          steeringCommitteeCount: 0,
-          totalSteeringCommittee: 0,
-          wgChairsCount: 0,
-          totalWgChairs: 0,
-          wgTechLeadsCount: 0,
-          totalWgTechLeads: 0,
-        },
+        byOrg: [],
+        maintainers: { teamApprovers: 0, teamReviewers: 0, totalApprovers: 0, totalReviewers: 0 },
         teamLeaders: [],
-        steeringCommittee: [],
       };
     }
   }

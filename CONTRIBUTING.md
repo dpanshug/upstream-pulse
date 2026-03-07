@@ -78,6 +78,16 @@ npm run dev
 | `npm run db:migrate` | Run database migrations |
 | `npm run db:studio` | Open Drizzle Studio (DB GUI) |
 
+## Adding a New Upstream Organization
+
+Upstream Pulse uses a centralized **org registry** (`backend/src/shared/config/org-registry.ts`) that declares every supported upstream organization. To add a new org:
+
+1. Add an entry to the `ORG_REGISTRY` array with the org's GitHub slug, governance model, and (optionally) community repo details.
+2. If the org has structured leadership data (steering committee, maintainers list, WG YAML), configure the `communityRepo` and `leadershipFiles` fields so the leadership collector knows what to parse.
+3. Submit a PR — the system will automatically pick up the new org on the next scheduled run.
+
+For a detailed walkthrough with field-by-field explanations and testing instructions, see **[docs/adding-an-org.md](docs/adding-an-org.md)**.
+
 ## Coding Standards
 
 ### TypeScript
@@ -116,7 +126,7 @@ upstream-pulse/
 │       ├── jobs/         # BullMQ job definitions and workers
 │       ├── modules/      # Feature modules (api, collection, identity, etc.)
 │       ├── scripts/      # Database seeds and utility scripts
-│       └── shared/       # Config, database, types, utilities
+│       └── shared/       # Config (incl. org registry), database, types, utilities
 ├── frontend/             # React + Vite dashboard
 │   └── src/
 │       ├── components/   # Reusable UI components

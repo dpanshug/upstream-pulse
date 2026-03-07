@@ -188,12 +188,13 @@ Additional upstream projects across various organizations.
 
 ---
 
-## Prerequisites for Multi-Org Support
+## Multi-Org Support (Implemented)
 
-Before adding non-Kubeflow projects, the following codebase changes are needed:
+The following infrastructure is in place to support all upstream organizations listed above:
 
-1. **Leadership collector** — currently hardcoded to `kubeflow/community`. Needs to be configurable per org or disabled for orgs without structured governance.
-2. **Working Group mappings** — `metrics-service.ts` maps Kubeflow repos to WGs. Needs a generic, config-driven approach.
-3. **Governance (OWNERS files)** — works for Kubernetes/Kubeflow-style OWNERS. Projects using CODEOWNERS or MAINTAINERS.md need alternative parsers.
-4. **GitHub API rate limiting** — 40 repos will significantly increase API usage. Needs smarter batching and rate-limit awareness.
-5. **Ecosystem/org field on projects** — the `ecosystem` field in the DB should consistently map to the upstream org for grouping.
+1. **Org registry** (`backend/src/shared/config/org-registry.ts`) — static config that declares every supported org, its community repo, leadership files, and governance model. Adding a new org is a single PR to this file. See [Adding an Organization](adding-an-org.md).
+2. **Configurable leadership collector** — `LeadershipCollector` accepts an org config and dispatches to the appropriate parser. Supports markdown leadership tables (uniform-role and mixed-role), WGs/SIGs YAML, and is extensible per org.
+3. **Multiple governance parsers** — Kubernetes/Kubeflow-style `OWNERS` files, GitHub-native `CODEOWNERS` files, and markdown `MAINTAINERS.md` tables are all supported. The `governanceModel` field in the org registry controls which parser runs.
+4. **Per-org leadership data** — the `leadershipPositions` table includes a `communityOrg` column. The scheduler dispatches one leadership job per org, and the metrics service returns leadership data grouped by org (`byOrg[]`).
+5. **Working Group mappings** — `repoToWorkingGroup` in the org registry replaces the hardcoded Kubeflow WG mapping. Orgs without WGs simply omit this field.
+6. **API support** — `GET /api/orgs` returns the org registry. `POST /api/leadership/refresh` accepts an optional `githubOrg` to scope the refresh. `POST /api/projects` auto-triggers a leadership refresh for the new project's org.

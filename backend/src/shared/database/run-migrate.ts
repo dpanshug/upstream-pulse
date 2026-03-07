@@ -1,3 +1,4 @@
+import '../config/index.js';
 import { runMigrations } from './migrate.js';
 
 try {

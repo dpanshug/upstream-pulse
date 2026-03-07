@@ -2,23 +2,28 @@
 
 This document describes how Upstream Pulse handles different open source governance models for tracking leadership roles.
 
-## Current Implementation: Kubernetes/Kubeflow OWNERS Files
+## Supported Governance Models
 
-The current implementation supports the **Kubernetes-style OWNERS file format**, which is used by:
+Upstream Pulse supports three governance models, configured per-org in the [org registry](../backend/src/shared/config/org-registry.ts):
 
-- Kubernetes and all CNCF projects
-- Kubeflow
-- OpenShift
-- Many other cloud-native projects
+| Model | Format | Orgs |
+|-------|--------|------|
+| **OWNERS** | Kubernetes-style YAML | Kubeflow, KServe, kubernetes-sigs, Argo, Feast |
+| **CODEOWNERS** | GitHub-native `path @owner` | vLLM, OpenVINO, Meta Llama, Ray, Caikit |
+| **none** | No automated parsing | MLflow, Hugging Face, BerriAI, etc. |
 
-### OWNERS File Format
+---
+
+## OWNERS Files (Kubernetes/Kubeflow Style)
+
+Used by Kubernetes, CNCF, and Kubeflow-ecosystem projects.
+
+### Format
 
 ```yaml
-# Example OWNERS file
 approvers:
   - alice
   - bob
-  - carol
 
 reviewers:
   - dave
@@ -30,95 +35,106 @@ emeritus_approvers:
 
 ### Role Types
 
-| Role                  | Description                   | Permissions                              |
-| --------------------- | ----------------------------- | ---------------------------------------- |
-| **Approver**          | Can approve and merge PRs     | Full write access, typically maintainers |
-| **Reviewer**          | Can review PRs                | Review access, trusted contributors      |
-| **Emeritus Approver** | Former approver, now inactive | Historical record                        |
+| Role | Description | Permissions |
+|------|-------------|-------------|
+| **Approver** | Can approve and merge PRs | Full write access, typically maintainers |
+| **Reviewer** | Can review PRs | Review access, trusted contributors |
+| **Emeritus Approver** | Former approver, now inactive | Historical record |
 
 ### How It Works
 
-1. **Collection**: The `OwnersCollector` fetches OWNERS files from tracked repos
-2. **Parsing**: YAML is parsed to extract usernames and role types
+1. **Collection**: The `GitHubCollector` finds all OWNERS files in the repo tree via the Git API
+2. **Aliases**: `OWNERS_ALIASES` files are resolved to expand team references
 3. **Matching**: GitHub usernames are matched to team members in the database
-4. **Storage**: Roles are stored in the `maintainer_status` table
-
-### API Endpoints
-
-- `GET /api/leadership/summary` - Overall leadership statistics
-- `GET /api/leadership/team` - Team members with leadership roles
-- `POST /api/leadership/sync` - Trigger OWNERS file sync
+4. **Storage**: Roles are stored in the `maintainer_status` table with `source: 'OWNERS_file'`
 
 ---
 
-## Future: Other Governance Models
+## CODEOWNERS Files (GitHub-Native)
 
-Different open source communities use different governance structures. Here's a roadmap for future support:
+Used by projects that rely on GitHub's native code ownership feature.
 
-### Apache Projects
+### Format
 
-Apache projects typically use:
+```
+# Global owners
+* @org/default-team
 
-- **MAINTAINERS** or **COMMITTERS** files
-- PMC (Project Management Committee) membership via Apache's systems
-- Different role hierarchy: Contributor → Committer → PMC Member
-
-**Implementation approach**:
-
-- Parse MAINTAINERS files (similar to OWNERS)
-- Optionally integrate with Apache's public roster APIs
-
-### Linux Foundation Projects
-
-LF projects often use:
-
-- **MAINTAINERS** file (Linux kernel style)
-- **CODEOWNERS** for path-based ownership
-- TSC (Technical Steering Committee) membership
-
-**Implementation approach**:
-
-- Parse MAINTAINERS with section-based format
-- Parse CODEOWNERS for path-specific ownership
-
-### GitHub-Native Projects
-
-Projects without formal governance files:
-
-- **CODEOWNERS** for automated review requests
-- GitHub team permissions (admin, maintain, write)
-- Repository collaborators list
-
-**Implementation approach**:
-
-- Parse CODEOWNERS files
-- Use GitHub API to fetch team memberships and permissions
-
----
-
-## Extensibility Architecture
-
-The collector is designed for extensibility:
-
-```typescript
-// Future: GovernanceParser interface
-interface GovernanceParser {
-  detect(repo: Repository): Promise<boolean>;
-  parse(repo: Repository): Promise<LeadershipRole[]>;
-  getType(): GovernanceType;
-}
-
-// Implementations
-class OwnersParser implements GovernanceParser { ... }
-class MaintainersParser implements GovernanceParser { ... }
-class CodeownersParser implements GovernanceParser { ... }
+# Path-specific owners
+/vllm/compilation/ @user1 @user2
+/docs/ @user3
 ```
 
-### Adding a New Governance Model
+### Parsing Rules
 
-1. Create a new parser implementing the interface
-2. Register it in the collector factory
-3. Auto-detection will try parsers in order of prevalence
+- `@username` references are extracted and stored
+- `@org/team` references are **skipped** (resolving team membership requires `read:org` scope on external orgs)
+- Checks `.github/CODEOWNERS`, then root `CODEOWNERS`, then `docs/CODEOWNERS`
+- Users are aggregated across all paths they own
+
+### Storage
+
+Entries are written to `maintainer_status` with:
+- `positionType: 'maintainer'`
+- `positionTitle: 'Code Owner'`
+- `source: 'CODEOWNERS'`
+
+---
+
+## Org-Level Leadership
+
+Beyond repo-level governance files, Upstream Pulse also tracks org-level leadership positions from community repositories (steering committees, TSCs, WG/SIG chairs).
+
+### Data Sources
+
+Leadership data is configured per-org via `communityRepo` in the org registry. Two parser types are available:
+
+| Parser | Config Field | Format | Example |
+|--------|-------------|--------|---------|
+| **Markdown table** | `leadershipFiles[]` | Table with people + roles | Steering committee, TSC, maintainers |
+| **WG/SIG YAML** | `wgFile` | YAML with `chairs:` + `tech_leads:` | Kubeflow WG/SIG structure |
+
+### Markdown Table Parser
+
+One parser handles two modes, controlled by the `positionType` field in config:
+
+**Mode 1 — Uniform role** (`positionType` is set):
+All rows get the same position type (e.g., `steering_committee`, `tsc_member`).
+
+**Mode 2 — Role per row** (`positionType` is not set):
+Reads role from each row's "Project Roles" / "Role" column.
+
+The parser auto-detects column layout from the header row, finds GitHub usernames from `[username](url)` patterns, and handles Alumni/Emeritus sections.
+
+### Leadership Collector
+
+The `LeadershipCollector` class accepts an org config and dispatches to the appropriate parsers:
+
+```typescript
+const collector = new LeadershipCollector(githubOrg, communityRepoConfig);
+const allPositions = await collector.getAllLeadershipPositions();
+```
+
+### Position Types
+
+Position types are freeform strings — each org's terminology is preserved as-is:
+
+| Position Type | Source | Example Orgs |
+|---------------|--------|--------------|
+| `steering_committee` | Markdown table | Kubeflow |
+| `tsc_member` | Markdown table | KServe |
+| `lead`, `maintainer` | Markdown table (role per row) | Argo, KServe |
+| `wg_chair` | wgs.yaml | Kubeflow |
+| `wg_tech_lead` | wgs.yaml | Kubeflow |
+| `sig_chair` | wgs.yaml | Kubeflow |
+| `sig_tech_lead` | wgs.yaml | Kubeflow |
+
+### Leadership Worker
+
+- **Queue**: `leadership-refresh`
+- **Schedule**: Monthly (1st of month, 4 AM UTC), one job per org
+- **Manual trigger**: `POST /api/leadership/refresh` (optional `githubOrg` body param)
+- **Scoping**: Each job processes a single org; DB updates scoped by `communityOrg` column
 
 ---
 
@@ -128,117 +144,96 @@ Leadership data is stored in two tables:
 
 ### `maintainer_status`
 
-For repo-level roles (approvers, reviewers, maintainers)
+For repo-level roles (OWNERS/CODEOWNERS).
 
-| Column           | Description                             |
-| ---------------- | --------------------------------------- |
-| `project_id`     | Repository being tracked                |
-| `team_member_id` | Team member (if matched)                |
-| `position_type`  | approver, reviewer, maintainer, etc.    |
-| `source`         | OWNERS, MAINTAINERS, github_permissions |
-| `is_active`      | Whether the role is currently active    |
+| Column | Description |
+|--------|-------------|
+| `project_id` | Repository being tracked |
+| `team_member_id` | Team member (if matched) |
+| `position_type` | maintainer, reviewer |
+| `source` | `OWNERS_file` or `CODEOWNERS` |
+| `is_active` | Whether the role is currently active |
 
 ### `leadership_positions`
 
-For org-level positions (steering committee, working groups)
+For org-level positions (steering committee, TSC, WG chairs).
 
-| Column           | Description                            |
-| ---------------- | -------------------------------------- |
-| `project_id`     | Organization/project                   |
-| `team_member_id` | Team member                            |
-| `position_type`  | steering_committee, working_group_lead |
-| `committee_name` | Name of committee/WG                   |
-| `voting_rights`  | Whether member has voting rights       |
+| Column | Description |
+|--------|-------------|
+| `community_org` | GitHub org slug (e.g., `kubeflow`, `kserve`) |
+| `project_id` | null (org-wide positions) |
+| `team_member_id` | Team member (if matched) |
+| `github_username` | Always set (for external contributors too) |
+| `position_type` | Freeform string (steering_committee, tsc_member, wg_chair, …) |
+| `committee_name` | Group name (e.g., 'Kubeflow Steering Committee', 'WG Data') |
+| `voting_rights` | Defaults to false |
 
 ---
 
 ## Configuration
 
-To enable OWNERS collection, ensure:
+### Governance Model Selection
 
-1. `GITHUB_TOKEN` has read access to repository contents
-2. Projects are added with `trackingEnabled: true`
-3. Run sync via API or scheduled job
-
-```bash
-# Manual sync
-curl -X POST http://localhost:3000/api/leadership/sync
-```
-
----
-
-## Org-Level Leadership (Kubeflow)
-
-Beyond repo-level OWNERS files, we also track org-level leadership positions from the `kubeflow/community` repository.
-
-### Data Sources
-
-| Source | File | Data |
-|--------|------|------|
-| Steering Committee | `KUBEFLOW-STEERING-COMMITTEE.md` | Members, terms, voting rights |
-| Working Groups | `wgs.yaml` | Chairs, Tech Leads per WG/SIG |
-
-### Leadership Collector
-
-The `LeadershipCollector` class fetches and parses these files:
+Set `governanceModel` in the org registry:
 
 ```typescript
-// Fetch steering committee from markdown table
-const steeringCommittee = await collector.fetchSteeringCommittee();
-
-// Fetch WG/SIG chairs and tech leads from YAML
-const wgLeadership = await collector.fetchWorkingGroupLeadership();
-
-// Combined
-const allPositions = await collector.getAllLeadershipPositions();
+{ name: 'vLLM', githubOrg: 'vllm-project', governanceModel: 'codeowners' }
 ```
 
-### Position Types
+The governance worker dispatches to the correct parser based on this setting. If an org is not found in the registry, it defaults to `'owners'`.
 
-| Position Type | Source | Description |
-|---------------|--------|-------------|
-| `steering_committee` | KUBEFLOW-STEERING-COMMITTEE.md | Org-wide governance, voting rights |
-| `wg_chair` | wgs.yaml | Working Group Chair |
-| `wg_tech_lead` | wgs.yaml | Working Group Tech Lead |
-| `sig_chair` | wgs.yaml | SIG Chair |
-| `sig_tech_lead` | wgs.yaml | SIG Tech Lead |
+### Leadership Collection
 
-### Leadership Worker
+Configure `communityRepo` with `leadershipFiles` and/or `wgFile`:
 
-A separate worker handles leadership collection:
-
-- **Queue**: `leadership-refresh`
-- **Schedule**: Monthly (1st of month, 4AM UTC)
-- **Manual trigger**: `POST /api/leadership/refresh`
-
-This runs separately from the weekly OWNERS refresh because leadership positions change less frequently.
-
-### How It Works
-
-1. **Fetch**: Download files from `kubeflow/community` repo via GitHub API
-2. **Parse**: Extract members from markdown table and YAML structures
-3. **Match**: Match GitHub usernames to team members in database
-4. **Store**: Upsert to `leadership_positions` table
-5. **Cleanup**: Mark removed leaders as inactive
+```typescript
+{
+  communityRepo: {
+    repo: 'community',
+    defaultBranch: 'main',
+    leadershipFiles: [
+      { path: 'STEERING.md', groupName: 'Steering Committee', positionType: 'steering_committee' },
+    ],
+    wgFile: 'wgs.yaml',
+  },
+}
+```
 
 ### API Endpoints
 
 ```bash
-# Trigger leadership refresh
-curl -X POST http://localhost:3000/api/leadership/refresh
+# Trigger governance refresh (OWNERS/CODEOWNERS) for all projects
+curl -X POST http://localhost:3000/api/governance/refresh
+
+# Trigger leadership refresh for a specific org
+curl -X POST http://localhost:3000/api/leadership/refresh \
+  -H 'Content-Type: application/json' \
+  -d '{"githubOrg": "kubeflow"}'
 
 # Get leadership data (included in dashboard)
 curl http://localhost:3000/api/metrics/dashboard | jq '.leadership'
+
+# List all configured orgs
+curl http://localhost:3000/api/orgs
 ```
+
+---
+
+## Adding a New Org
+
+See [docs/adding-an-org.md](adding-an-org.md) for a complete guide.
 
 ---
 
 ## Roadmap
 
 - [x] Kubernetes/Kubeflow OWNERS support
+- [x] CODEOWNERS support
 - [x] Org-level steering committee tracking
 - [x] Working Group chairs/leads tracking
-- [ ] CODEOWNERS support
+- [x] Multi-org registry and configurable parsers
+- [x] Per-org leadership display
 - [ ] Apache MAINTAINERS support
 - [ ] GitHub team/permission integration
 - [ ] Historical leadership changes over time
+- [ ] Resolve CODEOWNERS `@org/team` references

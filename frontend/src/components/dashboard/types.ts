@@ -49,29 +49,36 @@ export interface LeadershipMember {
   leadershipRoles?: OrgLeadershipRole[];
 }
 
-export interface SteeringCommitteeMember {
-  id: string;
-  name: string;
-  githubUsername: string | null;
-  avatarUrl?: string;
-  votingRights: boolean;
+export interface OrgPositionGroup {
+  positionType: string;
+  roleTitle: string;
+  teamCount: number;
+  totalCount: number;
+  members: Array<{
+    id: string;
+    name: string;
+    githubUsername: string | null;
+    avatarUrl?: string;
+    groupName: string;
+    votingRights: boolean;
+  }>;
+}
+
+export interface OrgLeadership {
+  org: string;
+  orgName: string;
+  positions: OrgPositionGroup[];
 }
 
 export interface LeadershipData {
-  summary: {
+  byOrg: OrgLeadership[];
+  maintainers: {
     totalApprovers: number;
     totalReviewers: number;
     teamApprovers: number;
     teamReviewers: number;
-    steeringCommitteeCount?: number;
-    totalSteeringCommittee?: number;
-    wgChairsCount?: number;
-    totalWgChairs?: number;
-    wgTechLeadsCount?: number;
-    totalWgTechLeads?: number;
   };
   teamLeaders: LeadershipMember[];
-  steeringCommittee?: SteeringCommitteeMember[];
 }
 
 export interface DashboardData {
