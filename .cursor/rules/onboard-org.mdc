@@ -1,0 +1,112 @@
+---
+description: Guide for onboarding a new upstream organization — add to registry, add projects, verify collection and dashboard
+globs: backend/src/shared/config/org-registry.ts
+alwaysApply: false
+---
+
+# Onboarding a New Upstream Organization
+
+When asked to add/onboard a new upstream org, follow these steps in order.
+
+## 1. Research the Org
+
+Before adding anything, check:
+- Does the org have a community repo? (e.g., `orgname/community`) — check GitHub
+- What governance format? OWNERS files, CODEOWNERS, or neither?
+- If community repo exists, what leadership files are available? (steering/TSC markdown, maintainers markdown, WGs YAML)
+- What repos from this org should be tracked? Check `docs/upstream-projects.md` and the `opendatahub-io` fork list
+
+## 2. Add to Org Registry
+
+Edit `backend/src/shared/config/org-registry.ts` and add an entry to `ORG_REGISTRY`.
+
+Key fields:
+- `governanceModel`: `'owners'` if repo has OWNERS files, `'codeowners'` if .github/CODEOWNERS, `'none'` if neither
+- `communityRepo`: only set if the org has a community repo with parseable leadership files
+- `leadershipFiles`: for each markdown file with leadership data:
+  - Set `positionType` if everyone in the file has the same role (e.g., TSC members)
+  - Leave `positionType` unset if roles vary per row (e.g., MAINTAINERS.md with Lead/Approver/Reviewer)
+- `repoToWorkingGroup`: only needed if the org has WGs and you want project-level leadership filtering
+
+## 3. Add Projects via API
+
+For each repo to track, call the deployed API:
+
+```bash
+curl -X POST https://<ROUTE_URL>/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Display Name",
+    "githubOrg": "org-name",
+    "githubRepo": "repo-name",
+    "ecosystem": "org-name",
+    "primaryLanguage": "Go",
+    "startCollection": true
+  }'
+```
+
+If behind OAuth proxy, use `oc exec` to call the backend service directly:
+
+```bash
+oc exec -n upstream-pulse deploy/backend -- curl -s -X POST http://localhost:3000/api/projects \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "...", "githubOrg": "...", "githubRepo": "...", "ecosystem": "...", "startCollection": true }'
+```
+
+## 4. Verify Collection
+
+After adding projects, check:
+
+```bash
+# System status — verify jobs are running/completed
+oc exec -n upstream-pulse deploy/backend -- curl -s http://localhost:3000/api/system/status | python3 -m json.tool
+
+# Check contribution count for new projects
+oc exec -n upstream-pulse postgres-<pod> -- psql -U postgres -d upstream_pulse \
+  -c "SELECT p.name, p.github_org || '/' || p.github_repo as repo, COUNT(c.id) as contributions FROM projects p LEFT JOIN contributions c ON p.id = c.project_id WHERE p.github_org = '<org-name>' GROUP BY p.id, p.name, p.github_org, p.github_repo ORDER BY contributions DESC;"
+```
+
+## 5. Verify Leadership (if community repo configured)
+
+Check leadership was collected:
+
+```bash
+oc exec -n upstream-pulse postgres-<pod> -- psql -U postgres -d upstream_pulse \
+  -c "SELECT community_org, position_type, COUNT(*) FROM leadership_positions WHERE community_org = '<org-name>' AND is_active = true GROUP BY community_org, position_type;"
+```
+
+If no leadership data, trigger manually:
+
+```bash
+oc exec -n upstream-pulse deploy/backend -- curl -s -X POST http://localhost:3000/api/leadership/refresh \
+  -H "Content-Type: application/json" \
+  -d '{ "githubOrg": "<org-name>" }'
+```
+
+## 6. Verify Governance
+
+Check OWNERS/CODEOWNERS data was collected:
+
+```bash
+oc exec -n upstream-pulse postgres-<pod> -- psql -U postgres -d upstream_pulse \
+  -c "SELECT p.name, ms.position_type, ms.source, COUNT(*) FROM maintainer_status ms JOIN projects p ON ms.project_id = p.id WHERE p.github_org = '<org-name>' AND ms.is_active = true GROUP BY p.name, ms.position_type, ms.source;"
+```
+
+## 7. Check Dashboard
+
+Verify the dashboard shows the new org's data correctly:
+- Contributions appear in the project cards
+- Leadership section shows per-org positions (if community repo configured)
+- OWNERS/CODEOWNERS roles appear in governance section
+
+## 8. Update Docs
+
+After successful onboarding, update `docs/upstream-projects.md`:
+- Change the org's status from "Planned" to "Supported" / "Tracked"
+
+## Common Issues
+
+- **No contributions collected**: Check if `startCollection: true` was set. If not, trigger manually via `POST /api/admin/collect`
+- **Leadership empty**: Org may not have a `communityRepo` in the registry, or the parser doesn't match the file format
+- **CODEOWNERS empty**: Parser only handles `@username`, skips `@org/team` references
+- **Repo not found**: Verify the GitHub org/repo exists and is public

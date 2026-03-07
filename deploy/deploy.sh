@@ -150,6 +150,41 @@ verify_running_pod_state() {
     log "Running pod verification passed"
 }
 
+save_access_stats() {
+    local stats_dir="${PROJECT_ROOT}"
+    local timestamp
+    timestamp="$(date +%Y-%m-%d)"
+    local stats_file="${stats_dir}/access-stats-${timestamp}.txt"
+
+    info "Saving access stats before redeploy..."
+    local tmp_stats
+    tmp_stats="$(mktemp)"
+    if oc -n "${NAMESPACE}" logs deployment/frontend -c oauth-proxy 2>/dev/null \
+        | grep "authentication complete" \
+        | sed 's/.*\([0-9]\{4\}\/[0-9]\{2\}\/[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\}\).*Session{\(.*\)@cluster.local.*/\1  \2/' \
+        > "${tmp_stats}" 2>/dev/null; then
+        local count
+        count="$(wc -l < "${tmp_stats}" | tr -d ' ')"
+        if [ "${count}" -gt 0 ]; then
+            if [ -f "${stats_file}" ]; then
+                # Append only lines not already present
+                local new_lines
+                new_lines="$(grep -vFxf "${stats_file}" "${tmp_stats}" 2>/dev/null | wc -l | tr -d ' ')"
+                grep -vFxf "${stats_file}" "${tmp_stats}" >> "${stats_file}" 2>/dev/null || true
+                log "Appended ${new_lines} new entries to ${stats_file}"
+            else
+                cp "${tmp_stats}" "${stats_file}"
+                log "Saved ${count} access entries to ${stats_file}"
+            fi
+        else
+            info "No access stats to save"
+        fi
+    else
+        info "Could not retrieve access stats (frontend may not be running)"
+    fi
+    rm -f "${tmp_stats}"
+}
+
 set_runtime_images() {
     info "Setting deployment images to tag: ${IMAGE_TAG}"
 
@@ -259,6 +294,7 @@ apply_manifests() {
         warn "ORG_NAME and ORG_DESCRIPTION not set — skipping configmap patch"
     fi
 
+    save_access_stats
     set_runtime_images
 
     log "Waiting for PostgreSQL to be ready..."
