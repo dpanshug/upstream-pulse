@@ -169,7 +169,7 @@ export default function Dashboard() {
         {orgActivity && orgActivity.length > 0 && (
           <section className="mb-8">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Org Activity</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Top Organizations</h2>
               <Link
                 to={`/organizations?days=${selectedDays}`}
                 className="text-sm text-blue-600 hover:text-blue-800 font-medium"

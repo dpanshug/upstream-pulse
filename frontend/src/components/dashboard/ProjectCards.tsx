@@ -44,7 +44,7 @@ export function ProjectCards({ projects, selectedDays, orgSlug, totalCount }: Pr
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">Projects</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Top Projects</h2>
         {showViewAll ? (
           <Link to="/projects" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
             View all {totalCount} projects →
