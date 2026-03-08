@@ -59,38 +59,43 @@ export class GitHubCollector {
     repo: Repository,
     since: Date,
     onProgress?: (detail: { phase: string; collected: number }) => void,
+    onPhaseComplete?: (phase: string, records: ContributionRecord[]) => Promise<void>,
   ): Promise<ContributionRecord[]> {
     logger.info(`Collecting contributions for ${repo.githubOrg}/${repo.githubRepo} since ${since.toISOString()}`);
 
-    const contributions: ContributionRecord[] = [];
-    const signal = (phase: string) => onProgress?.({ phase, collected: contributions.length });
+    let totalCollected = 0;
+    const allRecords: ContributionRecord[] = [];
+    const signal = (phase: string) => onProgress?.({ phase, collected: totalCollected });
+
+    const completePhase = async (phase: string, records: ContributionRecord[]) => {
+      totalCollected += records.length;
+      allRecords.push(...records);
+      logger.info(`Collected ${records.length} ${phase}`);
+      if (onPhaseComplete) await onPhaseComplete(phase, records);
+    };
 
     try {
       await this.checkRateLimit();
 
       signal('commits');
-      const commits = await this.collectCommits(repo, since);
-      contributions.push(...commits);
-      logger.info(`Collected ${commits.length} commits`);
+      const commits = await this.collectCommits(repo, since, onProgress);
+      await completePhase('commits', commits);
 
       signal('pull_requests');
-      const prs = await this.collectPullRequests(repo, since);
-      contributions.push(...prs);
-      logger.info(`Collected ${prs.length} PRs`);
+      const prs = await this.collectPullRequests(repo, since, onProgress);
+      await completePhase('pull_requests', prs);
 
       signal('reviews');
       const reviews = await this.collectReviews(repo, since, onProgress);
-      contributions.push(...reviews);
-      logger.info(`Collected ${reviews.length} reviews`);
+      await completePhase('reviews', reviews);
 
       signal('issues');
-      const issues = await this.collectIssues(repo, since);
-      contributions.push(...issues);
-      logger.info(`Collected ${issues.length} issues`);
+      const issues = await this.collectIssues(repo, since, onProgress);
+      await completePhase('issues', issues);
 
       signal('done');
-      logger.info(`Total contributions collected: ${contributions.length}`);
-      return contributions;
+      logger.info(`Total contributions collected: ${totalCollected}`);
+      return allRecords;
 
     } catch (error) {
       logger.error('Error collecting contributions', { error, repo });
@@ -103,9 +108,11 @@ export class GitHubCollector {
    */
   private async collectCommits(
     repo: Repository,
-    since: Date
+    since: Date,
+    onProgress?: (detail: { phase: string; collected: number }) => void,
   ): Promise<ContributionRecord[]> {
     const contributions: ContributionRecord[] = [];
+    let page = 0;
 
     try {
       const commits = await this.octokit.paginate(
@@ -115,7 +122,11 @@ export class GitHubCollector {
           repo: repo.githubRepo,
           since: since.toISOString(),
           per_page: 100,
-        }
+        },
+        (response) => {
+          onProgress?.({ phase: `commits (page ${++page})`, collected: contributions.length });
+          return response.data;
+        },
       );
 
       for (const commit of commits) {
@@ -154,9 +165,11 @@ export class GitHubCollector {
    */
   private async collectPullRequests(
     repo: Repository,
-    since: Date
+    since: Date,
+    onProgress?: (detail: { phase: string; collected: number }) => void,
   ): Promise<ContributionRecord[]> {
     const contributions: ContributionRecord[] = [];
+    let page = 0;
 
     try {
       const pulls = await this.octokit.paginate(
@@ -168,7 +181,11 @@ export class GitHubCollector {
           sort: 'created',
           direction: 'desc',
           per_page: 100,
-        }
+        },
+        (response) => {
+          onProgress?.({ phase: `pull_requests (page ${++page})`, collected: contributions.length });
+          return response.data;
+        },
       );
 
       // Filter PRs created since 'since' date
@@ -217,6 +234,7 @@ export class GitHubCollector {
     const contributions: ContributionRecord[] = [];
 
     try {
+      let page = 0;
       const pulls = await this.octokit.paginate(
         this.octokit.rest.pulls.list,
         {
@@ -226,7 +244,11 @@ export class GitHubCollector {
           sort: 'updated',
           direction: 'desc',
           per_page: 50,
-        }
+        },
+        (response) => {
+          onProgress?.({ phase: `reviews/listing PRs (page ${++page})`, collected: contributions.length });
+          return response.data;
+        },
       );
 
       const recentPulls = pulls.filter(pr =>
@@ -285,9 +307,11 @@ export class GitHubCollector {
    */
   private async collectIssues(
     repo: Repository,
-    since: Date
+    since: Date,
+    onProgress?: (detail: { phase: string; collected: number }) => void,
   ): Promise<ContributionRecord[]> {
     const contributions: ContributionRecord[] = [];
+    let page = 0;
 
     try {
       const issues = await this.octokit.paginate(
@@ -300,7 +324,11 @@ export class GitHubCollector {
           direction: 'desc',
           since: since.toISOString(),
           per_page: 100,
-        }
+        },
+        (response) => {
+          onProgress?.({ phase: `issues (page ${++page})`, collected: contributions.length });
+          return response.data;
+        },
       );
 
       for (const issue of issues) {

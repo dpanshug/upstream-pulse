@@ -19,6 +19,47 @@ const redisConnection = new Redis(config.redisUrl, {
   maxRetriesPerRequest: null,
 });
 
+async function resolveAndStore(
+  records: { type: string; author?: string; email?: string; githubId: string; date: Date; metadata?: Record<string, any>; isMerged?: boolean; linesAdded?: number; linesDeleted?: number; filesChanged?: number }[],
+  projectId: string,
+  resolver: IdentityResolver,
+): Promise<{ processed: number; errors: number }> {
+  const contributors = records.map(c => ({ username: c.author || 'unknown', email: c.email }));
+  const unique = Array.from(new Map(contributors.map(c => [c.username, c])).values());
+  const identities = await resolver.bulkResolve(unique);
+
+  let processed = 0;
+  let errors = 0;
+
+  for (const record of records) {
+    try {
+      const identity = identities.get(record.author || 'unknown');
+      await db.insert(contributions).values({
+        projectId,
+        teamMemberId: identity?.teamMember?.id,
+        contributionType: record.type,
+        contributionDate: record.date.toISOString().split('T')[0],
+        githubId: record.githubId,
+        githubUrl: record.metadata?.url,
+        linesAdded: record.linesAdded,
+        linesDeleted: record.linesDeleted,
+        filesChanged: record.filesChanged,
+        isMerged: record.isMerged,
+        metadata: record.metadata,
+      }).onConflictDoNothing();
+      processed++;
+    } catch (error) {
+      errors++;
+      logger.warn('Error storing contribution', {
+        error: (error as Error).message,
+        record: record.githubId,
+      });
+    }
+  }
+
+  return { processed, errors };
+}
+
 export const collectionWorker = new Worker<CollectionJobData>(
   'contribution-collection',
   async (job: Job<CollectionJobData>) => {
@@ -30,9 +71,8 @@ export const collectionWorker = new Worker<CollectionJobData>(
       jobType,
     });
 
-    // Update job status to running
     const jobRecordId = randomUUID();
-    const jobRecord = await db.insert(collectionJobs).values({
+    await db.insert(collectionJobs).values({
       id: jobRecordId,
       jobType,
       projectId,
@@ -42,7 +82,6 @@ export const collectionWorker = new Worker<CollectionJobData>(
     }).returning();
 
     try {
-      // Fetch project details
       const project = await db.query.projects.findFirst({
         where: eq(projects.id, projectId),
       });
@@ -57,16 +96,16 @@ export const collectionWorker = new Worker<CollectionJobData>(
         repo: project.githubRepo,
       });
 
-      // Determine collection start date
-      // 'since' should always be provided by scheduler (from last_sync_at or repo creation)
-      // Fallback to 7 days if not provided
       const sinceDate = since
         ? new Date(since)
         : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-      // Collect contributions from GitHub
       const collector = new GitHubCollector();
-      const contributionRecords = await collector.collectRepositoryContributions(
+      const resolver = new IdentityResolver();
+      let recordsProcessed = 0;
+      let errorsCount = 0;
+
+      await collector.collectRepositoryContributions(
         {
           name: project.name || `${project.githubOrg}/${project.githubRepo}`,
           githubOrg: project.githubOrg,
@@ -77,82 +116,24 @@ export const collectionWorker = new Worker<CollectionJobData>(
         ({ phase, collected }) => {
           job.updateProgress({ phase, collected });
         },
-      );
-
-      logger.info('GitHub data collected', {
-        count: contributionRecords.length,
-        project: project.name,
-      });
-
-      // Update progress
-      await job.updateProgress(30);
-
-      // Resolve identities
-      const resolver = new IdentityResolver();
-      const contributors = contributionRecords.map(c => ({
-        username: c.author || 'unknown',
-        email: c.email,
-      }));
-
-      // Deduplicate contributors
-      const uniqueContributors = Array.from(
-        new Map(contributors.map(c => [c.username, c])).values()
-      );
-
-      const identities = await resolver.bulkResolve(uniqueContributors);
-
-      logger.info('Identities resolved', {
-        total: uniqueContributors.length,
-        resolved: Array.from(identities.values()).filter(i => i.teamMember).length,
-      });
-
-      // Update progress
-      await job.updateProgress(60);
-
-      // Store contributions in database
-      let recordsProcessed = 0;
-      let errorsCount = 0;
-
-      for (const record of contributionRecords) {
-        try {
-          const identity = identities.get(record.author || 'unknown');
-
-          await db.insert(contributions).values({
-            projectId: project.id,
-            teamMemberId: identity?.teamMember?.id,
-            contributionType: record.type,
-            contributionDate: record.date.toISOString().split('T')[0],
-            githubId: record.githubId,
-            githubUrl: record.metadata?.url,
-            linesAdded: record.linesAdded,
-            linesDeleted: record.linesDeleted,
-            filesChanged: record.filesChanged,
-            isMerged: record.isMerged,
-            metadata: record.metadata,
-          }).onConflictDoNothing(); // Skip duplicates
-
-          recordsProcessed++;
-        } catch (error) {
-          errorsCount++;
-          logger.warn('Error storing contribution', {
-            error: (error as Error).message,
-            record: record.githubId,
+        async (phase, records) => {
+          if (records.length === 0) return;
+          const result = await resolveAndStore(records, project.id, resolver);
+          recordsProcessed += result.processed;
+          errorsCount += result.errors;
+          logger.info(`Phase ${phase} persisted`, {
+            project: project.name,
+            phaseRecords: records.length,
+            totalProcessed: recordsProcessed,
           });
-        }
-      }
+          await job.updateProgress({ phase: `${phase}_stored`, stored: recordsProcessed });
+        },
+      );
 
-      // Update progress
-      await job.updateProgress(90);
-
-      // Update project last sync time
       await db.update(projects)
-        .set({
-          lastSyncAt: new Date(),
-          updatedAt: new Date(),
-        })
+        .set({ lastSyncAt: new Date(), updatedAt: new Date() })
         .where(eq(projects.id, projectId));
 
-      // Mark job as completed
       await db.update(collectionJobs)
         .set({
           status: 'completed',
@@ -169,11 +150,7 @@ export const collectionWorker = new Worker<CollectionJobData>(
         errorsCount,
       });
 
-      return {
-        success: true,
-        recordsProcessed,
-        errorsCount,
-      };
+      return { success: true, recordsProcessed, errorsCount };
 
     } catch (error) {
       logger.error('Collection job failed', {
@@ -182,7 +159,6 @@ export const collectionWorker = new Worker<CollectionJobData>(
         error: (error as Error).message,
       });
 
-      // Mark job as failed
       await db.update(collectionJobs)
         .set({
           status: 'failed',
@@ -200,8 +176,9 @@ export const collectionWorker = new Worker<CollectionJobData>(
   {
     connection: redisConnection,
     concurrency: 3,
-    lockDuration: 600_000, // 10 minutes — large repos (e.g. vLLM) need long API pagination cycles
+    lockDuration: 600_000,
     stalledInterval: 600_000,
+    maxStalledCount: 3,
     limiter: {
       max: 10,
       duration: 60000,
