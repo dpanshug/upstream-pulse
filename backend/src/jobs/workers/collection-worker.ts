@@ -7,7 +7,7 @@ import { db } from '../../shared/database/client.js';
 import { projects, contributions, collectionJobs } from '../../shared/database/schema.js';
 import { GitHubCollector } from '../../modules/collection/github-collector.js';
 import { IdentityResolver } from '../../modules/identity/resolver.js';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 interface CollectionJobData {
   projectId: string;
@@ -196,10 +196,12 @@ export const collectionWorker = new Worker<CollectionJobData>(
   },
   {
     connection: redisConnection,
-    concurrency: 3, // Process up to 3 jobs concurrently
+    concurrency: 3,
+    lockDuration: 600_000, // 10 minutes — large repos (e.g. vLLM) need long API pagination cycles
+    stalledInterval: 600_000,
     limiter: {
-      max: 10, // Max 10 jobs
-      duration: 60000, // Per 60 seconds
+      max: 10,
+      duration: 60000,
     },
   }
 );
@@ -208,11 +210,27 @@ collectionWorker.on('completed', (job) => {
   logger.info('Collection job completed', { jobId: job.id });
 });
 
-collectionWorker.on('failed', (job, err) => {
+collectionWorker.on('failed', async (job, err) => {
   logger.error('Collection job failed', {
     jobId: job?.id,
     error: err.message,
   });
+
+  if (!job) return;
+  try {
+    const bullmqJobId = job.id;
+    await db.update(collectionJobs)
+      .set({
+        status: 'failed',
+        completedAt: new Date(),
+        errorDetails: { message: err.message, source: 'bullmq_event' },
+      })
+      .where(
+        sql`${collectionJobs.metadata}->>'bullmqJobId' = ${bullmqJobId} AND ${collectionJobs.status} = 'running'`
+      );
+  } catch (dbErr) {
+    logger.error('Failed to update job record on BullMQ failure event', { error: (dbErr as Error).message });
+  }
 });
 
 collectionWorker.on('error', (err) => {
