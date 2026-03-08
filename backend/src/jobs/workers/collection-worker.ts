@@ -73,7 +73,10 @@ export const collectionWorker = new Worker<CollectionJobData>(
           githubRepo: project.githubRepo,
           id: project.id,
         },
-        sinceDate
+        sinceDate,
+        ({ phase, collected }) => {
+          job.updateProgress({ phase, collected });
+        },
       );
 
       logger.info('GitHub data collected', {

@@ -57,36 +57,38 @@ export class GitHubCollector {
    */
   async collectRepositoryContributions(
     repo: Repository,
-    since: Date
+    since: Date,
+    onProgress?: (detail: { phase: string; collected: number }) => void,
   ): Promise<ContributionRecord[]> {
     logger.info(`Collecting contributions for ${repo.githubOrg}/${repo.githubRepo} since ${since.toISOString()}`);
 
     const contributions: ContributionRecord[] = [];
+    const signal = (phase: string) => onProgress?.({ phase, collected: contributions.length });
 
     try {
-      // Check rate limit before starting
       await this.checkRateLimit();
 
-      // Collect commits
+      signal('commits');
       const commits = await this.collectCommits(repo, since);
       contributions.push(...commits);
       logger.info(`Collected ${commits.length} commits`);
 
-      // Collect PRs
+      signal('pull_requests');
       const prs = await this.collectPullRequests(repo, since);
       contributions.push(...prs);
       logger.info(`Collected ${prs.length} PRs`);
 
-      // Collect reviews
-      const reviews = await this.collectReviews(repo, since);
+      signal('reviews');
+      const reviews = await this.collectReviews(repo, since, onProgress);
       contributions.push(...reviews);
       logger.info(`Collected ${reviews.length} reviews`);
 
-      // Collect issues
+      signal('issues');
       const issues = await this.collectIssues(repo, since);
       contributions.push(...issues);
       logger.info(`Collected ${issues.length} issues`);
 
+      signal('done');
       logger.info(`Total contributions collected: ${contributions.length}`);
       return contributions;
 
@@ -209,12 +211,12 @@ export class GitHubCollector {
    */
   private async collectReviews(
     repo: Repository,
-    since: Date
+    since: Date,
+    onProgress?: (detail: { phase: string; collected: number }) => void,
   ): Promise<ContributionRecord[]> {
     const contributions: ContributionRecord[] = [];
 
     try {
-      // First get recent PRs
       const pulls = await this.octokit.paginate(
         this.octokit.rest.pulls.list,
         {
@@ -223,7 +225,7 @@ export class GitHubCollector {
           state: 'all',
           sort: 'updated',
           direction: 'desc',
-          per_page: 50, // Limit to recent 50 PRs to avoid too many API calls
+          per_page: 50,
         }
       );
 
@@ -231,8 +233,11 @@ export class GitHubCollector {
         new Date(pr.updated_at) >= since
       );
 
-      // Collect reviews for each PR
+      let processed = 0;
       for (const pr of recentPulls) {
+        if (++processed % 50 === 0) {
+          onProgress?.({ phase: `reviews (${processed}/${recentPulls.length} PRs)`, collected: contributions.length });
+        }
         try {
           const reviews = await this.octokit.rest.pulls.listReviews({
             owner: repo.githubOrg,
