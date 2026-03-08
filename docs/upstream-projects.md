@@ -2,7 +2,7 @@
 
 Upstream Pulse provides contribution tracking and governance insights for the following upstream open-source organizations and projects. This document lists what is currently supported and what is planned next, organized by upstream organization.
 
-**Last updated**: 2026-03-07
+**Last updated**: 2026-03-08
 
 ---
 
@@ -31,21 +31,19 @@ The primary upstream org for Kubernetes-native ML platform components.
 
 ---
 
-## Planned Additions
-
 ### KServe (`kserve/*`)
 
 Model serving and inference platform for Kubernetes.
 
-| Repo | Description |
-|------|-------------|
-| `kserve/kserve` | Core model serving framework |
-| `kserve/modelmesh-serving` | Multi-model serving layer |
-| `kserve/modelmesh` | Core ModelMesh runtime |
-| `kserve/modelmesh-runtime-adapter` | Runtime adapter layer |
-| `kserve/rest-proxy` | REST proxy for inference |
+| Repo | Description | Status |
+|------|-------------|--------|
+| `kserve/kserve` | Core model serving framework | **Tracked** |
+| `kserve/modelmesh-serving` | Multi-model serving layer | **Tracked** |
+| `kserve/modelmesh` | Core ModelMesh runtime | **Tracked** |
+| `kserve/modelmesh-runtime-adapter` | Runtime adapter layer | **Tracked** |
+| `kserve/rest-proxy` | REST proxy for inference | **Tracked** |
 
-**Governance**: Has its own community governance. Leadership collector needs to be extended.
+**Governance**: Leadership data sourced from `kserve/community` (TSC, maintainers). OWNERS files supported.
 
 ---
 
@@ -53,13 +51,15 @@ Model serving and inference platform for Kubernetes.
 
 High-performance LLM inference engine. Strategically important for model serving.
 
-| Repo | Description |
-|------|-------------|
-| `vllm-project/vllm` | LLM inference engine |
+| Repo | Description | Status |
+|------|-------------|--------|
+| `vllm-project/vllm` | LLM inference engine | **Tracked** |
 
 **Governance**: Community-driven, uses GitHub CODEOWNERS.
 
 ---
+
+## Planned Additions
 
 ### Ray (`ray-project/*`)
 
@@ -174,8 +174,8 @@ Additional upstream projects across various organizations.
 | Organization | Repos | Status |
 |---|---|---|
 | **Kubeflow** | 12 | 10 tracked, 2 to add |
-| **KServe** | 5 | Planned |
-| **vLLM** | 1 | Planned |
+| **KServe** | 5 | 5 tracked |
+| **vLLM** | 1 | 1 tracked |
 | **Ray** | 1 | Planned |
 | **Kubernetes SIGs** | 2 | Planned |
 | **Argo** | 1 | Planned |
@@ -184,7 +184,7 @@ Additional upstream projects across various organizations.
 | **Caikit** | 3 | Planned |
 | **Feast** | 1 | Planned |
 | **Individual repos** | 8 | Planned |
-| **Total** | **40** | 10 tracked, 30 planned |
+| **Total** | **40** | 16 tracked, 24 planned |
 
 ---
 
