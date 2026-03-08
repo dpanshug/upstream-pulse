@@ -87,9 +87,13 @@ export interface OrgActivityItem {
   reviews: number;
   issues: number;
   trend: Array<{ date: string; count: number }>;
+  totalTrend: Array<{ date: string; count: number }>;
   percentChange: number;
   leadershipCount: number;
   maintainerCount: number;
+  totalContributions: number;
+  teamSharePercent: number;
+  activeTeamMembers: number;
 }
 
 // Complete dashboard response - clear and organized

@@ -543,12 +543,12 @@ export class MetricsService {
       dateConditions.push(lte(contributions.contributionDate, this.formatDate(dateRange.end)));
     }
 
-    const sparkRange = dateRange || {
+    const sparkRange = {
       start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
       end: new Date(),
     };
 
-    const [contribByOrg, sparklineData, leadershipCounts, maintainerCounts] = await Promise.all([
+    const [contribByOrg, totalContribByOrg, activeTeamMembersByOrg, sparklineData, totalSparklineData, leadershipCounts, maintainerCounts] = await Promise.all([
       db.select({
           githubOrg: projects.githubOrg,
           type: contributions.contributionType,
@@ -563,6 +563,26 @@ export class MetricsService {
 
       db.select({
           githubOrg: projects.githubOrg,
+          count: count(),
+        })
+        .from(contributions)
+        .innerJoin(projects, eq(contributions.projectId, projects.id))
+        .where(dateConditions.length > 0 ? and(...dateConditions) : undefined)
+        .groupBy(projects.githubOrg),
+
+      db.select({
+          githubOrg: projects.githubOrg,
+          count: sql<number>`count(distinct ${contributions.teamMemberId})`,
+        })
+        .from(contributions)
+        .innerJoin(projects, eq(contributions.projectId, projects.id))
+        .where(dateConditions.length > 0
+          ? and(isNotNull(contributions.teamMemberId), ...dateConditions)
+          : isNotNull(contributions.teamMemberId))
+        .groupBy(projects.githubOrg),
+
+      db.select({
+          githubOrg: projects.githubOrg,
           date: contributions.contributionDate,
           count: count(),
         })
@@ -570,6 +590,20 @@ export class MetricsService {
         .innerJoin(projects, eq(contributions.projectId, projects.id))
         .where(and(
           isNotNull(contributions.teamMemberId),
+          gte(contributions.contributionDate, this.formatDate(sparkRange.start)),
+          lte(contributions.contributionDate, this.formatDate(sparkRange.end)),
+        ))
+        .groupBy(projects.githubOrg, contributions.contributionDate)
+        .orderBy(contributions.contributionDate),
+
+      db.select({
+          githubOrg: projects.githubOrg,
+          date: contributions.contributionDate,
+          count: count(),
+        })
+        .from(contributions)
+        .innerJoin(projects, eq(contributions.projectId, projects.id))
+        .where(and(
           gte(contributions.contributionDate, this.formatDate(sparkRange.start)),
           lte(contributions.contributionDate, this.formatDate(sparkRange.end)),
         ))
@@ -653,6 +687,17 @@ export class MetricsService {
       });
     }
 
+    const totalSparklineMap = new Map<string, Array<{ date: string; count: number }>>();
+    for (const row of totalSparklineData) {
+      if (!totalSparklineMap.has(row.githubOrg)) {
+        totalSparklineMap.set(row.githubOrg, []);
+      }
+      totalSparklineMap.get(row.githubOrg)!.push({
+        date: row.date as string,
+        count: Number(row.count),
+      });
+    }
+
     const leadershipMap = new Map<string, number>();
     for (const row of leadershipCounts) {
       if (row.communityOrg) {
@@ -663,6 +708,16 @@ export class MetricsService {
     const maintainerMap = new Map<string, number>();
     for (const row of maintainerCounts) {
       maintainerMap.set(row.githubOrg, Number(row.count));
+    }
+
+    const totalContribMap = new Map<string, number>();
+    for (const row of totalContribByOrg) {
+      totalContribMap.set(row.githubOrg, Number(row.count));
+    }
+
+    const activeTeamMap = new Map<string, number>();
+    for (const row of activeTeamMembersByOrg) {
+      activeTeamMap.set(row.githubOrg, Number(row.count));
     }
 
     const allOrgs = new Set([
@@ -681,14 +736,23 @@ export class MetricsService {
           ? (counts.total > 0 ? 100 : 0)
           : parseFloat((((counts.total - prev) / prev) * 100).toFixed(1));
 
+      const totalContribs = totalContribMap.get(org) ?? 0;
+      const teamShare = totalContribs > 0
+        ? parseFloat(((counts.total / totalContribs) * 100).toFixed(1))
+        : 0;
+
       results.push({
         org,
         orgName: getOrgConfig(org)?.name ?? org,
         ...counts,
         trend: sparklineMap.get(org) ?? [],
+        totalTrend: totalSparklineMap.get(org) ?? [],
         percentChange,
         leadershipCount: leadershipMap.get(org) ?? 0,
         maintainerCount: maintainerMap.get(org) ?? 0,
+        totalContributions: totalContribs,
+        teamSharePercent: teamShare,
+        activeTeamMembers: activeTeamMap.get(org) ?? 0,
       });
     }
 
@@ -877,7 +941,7 @@ export class MetricsService {
     const [leadershipData, orgActivity] = await Promise.all([
       this.getLeadershipSummary(projectId, projectRepo, githubOrg),
       !projectId && !githubOrg
-        ? this.getOrgActivity({ days }).then(r => r.slice(0, 6))
+        ? this.getOrgActivity({ days }).then(r => r.slice(0, 4))
         : Promise.resolve(undefined),
     ]);
 

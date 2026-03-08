@@ -706,9 +706,13 @@ app.get<{
           hasCommunityRepo: !!o.communityRepo,
           contributionCount: activity?.total ?? 0,
           trend: activity?.trend ?? [],
+          totalTrend: activity?.totalTrend ?? [],
           percentChange: activity?.percentChange ?? 0,
           leadershipCount: activity?.leadershipCount ?? 0,
           maintainerCount: activity?.maintainerCount ?? 0,
+          totalContributions: activity?.totalContributions ?? 0,
+          teamSharePercent: activity?.teamSharePercent ?? 0,
+          activeTeamMembers: activity?.activeTeamMembers ?? 0,
           projectCount: projectCountMap.get(o.githubOrg) ?? 0,
         };
       }),

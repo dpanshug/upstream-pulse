@@ -14,9 +14,13 @@ interface OrgSummary {
   hasCommunityRepo: boolean;
   contributionCount: number;
   trend: Array<{ date: string; count: number }>;
+  totalTrend: Array<{ date: string; count: number }>;
   percentChange: number;
   leadershipCount: number;
   maintainerCount: number;
+  totalContributions: number;
+  teamSharePercent: number;
+  activeTeamMembers: number;
   projectCount: number;
 }
 
@@ -80,7 +84,7 @@ export default function Organizations() {
             <p className="text-gray-500">No organizations configured yet</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {sorted.map((org) => (
               <OrgActivityCard
                 key={org.githubOrg}
@@ -93,11 +97,14 @@ export default function Organizations() {
                   reviews: 0,
                   issues: 0,
                   trend: org.trend,
+                  totalTrend: org.totalTrend,
                   percentChange: org.percentChange,
                   leadershipCount: org.leadershipCount,
                   maintainerCount: org.maintainerCount,
+                  totalContributions: org.totalContributions,
+                  teamSharePercent: org.teamSharePercent,
+                  activeTeamMembers: org.activeTeamMembers,
                 }}
-                governanceModel={org.governanceModel}
                 projectCount={org.projectCount}
                 selectedDays={selectedDays}
               />

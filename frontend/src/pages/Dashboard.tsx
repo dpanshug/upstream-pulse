@@ -177,7 +177,7 @@ export default function Dashboard() {
                 View all organizations →
               </Link>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {orgActivity.map((activity) => (
                 <OrgActivityCard key={activity.org} activity={activity} selectedDays={selectedDays} />
               ))}
@@ -187,7 +187,11 @@ export default function Dashboard() {
 
         {/* Project Cards Grid */}
         <div className="mb-8">
-          <ProjectCards projects={data.topProjects} selectedDays={selectedDays} />
+          <ProjectCards
+            projects={data.topProjects.slice(0, 6)}
+            selectedDays={selectedDays}
+            totalCount={data.topProjects.length}
+          />
         </div>
 
         {/* Top Contributors */}

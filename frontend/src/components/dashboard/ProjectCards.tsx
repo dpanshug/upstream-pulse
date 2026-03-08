@@ -26,6 +26,7 @@ interface ProjectCardsProps {
   projects: ProjectData[];
   selectedDays: number;
   orgSlug?: string;
+  totalCount?: number;
 }
 
 const TYPE_CONFIG = [
@@ -35,14 +36,22 @@ const TYPE_CONFIG = [
   { key: 'issues' as const, label: 'Issues', icon: AlertCircle, color: 'text-orange-600', bg: 'bg-orange-50' },
 ];
 
-export function ProjectCards({ projects, selectedDays, orgSlug }: ProjectCardsProps) {
+export function ProjectCards({ projects, selectedDays, orgSlug, totalCount }: ProjectCardsProps) {
   if (!projects || projects.length === 0) return null;
+
+  const showViewAll = totalCount !== undefined && totalCount > projects.length;
 
   return (
     <section>
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold text-gray-900">Projects</h2>
-        <p className="text-sm text-gray-500">{projects.length} tracked projects</p>
+        {showViewAll ? (
+          <Link to="/projects" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
+            View all {totalCount} projects →
+          </Link>
+        ) : (
+          <p className="text-sm text-gray-500">{projects.length} tracked projects</p>
+        )}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {projects.map((project) => (
@@ -73,7 +82,7 @@ export function ProjectCards({ projects, selectedDays, orgSlug }: ProjectCardsPr
               <span className="text-2xl font-bold text-gray-900">
                 {project.contributions.all.team.toLocaleString()}
               </span>
-              <span className="text-sm text-gray-500">team contributions</span>
+              <span className="text-sm text-gray-500">Team Contributions</span>
             </div>
 
             {/* Team share bar */}
