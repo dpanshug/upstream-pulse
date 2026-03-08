@@ -148,10 +148,10 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     governanceModel: 'codeowners',
   },
 
-  // ─── Meta Llama ─────────────────────────────
+  // ─── Llama Stack (moved from meta-llama) ────
   {
-    name: 'Meta Llama',
-    githubOrg: 'meta-llama',
+    name: 'Llama Stack',
+    githubOrg: 'llamastack',
     governanceModel: 'codeowners',
   },
 

@@ -57,9 +57,32 @@ High-performance LLM inference engine. Strategically important for model serving
 
 **Governance**: Community-driven, uses GitHub CODEOWNERS.
 
+### Feast (`feast-dev/*`)
+
+Feature store for ML pipelines.
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| `feast-dev/feast` | Feature store | **Tracked** |
+
+**Governance**: OWNERS files supported. Linux Foundation / Tecton-led project.
+
 ---
 
 ## Planned Additions
+
+### Llama Stack (`llamastack/*`)
+
+Llama Stack framework and Kubernetes operator. Moved from `meta-llama` to `llamastack` org. Strategically important — 30.5% team share in core repo, 82.5% in k8s operator.
+
+| Repo | Description |
+|------|-------------|
+| `llamastack/llama-stack` | Llama Stack framework (core) |
+| `llamastack/llama-stack-k8s-operator` | Kubernetes operator for Llama Stack |
+
+**Governance**: Meta-led open-source project, uses CODEOWNERS.
+
+---
 
 ### Ray (`ray-project/*`)
 
@@ -98,19 +121,6 @@ Workflow and CI/CD tooling. Argo Workflows underpins Kubeflow Pipelines.
 
 ---
 
-### Meta Llama (`meta-llama/*`)
-
-Meta's Llama Stack — an emerging area of upstream contribution.
-
-| Repo | Description |
-|------|-------------|
-| `meta-llama/llama-stack` | Llama Stack framework |
-| `meta-llama/llama-stack-client-python` | Python client library |
-
-**Governance**: Meta-led open-source project.
-
----
-
 ### OpenVINO (`openvinotoolkit/*`)
 
 Intel's inference optimization toolkit.
@@ -140,18 +150,6 @@ AI toolkit for model management and inference.
 
 ---
 
-### Feast (`feast-dev/*`)
-
-Feature store for ML pipelines.
-
-| Repo | Description |
-|------|-------------|
-| `feast-dev/feast` | Feature store |
-
-**Governance**: Linux Foundation / Tecton-led project.
-
----
-
 ### Individual repos (various orgs)
 
 Additional upstream projects across various organizations.
@@ -176,15 +174,15 @@ Additional upstream projects across various organizations.
 | **Kubeflow** | 12 | 10 tracked, 2 to add |
 | **KServe** | 5 | 5 tracked |
 | **vLLM** | 1 | 1 tracked |
+| **Feast** | 1 | 1 tracked |
+| **Llama Stack** | 2 | Planned |
 | **Ray** | 1 | Planned |
 | **Kubernetes SIGs** | 2 | Planned |
 | **Argo** | 1 | Planned |
-| **Meta Llama** | 2 | Planned |
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
-| **Feast** | 1 | Planned |
 | **Individual repos** | 8 | Planned |
-| **Total** | **40** | 16 tracked, 24 planned |
+| **Total** | **40** | 17 tracked, 23 planned |
 
 ---
 
