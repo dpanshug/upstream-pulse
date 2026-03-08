@@ -64,12 +64,10 @@ export class GitHubCollector {
     logger.info(`Collecting contributions for ${repo.githubOrg}/${repo.githubRepo} since ${since.toISOString()}`);
 
     let totalCollected = 0;
-    const allRecords: ContributionRecord[] = [];
     const signal = (phase: string) => onProgress?.({ phase, collected: totalCollected });
 
     const completePhase = async (phase: string, records: ContributionRecord[]) => {
       totalCollected += records.length;
-      allRecords.push(...records);
       logger.info(`Collected ${records.length} ${phase}`);
       if (onPhaseComplete) await onPhaseComplete(phase, records);
     };
@@ -95,7 +93,7 @@ export class GitHubCollector {
 
       signal('done');
       logger.info(`Total contributions collected: ${totalCollected}`);
-      return allRecords;
+      return [];
 
     } catch (error) {
       logger.error('Error collecting contributions', { error, repo });
@@ -115,41 +113,30 @@ export class GitHubCollector {
     let page = 0;
 
     try {
-      const commits = await this.octokit.paginate(
+      for await (const response of this.octokit.paginate.iterator(
         this.octokit.rest.repos.listCommits,
-        {
-          owner: repo.githubOrg,
-          repo: repo.githubRepo,
-          since: since.toISOString(),
-          per_page: 100,
-        },
-        (response) => {
-          onProgress?.({ phase: `commits (page ${++page})`, collected: contributions.length });
-          return response.data;
-        },
-      );
+        { owner: repo.githubOrg, repo: repo.githubRepo, since: since.toISOString(), per_page: 100 },
+      )) {
+        onProgress?.({ phase: `commits (page ${++page})`, collected: contributions.length });
 
-      for (const commit of commits) {
-        // Skip merge commits (they don't represent actual work)
-        if (commit.parents && commit.parents.length > 1) {
-          continue;
-        }
-
-        contributions.push({
-          type: 'commit',
-          githubId: commit.sha,
-          author: commit.author?.login,
-          email: commit.commit.author?.email,
-          date: new Date(commit.commit.author?.date || Date.now()),
-          linesAdded: commit.stats?.additions,
-          linesDeleted: commit.stats?.deletions,
-          filesChanged: commit.files?.length,
-          metadata: {
+        for (const commit of response.data) {
+          if (commit.parents && commit.parents.length > 1) continue;
+          contributions.push({
+            type: 'commit',
+            githubId: commit.sha,
             author: commit.author?.login,
-            message: commit.commit.message,
-            url: commit.html_url,
-          },
-        });
+            email: commit.commit.author?.email,
+            date: new Date(commit.commit.author?.date || Date.now()),
+            linesAdded: commit.stats?.additions,
+            linesDeleted: commit.stats?.deletions,
+            filesChanged: commit.files?.length,
+            metadata: {
+              author: commit.author?.login,
+              message: commit.commit.message,
+              url: commit.html_url,
+            },
+          });
+        }
       }
 
       return contributions;
@@ -172,47 +159,39 @@ export class GitHubCollector {
     let page = 0;
 
     try {
-      const pulls = await this.octokit.paginate(
+      for await (const response of this.octokit.paginate.iterator(
         this.octokit.rest.pulls.list,
-        {
-          owner: repo.githubOrg,
-          repo: repo.githubRepo,
-          state: 'all',
-          sort: 'created',
-          direction: 'desc',
-          per_page: 100,
-        },
-        (response) => {
-          onProgress?.({ phase: `pull_requests (page ${++page})`, collected: contributions.length });
-          return response.data;
-        },
-      );
+        { owner: repo.githubOrg, repo: repo.githubRepo, state: 'all', sort: 'created', direction: 'desc', per_page: 100 },
+      )) {
+        onProgress?.({ phase: `pull_requests (page ${++page})`, collected: contributions.length });
 
-      // Filter PRs created since 'since' date
-      const recentPulls = pulls.filter(pr =>
-        new Date(pr.created_at) >= since
-      );
+        let allOlderThanSince = true;
+        for (const pr of response.data) {
+          if (new Date(pr.created_at) < since) continue;
+          allOlderThanSince = false;
+          if (!pr.user) continue;
 
-      for (const pr of recentPulls) {
-        if (!pr.user) continue;
-
-        contributions.push({
-          type: 'pr',
-          githubId: String(pr.number),
-          author: pr.user.login,
-          date: new Date(pr.created_at),
-          isMerged: pr.merged_at !== null,
-          linesAdded: (pr as any).additions,
-          linesDeleted: (pr as any).deletions,
-          filesChanged: (pr as any).changed_files,
-          metadata: {
+          contributions.push({
+            type: 'pr',
+            githubId: String(pr.number),
             author: pr.user.login,
-            title: pr.title,
-            state: pr.state,
-            mergedAt: pr.merged_at,
-            url: pr.html_url,
-          },
-        });
+            date: new Date(pr.created_at),
+            isMerged: pr.merged_at !== null,
+            linesAdded: (pr as any).additions,
+            linesDeleted: (pr as any).deletions,
+            filesChanged: (pr as any).changed_files,
+            metadata: {
+              author: pr.user.login,
+              title: pr.title,
+              state: pr.state,
+              mergedAt: pr.merged_at,
+              url: pr.html_url,
+            },
+          });
+        }
+
+        // Sorted desc by created — if entire page is older than since, no need to fetch more
+        if (allOlderThanSince && response.data.length > 0) break;
       }
 
       return contributions;
@@ -234,31 +213,31 @@ export class GitHubCollector {
     const contributions: ContributionRecord[] = [];
 
     try {
+      // Collect recent PR numbers using iterator (memory-efficient)
+      const recentPRs: { number: number; title: string }[] = [];
       let page = 0;
-      const pulls = await this.octokit.paginate(
-        this.octokit.rest.pulls.list,
-        {
-          owner: repo.githubOrg,
-          repo: repo.githubRepo,
-          state: 'all',
-          sort: 'updated',
-          direction: 'desc',
-          per_page: 50,
-        },
-        (response) => {
-          onProgress?.({ phase: `reviews/listing PRs (page ${++page})`, collected: contributions.length });
-          return response.data;
-        },
-      );
 
-      const recentPulls = pulls.filter(pr =>
-        new Date(pr.updated_at) >= since
-      );
+      for await (const response of this.octokit.paginate.iterator(
+        this.octokit.rest.pulls.list,
+        { owner: repo.githubOrg, repo: repo.githubRepo, state: 'all', sort: 'updated', direction: 'desc', per_page: 100 },
+      )) {
+        onProgress?.({ phase: `reviews/listing PRs (page ${++page})`, collected: contributions.length });
+
+        let allOlderThanSince = true;
+        for (const pr of response.data) {
+          if (new Date(pr.updated_at) >= since) {
+            allOlderThanSince = false;
+            recentPRs.push({ number: pr.number, title: pr.title });
+          }
+        }
+
+        if (allOlderThanSince && response.data.length > 0) break;
+      }
 
       let processed = 0;
-      for (const pr of recentPulls) {
+      for (const pr of recentPRs) {
         if (++processed % 50 === 0) {
-          onProgress?.({ phase: `reviews (${processed}/${recentPulls.length} PRs)`, collected: contributions.length });
+          onProgress?.({ phase: `reviews (${processed}/${recentPRs.length} PRs)`, collected: contributions.length });
         }
         try {
           const reviews = await this.octokit.rest.pulls.listReviews({
@@ -314,43 +293,32 @@ export class GitHubCollector {
     let page = 0;
 
     try {
-      const issues = await this.octokit.paginate(
+      for await (const response of this.octokit.paginate.iterator(
         this.octokit.rest.issues.listForRepo,
-        {
-          owner: repo.githubOrg,
-          repo: repo.githubRepo,
-          state: 'all',
-          sort: 'updated',
-          direction: 'desc',
-          since: since.toISOString(),
-          per_page: 100,
-        },
-        (response) => {
-          onProgress?.({ phase: `issues (page ${++page})`, collected: contributions.length });
-          return response.data;
-        },
-      );
+        { owner: repo.githubOrg, repo: repo.githubRepo, state: 'all', sort: 'updated', direction: 'desc', since: since.toISOString(), per_page: 100 },
+      )) {
+        onProgress?.({ phase: `issues (page ${++page})`, collected: contributions.length });
 
-      for (const issue of issues) {
-        // Skip PRs (GitHub API returns PRs as issues)
-        if (issue.pull_request) continue;
-        if (!issue.user) continue;
+        for (const issue of response.data) {
+          if (issue.pull_request) continue;
+          if (!issue.user) continue;
 
-        const issueDate = new Date(issue.created_at);
-        if (issueDate >= since) {
-          contributions.push({
-            type: 'issue',
-            githubId: String(issue.number),
-            author: issue.user.login,
-            date: issueDate,
-            metadata: {
+          const issueDate = new Date(issue.created_at);
+          if (issueDate >= since) {
+            contributions.push({
+              type: 'issue',
+              githubId: String(issue.number),
               author: issue.user.login,
-              title: issue.title,
-              state: issue.state,
-              labels: issue.labels.map(l => typeof l === 'string' ? l : l.name),
-              url: issue.html_url,
-            },
-          });
+              date: issueDate,
+              metadata: {
+                author: issue.user.login,
+                title: issue.title,
+                state: issue.state,
+                labels: issue.labels.map(l => typeof l === 'string' ? l : l.name),
+                url: issue.html_url,
+              },
+            });
+          }
         }
       }
 
