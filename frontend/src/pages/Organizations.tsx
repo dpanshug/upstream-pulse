@@ -1,0 +1,110 @@
+import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import { Building2 } from 'lucide-react';
+import { PeriodSelector, OrgActivityCard } from '../components/dashboard';
+import { PageLoading } from '../components/common/PageLoading';
+import { PageError } from '../components/common/PageError';
+
+const API_URL = import.meta.env.VITE_API_URL ?? '';
+
+interface OrgSummary {
+  name: string;
+  githubOrg: string;
+  governanceModel: string;
+  hasCommunityRepo: boolean;
+  contributionCount: number;
+  trend: Array<{ date: string; count: number }>;
+  percentChange: number;
+  leadershipCount: number;
+  maintainerCount: number;
+  projectCount: number;
+}
+
+async function fetchOrgs(days: number): Promise<{ orgs: OrgSummary[] }> {
+  const res = await fetch(`${API_URL}/api/orgs?days=${days}`);
+  if (!res.ok) throw new Error('Failed to fetch organizations');
+  return res.json();
+}
+
+export default function Organizations() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const daysParam = searchParams.get('days');
+  const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : 0;
+
+  const { data, isLoading, isFetching, error, refetch } = useQuery({
+    queryKey: ['orgs', selectedDays],
+    queryFn: () => fetchOrgs(selectedDays),
+    placeholderData: (prev) => prev,
+  });
+
+  const handlePeriodChange = (days: number) => {
+    setSearchParams({ days: days.toString() });
+  };
+
+  if (isLoading) return <PageLoading message="Loading organizations…" />;
+  if (error) {
+    return (
+      <PageError
+        title="Error Loading Organizations"
+        message={(error as Error).message}
+        onRetry={() => refetch()}
+      />
+    );
+  }
+
+  const orgs = data?.orgs ?? [];
+  const sorted = [...orgs].sort((a, b) => b.contributionCount - a.contributionCount);
+
+  return (
+    <div className="bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Organizations</h1>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Team activity across upstream communities
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <PeriodSelector
+              selectedDays={selectedDays}
+              onSelect={handlePeriodChange}
+              isLoading={isFetching && !isLoading}
+            />
+          </div>
+        </div>
+
+        {sorted.length === 0 ? (
+          <div className="text-center py-16">
+            <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500">No organizations configured yet</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {sorted.map((org) => (
+              <OrgActivityCard
+                key={org.githubOrg}
+                activity={{
+                  org: org.githubOrg,
+                  orgName: org.name,
+                  total: org.contributionCount,
+                  commits: 0,
+                  prs: 0,
+                  reviews: 0,
+                  issues: 0,
+                  trend: org.trend,
+                  percentChange: org.percentChange,
+                  leadershipCount: org.leadershipCount,
+                  maintainerCount: org.maintainerCount,
+                }}
+                governanceModel={org.governanceModel}
+                projectCount={org.projectCount}
+                selectedDays={selectedDays}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

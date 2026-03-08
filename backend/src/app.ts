@@ -11,7 +11,7 @@ const pkg = JSON.parse(readFileSync(join(__app_dirname, '../package.json'), 'utf
 import { logger } from './shared/utils/logger.js';
 import { db } from './shared/database/client.js';
 import { teamMembers, projects } from './shared/database/schema.js';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, count, and } from 'drizzle-orm';
 
 // Validate configuration on startup
 try {
@@ -84,10 +84,17 @@ import { metricsRoutes } from './modules/api/routes/metrics.js';
 await app.register(metricsRoutes);
 
 // Projects API
-app.get('/api/projects', async (request, reply) => {
+app.get<{
+  Querystring: { githubOrg?: string };
+}>('/api/projects', async (request, reply) => {
   try {
+    const { githubOrg } = request.query;
     const projectsList = await db.query.projects.findMany({
-      where: (projects, { eq }) => eq(projects.trackingEnabled, true),
+      where: (projects, { eq, and: drizzleAnd }) => {
+        const conditions = [eq(projects.trackingEnabled, true)];
+        if (githubOrg) conditions.push(eq(projects.githubOrg, githubOrg));
+        return drizzleAnd(...conditions);
+      },
       limit: 50,
     });
 
@@ -666,17 +673,54 @@ app.post<{
   }
 });
 
-// Org registry endpoint
-app.get('/api/orgs', async () => {
-  const { ORG_REGISTRY } = await import('./shared/config/org-registry.js');
-  return {
-    orgs: ORG_REGISTRY.map(o => ({
-      name: o.name,
-      githubOrg: o.githubOrg,
-      governanceModel: o.governanceModel,
-      hasCommunityRepo: !!o.communityRepo,
-    })),
-  };
+// Org registry endpoint with optional activity stats
+app.get<{
+  Querystring: { days?: string };
+}>('/api/orgs', async (request, reply) => {
+  try {
+    const { ORG_REGISTRY } = await import('./shared/config/org-registry.js');
+    const { metricsService } = await import('./modules/metrics/metrics-service.js');
+    const days = parseInt(request.query.days || '30', 10);
+
+    const [orgActivity, projectCounts] = await Promise.all([
+      metricsService.getOrgActivity({ days }),
+      db.select({
+        githubOrg: projects.githubOrg,
+        count: count(),
+      })
+      .from(projects)
+      .where(eq(projects.trackingEnabled, true))
+      .groupBy(projects.githubOrg),
+    ]);
+
+    const activityMap = new Map(orgActivity.map(a => [a.org, a]));
+    const projectCountMap = new Map(projectCounts.map(r => [r.githubOrg, Number(r.count)]));
+
+    return {
+      orgs: ORG_REGISTRY.map(o => {
+        const activity = activityMap.get(o.githubOrg);
+        return {
+          name: o.name,
+          githubOrg: o.githubOrg,
+          governanceModel: o.governanceModel,
+          hasCommunityRepo: !!o.communityRepo,
+          contributionCount: activity?.total ?? 0,
+          trend: activity?.trend ?? [],
+          percentChange: activity?.percentChange ?? 0,
+          leadershipCount: activity?.leadershipCount ?? 0,
+          maintainerCount: activity?.maintainerCount ?? 0,
+          projectCount: projectCountMap.get(o.githubOrg) ?? 0,
+        };
+      }),
+    };
+  } catch (error) {
+    logger.error('Error fetching organizations', { error });
+    reply.status(500);
+    return {
+      error: 'Failed to fetch organizations',
+      message: (error as Error).message,
+    };
+  }
 });
 
 // WebSocket endpoint for real-time updates

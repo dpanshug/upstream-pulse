@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Folder, ExternalLink } from 'lucide-react';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
@@ -44,6 +44,9 @@ export default function Projects() {
                     Project
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                    Organization
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                     Ecosystem
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
@@ -58,7 +61,7 @@ export default function Projects() {
                 {data?.projects?.map((project: any) => (
                   <tr
                     key={project.id}
-                    onClick={() => navigate(`/projects/${project.id}`)}
+                    onClick={() => navigate(`/organizations/${project.githubOrg}/projects/${project.id}`)}
                     className="hover:bg-gray-50 cursor-pointer transition-colors"
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -68,6 +71,15 @@ export default function Projects() {
                           {project.name}
                         </span>
                       </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <Link
+                        to={`/organizations/${project.githubOrg}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        {project.githubOrg}
+                      </Link>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="text-sm text-gray-500">

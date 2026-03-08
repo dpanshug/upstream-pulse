@@ -25,6 +25,7 @@ interface ProjectData {
 interface ProjectCardsProps {
   projects: ProjectData[];
   selectedDays: number;
+  orgSlug?: string;
 }
 
 const TYPE_CONFIG = [
@@ -34,7 +35,7 @@ const TYPE_CONFIG = [
   { key: 'issues' as const, label: 'Issues', icon: AlertCircle, color: 'text-orange-600', bg: 'bg-orange-50' },
 ];
 
-export function ProjectCards({ projects, selectedDays }: ProjectCardsProps) {
+export function ProjectCards({ projects, selectedDays, orgSlug }: ProjectCardsProps) {
   if (!projects || projects.length === 0) return null;
 
   return (
@@ -47,7 +48,7 @@ export function ProjectCards({ projects, selectedDays }: ProjectCardsProps) {
         {projects.map((project) => (
           <Link
             key={project.id}
-            to={`/projects/${project.id}?days=${selectedDays}`}
+            to={`/organizations/${orgSlug ?? project.githubOrg}/projects/${project.id}?days=${selectedDays}`}
             className="block bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:shadow-md hover:border-blue-200 transition-all group"
           >
             {/* Project header */}

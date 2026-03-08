@@ -81,6 +81,20 @@ export interface LeadershipData {
   teamLeaders: LeadershipMember[];
 }
 
+export interface OrgActivity {
+  org: string;
+  orgName: string;
+  total: number;
+  commits: number;
+  prs: number;
+  reviews: number;
+  issues: number;
+  trend: Array<{ date: string; count: number }>;
+  percentChange: number;
+  leadershipCount: number;
+  maintainerCount: number;
+}
+
 export interface DashboardData {
   summary: {
     periodDays: number;
@@ -104,6 +118,7 @@ export interface DashboardData {
   topProjects: any[];
   dailyBreakdown: any[];
   leadership?: LeadershipData;
+  orgActivity?: OrgActivity[];
 }
 
 // Period options for the selector

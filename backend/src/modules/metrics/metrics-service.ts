@@ -28,6 +28,7 @@ import type {
   ProjectSummary,
   TrendComparison,
   DashboardMetrics,
+  OrgActivityItem,
 } from './types.js';
 
 export class MetricsService {
@@ -155,6 +156,11 @@ export class MetricsService {
     if (options.projectId) {
       conditions.push(eq(contributions.projectId, options.projectId));
     }
+    if (options.githubOrg) {
+      conditions.push(
+        sql`${contributions.projectId} in (select id from projects where github_org = ${options.githubOrg})`
+      );
+    }
 
     // Get all contributions by type
     const allContribs = await db
@@ -206,6 +212,11 @@ export class MetricsService {
     ];
     if (options.projectId) {
       conditions.push(eq(contributions.projectId, options.projectId));
+    }
+    if (options.githubOrg) {
+      conditions.push(
+        sql`${contributions.projectId} in (select id from projects where github_org = ${options.githubOrg})`
+      );
     }
 
     // Get all contributions grouped by date and type
@@ -305,6 +316,11 @@ export class MetricsService {
     if (options.projectId) {
       conditions.push(eq(contributions.projectId, options.projectId));
     }
+    if (options.githubOrg) {
+      conditions.push(
+        sql`${contributions.projectId} in (select id from projects where github_org = ${options.githubOrg})`
+      );
+    }
 
     const result = await db
       .selectDistinct({ teamMemberId: contributions.teamMemberId })
@@ -335,6 +351,11 @@ export class MetricsService {
     
     if (options.projectId) {
       conditions.push(eq(contributions.projectId, options.projectId));
+    }
+    if (options.githubOrg) {
+      conditions.push(
+        sql`${contributions.projectId} in (select id from projects where github_org = ${options.githubOrg})`
+      );
     }
 
     // Get contribution counts per team member per type
@@ -506,6 +527,176 @@ export class MetricsService {
   }
 
   // ============================================
+  // ORG ACTIVITY
+  // ============================================
+
+  /**
+   * Get per-org activity summary for org cards.
+   * Uses batched SQL queries (GROUP BY github_org) to avoid N+1.
+   */
+  async getOrgActivity(options: MetricsQueryOptions = {}): Promise<OrgActivityItem[]> {
+    const dateRange = this.getDateRange(options);
+
+    const dateConditions: ReturnType<typeof eq>[] = [];
+    if (dateRange) {
+      dateConditions.push(gte(contributions.contributionDate, this.formatDate(dateRange.start)));
+      dateConditions.push(lte(contributions.contributionDate, this.formatDate(dateRange.end)));
+    }
+
+    const sparkRange = dateRange || {
+      start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      end: new Date(),
+    };
+
+    const [contribByOrg, sparklineData, leadershipCounts, maintainerCounts] = await Promise.all([
+      db.select({
+          githubOrg: projects.githubOrg,
+          type: contributions.contributionType,
+          count: count(),
+        })
+        .from(contributions)
+        .innerJoin(projects, eq(contributions.projectId, projects.id))
+        .where(dateConditions.length > 0
+          ? and(isNotNull(contributions.teamMemberId), ...dateConditions)
+          : isNotNull(contributions.teamMemberId))
+        .groupBy(projects.githubOrg, contributions.contributionType),
+
+      db.select({
+          githubOrg: projects.githubOrg,
+          date: contributions.contributionDate,
+          count: count(),
+        })
+        .from(contributions)
+        .innerJoin(projects, eq(contributions.projectId, projects.id))
+        .where(and(
+          isNotNull(contributions.teamMemberId),
+          gte(contributions.contributionDate, this.formatDate(sparkRange.start)),
+          lte(contributions.contributionDate, this.formatDate(sparkRange.end)),
+        ))
+        .groupBy(projects.githubOrg, contributions.contributionDate)
+        .orderBy(contributions.contributionDate),
+
+      db.select({
+          communityOrg: leadershipPositions.communityOrg,
+          count: count(),
+        })
+        .from(leadershipPositions)
+        .where(and(
+          eq(leadershipPositions.isActive, true),
+          isNotNull(leadershipPositions.teamMemberId),
+        ))
+        .groupBy(leadershipPositions.communityOrg),
+
+      db.select({
+          githubOrg: projects.githubOrg,
+          count: count(),
+        })
+        .from(maintainerStatus)
+        .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
+        .where(and(
+          eq(maintainerStatus.isActive, true),
+          isNotNull(maintainerStatus.teamMemberId),
+        ))
+        .groupBy(projects.githubOrg),
+    ]);
+
+    const prevTotals = new Map<string, number>();
+    if (dateRange) {
+      const periodMs = dateRange.end.getTime() - dateRange.start.getTime();
+      const prevEnd = new Date(dateRange.start.getTime() - 1);
+      const prevStart = new Date(prevEnd.getTime() - periodMs);
+
+      const prevContribs = await db.select({
+          githubOrg: projects.githubOrg,
+          count: count(),
+        })
+        .from(contributions)
+        .innerJoin(projects, eq(contributions.projectId, projects.id))
+        .where(and(
+          isNotNull(contributions.teamMemberId),
+          gte(contributions.contributionDate, this.formatDate(prevStart)),
+          lte(contributions.contributionDate, this.formatDate(prevEnd)),
+        ))
+        .groupBy(projects.githubOrg);
+
+      for (const row of prevContribs) {
+        prevTotals.set(row.githubOrg, Number(row.count));
+      }
+    }
+
+    const orgCounts = new Map<string, { total: number; commits: number; prs: number; reviews: number; issues: number }>();
+    for (const row of contribByOrg) {
+      if (!orgCounts.has(row.githubOrg)) {
+        orgCounts.set(row.githubOrg, { total: 0, commits: 0, prs: 0, reviews: 0, issues: 0 });
+      }
+      const entry = orgCounts.get(row.githubOrg)!;
+      const cnt = Number(row.count);
+      switch (row.type) {
+        case 'commit': entry.commits = cnt; break;
+        case 'pr': entry.prs = cnt; break;
+        case 'review': entry.reviews = cnt; break;
+        case 'issue': entry.issues = cnt; break;
+      }
+    }
+    for (const entry of orgCounts.values()) {
+      entry.total = entry.commits + entry.prs + entry.reviews + entry.issues;
+    }
+
+    const sparklineMap = new Map<string, Array<{ date: string; count: number }>>();
+    for (const row of sparklineData) {
+      if (!sparklineMap.has(row.githubOrg)) {
+        sparklineMap.set(row.githubOrg, []);
+      }
+      sparklineMap.get(row.githubOrg)!.push({
+        date: row.date as string,
+        count: Number(row.count),
+      });
+    }
+
+    const leadershipMap = new Map<string, number>();
+    for (const row of leadershipCounts) {
+      if (row.communityOrg) {
+        leadershipMap.set(row.communityOrg, Number(row.count));
+      }
+    }
+
+    const maintainerMap = new Map<string, number>();
+    for (const row of maintainerCounts) {
+      maintainerMap.set(row.githubOrg, Number(row.count));
+    }
+
+    const allOrgs = new Set([
+      ...orgCounts.keys(),
+      ...leadershipMap.keys(),
+      ...maintainerMap.keys(),
+    ]);
+
+    const results: OrgActivityItem[] = [];
+    for (const org of allOrgs) {
+      const counts = orgCounts.get(org) ?? { total: 0, commits: 0, prs: 0, reviews: 0, issues: 0 };
+      const prev = prevTotals.get(org) ?? 0;
+      const percentChange = !dateRange
+        ? 0
+        : prev === 0
+          ? (counts.total > 0 ? 100 : 0)
+          : parseFloat((((counts.total - prev) / prev) * 100).toFixed(1));
+
+      results.push({
+        org,
+        orgName: getOrgConfig(org)?.name ?? org,
+        ...counts,
+        trend: sparklineMap.get(org) ?? [],
+        percentChange,
+        leadershipCount: leadershipMap.get(org) ?? 0,
+        maintainerCount: maintainerMap.get(org) ?? 0,
+      });
+    }
+
+    results.sort((a, b) => b.total - a.total);
+    return results;
+  }
+
+  // ============================================
   // DASHBOARD AGGREGATE
   // ============================================
 
@@ -561,8 +752,8 @@ export class MetricsService {
    */
   async getDashboard(options: MetricsQueryOptions = {}): Promise<DashboardResponseWithLeadership> {
     const days = options.days ?? 0; // Default to 0 (all time)
-    const { projectId } = options;
-    const queryOptions = { days, projectId };
+    const { projectId, githubOrg } = options;
+    const queryOptions = { days, projectId, githubOrg };
     const dateRange = this.getDateRange({ days });
     
     let startStr: string;
@@ -576,7 +767,7 @@ export class MetricsService {
       startStr = 'All time';
     }
 
-    logger.info('Building dashboard', { days, projectId, start: startStr, end: endStr });
+    logger.info('Building dashboard', { days, projectId, githubOrg, start: startStr, end: endStr });
 
     const breakdown = await this.getContributionBreakdown(queryOptions);
     
@@ -593,8 +784,12 @@ export class MetricsService {
       this.getActiveContributorTrend(queryOptions),
     ]);
 
+    const projectCountConditions = [eq(projects.trackingEnabled, true)];
+    if (githubOrg) {
+      projectCountConditions.push(eq(projects.githubOrg, githubOrg));
+    }
     const [projectCountResult, activeContributors] = await Promise.all([
-      db.select({ count: count() }).from(projects).where(eq(projects.trackingEnabled, true)),
+      db.select({ count: count() }).from(projects).where(and(...projectCountConditions)),
       this.getActiveContributorCount(queryOptions),
     ]);
 
@@ -617,6 +812,10 @@ export class MetricsService {
     // Only fetch per-project breakdown when viewing all projects
     let topProjects: ProjectMetric[] = [];
     if (!projectId) {
+      const topProjectsConditions = [eq(projects.trackingEnabled, true)];
+      if (githubOrg) {
+        topProjectsConditions.push(eq(projects.githubOrg, githubOrg));
+      }
       const topProjectsRaw = await db
         .select({
           id: projects.id,
@@ -625,7 +824,7 @@ export class MetricsService {
           githubRepo: projects.githubRepo,
         })
         .from(projects)
-        .where(eq(projects.trackingEnabled, true));
+        .where(and(...topProjectsConditions));
 
       topProjects = await Promise.all(
         topProjectsRaw.map(async (p) => {
@@ -675,14 +874,19 @@ export class MetricsService {
       });
       projectRepo = proj?.githubRepo;
     }
-    const leadershipData = await this.getLeadershipSummary(projectId, projectRepo);
+    const [leadershipData, orgActivity] = await Promise.all([
+      this.getLeadershipSummary(projectId, projectRepo, githubOrg),
+      !projectId && !githubOrg
+        ? this.getOrgActivity({ days }).then(r => r.slice(0, 6))
+        : Promise.resolve(undefined),
+    ]);
 
     return {
       summary: {
         periodDays: days,
         periodStart: startStr,
         periodEnd: endStr,
-        trackedProjects: Number(projectCountResult[0].count),
+        trackedProjects: Number(projectCountResult[0]?.count ?? 0),
         activeContributors,
       },
       contributions: contributionsByType,
@@ -694,6 +898,7 @@ export class MetricsService {
       topProjects,
       dailyBreakdown,
       leadership: leadershipData,
+      orgActivity,
     };
   }
 
@@ -714,11 +919,12 @@ export class MetricsService {
    *   maintainers — OWNERS/CODEOWNERS based approvers/reviewers
    *   teamLeaders — all team members with any governance role
    */
-  private async getLeadershipSummary(projectId?: string, githubRepo?: string) {
+  private async getLeadershipSummary(projectId?: string, githubRepo?: string, githubOrg?: string) {
     try {
       // ── maintainerStatus (OWNERS/CODEOWNERS) ──
       const msConditions = [eq(maintainerStatus.isActive, true)];
       if (projectId) msConditions.push(eq(maintainerStatus.projectId, projectId));
+      if (githubOrg) msConditions.push(eq(projects.githubOrg, githubOrg));
 
       const maintainerStatuses = await db
         .select({
@@ -754,9 +960,11 @@ export class MetricsService {
         .innerJoin(teamMembers, eq(leadershipPositions.teamMemberId, teamMembers.id))
         .where(eq(leadershipPositions.isActive, true));
 
-      // When viewing a specific project, filter leadership to relevant WGs
+      // Filter leadership positions by scope
       let filteredLp = allLp;
-      if (projectId && githubRepo) {
+      if (githubOrg && !projectId) {
+        filteredLp = allLp.filter(p => p.communityOrg === githubOrg);
+      } else if (projectId && githubRepo) {
         const project = await db.query.projects.findFirst({
           columns: { githubOrg: true },
           where: eq(projects.id, projectId),

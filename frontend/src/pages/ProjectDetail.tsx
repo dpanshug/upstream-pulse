@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   GitCommit,
   GitPullRequest,
@@ -9,7 +9,6 @@ import {
   TrendingUp,
   Activity,
   Calendar,
-  ChevronRight,
   ExternalLink,
 } from 'lucide-react';
 
@@ -22,6 +21,7 @@ import {
   LeadershipSection,
   PeriodSummary,
 } from '../components/dashboard';
+import { Breadcrumb } from '../components/ui/Breadcrumb';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
 
@@ -43,7 +43,7 @@ async function fetchProjectInfo(projectId: string) {
 }
 
 export default function ProjectDetail() {
-  const { projectId } = useParams<{ projectId: string }>();
+  const { projectId, org } = useParams<{ projectId: string; org?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const daysParam = searchParams.get('days');
@@ -91,23 +91,20 @@ export default function ProjectDetail() {
     <div className="bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Breadcrumb */}
-        <nav className="flex items-center gap-1.5 text-sm mb-4">
-          <Link
-            to={`/?days=${selectedDays}`}
-            className="text-blue-600 hover:text-blue-800 font-medium"
-          >
-            Dashboard
-          </Link>
-          <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-          <Link
-            to="/projects"
-            className="text-blue-600 hover:text-blue-800 font-medium"
-          >
-            Projects
-          </Link>
-          <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
-          <span className="text-gray-600">{projectName}</span>
-        </nav>
+        <Breadcrumb
+          segments={
+            org
+              ? [
+                  { label: 'Organizations', to: '/organizations' },
+                  { label: githubOrg ?? org, to: `/organizations/${org}` },
+                  { label: projectName },
+                ]
+              : [
+                  { label: 'Projects', to: '/projects' },
+                  { label: projectName },
+                ]
+          }
+        />
 
         {/* Page header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">

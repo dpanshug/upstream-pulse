@@ -16,12 +16,12 @@ export async function metricsRoutes(app: FastifyInstance) {
    *   - projectId: filter by project (optional)
    */
   app.get<{
-    Querystring: { days?: string; projectId?: string };
+    Querystring: { days?: string; projectId?: string; githubOrg?: string };
   }>('/api/metrics/dashboard', async (request, reply) => {
     try {
       const days = parseInt(request.query.days || '30', 10);
-      const { projectId } = request.query;
-      const dashboard = await metricsService.getDashboard({ days, projectId });
+      const { projectId, githubOrg } = request.query;
+      const dashboard = await metricsService.getDashboard({ days, projectId, githubOrg });
       return dashboard;
     } catch (error) {
       logger.error('Error fetching dashboard', { error });
@@ -109,16 +109,17 @@ export async function metricsRoutes(app: FastifyInstance) {
    *   - limit: number of contributors to return (default: 10)
    */
   app.get<{
-    Querystring: { days?: string; projectId?: string; limit?: string };
+    Querystring: { days?: string; projectId?: string; githubOrg?: string; limit?: string };
   }>('/api/metrics/contributors', async (request, reply) => {
     try {
       const days = parseInt(request.query.days || '30', 10);
       const topN = parseInt(request.query.limit || '10', 10);
-      const { projectId } = request.query;
+      const { projectId, githubOrg } = request.query;
 
       const contributors = await metricsService.getTopContributors({
         days,
         projectId,
+        githubOrg,
         topN,
       });
 

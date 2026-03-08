@@ -77,6 +77,21 @@ export interface DashboardSummary {
   activeContributors: number;
 }
 
+// Per-org activity summary for org cards
+export interface OrgActivityItem {
+  org: string;
+  orgName: string;
+  total: number;
+  commits: number;
+  prs: number;
+  reviews: number;
+  issues: number;
+  trend: Array<{ date: string; count: number }>;
+  percentChange: number;
+  leadershipCount: number;
+  maintainerCount: number;
+}
+
 // Complete dashboard response - clear and organized
 export interface DashboardResponse {
   summary: DashboardSummary;
@@ -93,6 +108,7 @@ export interface DashboardResponse {
 // Query options for metrics
 export interface MetricsQueryOptions {
   projectId?: string;
+  githubOrg?: string;
   days?: number;
   dateRange?: DateRange;
   includeDaily?: boolean;
@@ -155,4 +171,5 @@ export interface DashboardMetrics {
 // Extended dashboard response with leadership data
 export interface DashboardResponseWithLeadership extends DashboardResponse {
   leadership: unknown;
+  orgActivity?: OrgActivityItem[];
 }

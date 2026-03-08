@@ -3,6 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   FolderGit2,
+  Building2,
   Users,
   Activity,
   Cpu,
@@ -82,6 +83,7 @@ function SignOutDialog({ open, onClose }: { open: boolean; onClose: () => void }
 
 const navItems = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, end: true },
+  { label: 'Organizations', path: '/organizations', icon: Building2 },
   { label: 'Projects', path: '/projects', icon: FolderGit2 },
   { label: 'Contributors', path: '/contributors', icon: Users },
   { label: 'System', path: '/system', icon: Cpu, end: true },
@@ -110,7 +112,9 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  const isProjectDetail = location.pathname.startsWith('/projects/');
+  const isProjectDetail = location.pathname.startsWith('/projects/') ||
+    /^\/organizations\/[^/]+\/projects\//.test(location.pathname);
+  const isOrgPage = location.pathname.startsWith('/organizations/') && !isProjectDetail;
 
   return (
     <>
@@ -192,7 +196,10 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                 const isActive = item.end
                   ? location.pathname === item.path
                   : location.pathname.startsWith(item.path);
-                const active = isActive || (item.path === '/projects' && isProjectDetail);
+                const active = isActive
+                  ? !(item.path === '/organizations' && isProjectDetail)
+                  : (item.path === '/projects' && isProjectDetail)
+                    || (item.path === '/organizations' && isOrgPage);
 
                 return (
                   <NavLink
