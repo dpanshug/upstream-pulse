@@ -73,11 +73,17 @@ export class LeadershipCollector {
   async getAllLeadershipPositions(): Promise<LeadershipPosition[]> {
     const results: LeadershipPosition[] = [];
 
-    // Parse each configured leadership markdown file
+    // Parse each configured leadership file, dispatching by format
     if (this.communityRepo.leadershipFiles) {
       for (const fileCfg of this.communityRepo.leadershipFiles) {
-        const positions = await this.parseLeadershipMarkdown(fileCfg);
-        results.push(...positions);
+        const format = fileCfg.format || 'table';
+        if (format === 'sig_sections') {
+          const positions = await this.parseSigFile(fileCfg.path);
+          results.push(...positions);
+        } else {
+          const positions = await this.parseLeadershipMarkdown(fileCfg);
+          results.push(...positions);
+        }
       }
     }
 
@@ -218,7 +224,7 @@ export class LeadershipCollector {
     if (!githubUsername) {
       const ghColIdx = columns.get('github') ?? columns.get('github id');
       if (ghColIdx !== undefined && ghColIdx < cells.length) {
-        const val = cells[ghColIdx].replace(/\[([^\]]+)\].*/, '$1').trim();
+        const val = cells[ghColIdx].replace(/\[([^\]]+)\].*/, '$1').replace(/^@/, '').trim();
         if (val && val !== '-') githubUsername = val;
       }
     }
@@ -336,6 +342,60 @@ export class LeadershipCollector {
       logger.info(`Parsed ${positions.length} WG/SIG leadership positions from ${wgFile}`);
     } catch (error) {
       logger.error(`Failed to fetch WG leadership from ${wgFile}`, { error });
+    }
+
+    return positions;
+  }
+
+  // ── SIG markdown section parser ────────────────────────────────
+
+  /**
+   * Parse a markdown file with SIG sections containing blockquote leadership lines.
+   * Format: ### SIG {Name} followed by > **👥 Leadership:** [Name](github_url), ...
+   */
+  private async parseSigFile(sigFile: string): Promise<LeadershipPosition[]> {
+    const positions: LeadershipPosition[] = [];
+    const sourceUrl = `https://github.com/${this.githubOrg}/${this.communityRepo.repo}/blob/${this.communityRepo.defaultBranch}/${sigFile}`;
+
+    try {
+      const { data } = await this.octokit.rest.repos.getContent({
+        owner: this.githubOrg,
+        repo: this.communityRepo.repo,
+        path: sigFile,
+        ref: this.communityRepo.defaultBranch,
+      });
+
+      if (!('content' in data) || !data.content) return positions;
+
+      const content = Buffer.from(data.content, 'base64').toString('utf-8');
+      const sections = content.split(/^###\s+/m);
+
+      for (const section of sections) {
+        const lines = section.split('\n');
+        const sigName = lines[0]?.trim();
+        if (!sigName) continue;
+
+        for (const line of lines) {
+          if (!line.includes('Leadership:')) continue;
+
+          const linkPattern = /\[([^\]]+)\]\(https?:\/\/github\.com\/([^/)]+)\/?[^)]*\)/g;
+          let match;
+          while ((match = linkPattern.exec(line)) !== null) {
+            positions.push({
+              githubUsername: match[2],
+              name: match[1],
+              positionType: 'sig_lead',
+              groupName: sigName,
+              sourceUrl,
+              isActive: true,
+            });
+          }
+        }
+      }
+
+      logger.info(`Parsed ${positions.length} SIG leadership positions from ${sigFile}`);
+    } catch (error) {
+      logger.error(`Failed to parse SIG file ${sigFile}`, { error });
     }
 
     return positions;

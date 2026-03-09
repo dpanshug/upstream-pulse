@@ -2,7 +2,7 @@
 
 Upstream Pulse provides contribution tracking and governance insights for the following upstream open-source organizations and projects. This document lists what is currently supported and what is planned next, organized by upstream organization.
 
-**Last updated**: 2026-03-08
+**Last updated**: 2026-03-09
 
 ---
 
@@ -54,8 +54,11 @@ High-performance LLM inference engine. Strategically important for model serving
 | Repo | Description | Status |
 |------|-------------|--------|
 | `vllm-project/vllm` | LLM inference engine | **Tracked** |
+| `vllm-project/semantic-router` | Intelligent router for Mixture-of-Models | **Tracked** |
 
 **Governance**: Community-driven, uses GitHub CODEOWNERS.
+
+---
 
 ### Feast (`feast-dev/*`)
 
@@ -69,20 +72,37 @@ Feature store for ML pipelines.
 
 ---
 
-## Planned Additions
-
 ### Llama Stack (`llamastack/*`)
 
-Llama Stack framework and Kubernetes operator. Moved from `meta-llama` to `llamastack` org. Strategically important — 30.5% team share in core repo, 82.5% in k8s operator.
+Llama Stack framework and Kubernetes operator. Strategically important — 30.5% team share in core repo, 82.5% in k8s operator.
 
-| Repo | Description |
-|------|-------------|
-| `llamastack/llama-stack` | Llama Stack framework (core) |
-| `llamastack/llama-stack-k8s-operator` | Kubernetes operator for Llama Stack |
+| Repo | Description | Status |
+|------|-------------|--------|
+| `llamastack/llama-stack` | Llama Stack framework (core) | **Tracked** |
+| `llamastack/llama-stack-k8s-operator` | Kubernetes operator for Llama Stack | **Tracked** |
 
-**Governance**: Meta-led open-source project, uses CODEOWNERS.
+**Governance**: Uses CODEOWNERS.
 
 ---
+
+### llm-d (`llm-d/*`)
+
+Distributed LLM inference on Kubernetes. 24.6% team share in core repo.
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| `llm-d/llm-d` | Core distributed inference framework | **Tracked** |
+| `llm-d/llm-d-inference-scheduler` | Intelligent request routing | **Tracked** |
+| `llm-d/llm-d-kv-cache` | Distributed KV cache scheduling | **Tracked** |
+| `llm-d/llm-d-inference-sim` | Inference simulator | **Tracked** |
+| `llm-d/llm-d-benchmark` | Benchmark scripts and tooling | **Tracked** |
+| `llm-d/llm-d-workload-variant-autoscaler` | Variant optimization autoscaler | **Tracked** |
+
+**Governance**: Leadership from `MAINTAINERS.md` (project leads). OWNERS files supported. SIG structure defined in `SIGS.md`.
+
+---
+
+## Planned Additions
 
 ### Ray (`ray-project/*`)
 
@@ -173,16 +193,17 @@ Additional upstream projects across various organizations.
 |---|---|---|
 | **Kubeflow** | 12 | 10 tracked, 2 to add |
 | **KServe** | 5 | 5 tracked |
-| **vLLM** | 1 | 1 tracked |
+| **vLLM** | 2 | 2 tracked |
 | **Feast** | 1 | 1 tracked |
-| **Llama Stack** | 2 | Planned |
+| **Llama Stack** | 2 | 2 tracked |
+| **llm-d** | 6 | 6 tracked |
 | **Ray** | 1 | Planned |
 | **Kubernetes SIGs** | 2 | Planned |
 | **Argo** | 1 | Planned |
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
 | **Individual repos** | 8 | Planned |
-| **Total** | **40** | 17 tracked, 23 planned |
+| **Total** | **47** | 26 tracked, 21 planned |
 
 ---
 

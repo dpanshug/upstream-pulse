@@ -15,8 +15,15 @@ export interface LeadershipFileConfig {
   /**
    * If set, every row in the table gets this position type (e.g. 'steering_committee', 'tsc_member').
    * If unset, the parser reads the role from each row's "Project Roles" / "Role" column.
+   * Not used for 'sig_sections' format.
    */
   positionType?: string;
+  /**
+   * Parser format. Defaults to 'table' (markdown table with columns).
+   * - 'table': standard markdown table (Name, GitHub ID, Role columns)
+   * - 'sig_sections': markdown with ### SIG {Name} sections and > Leadership: [Name](url) blockquotes
+   */
+  format?: 'table' | 'sig_sections';
 }
 
 export interface CommunityRepoConfig {
@@ -24,7 +31,7 @@ export interface CommunityRepoConfig {
   repo: string;
   /** Default branch, e.g. 'main' or 'master' */
   defaultBranch: string;
-  /** Markdown leadership table files to parse */
+  /** Leadership files to parse — supports multiple formats via the `format` field */
   leadershipFiles?: LeadershipFileConfig[];
   /** YAML file listing WGs/SIGs with chairs + tech leads, e.g. 'wgs.yaml' */
   wgFile?: string;
@@ -166,6 +173,29 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'Feast',
     githubOrg: 'feast-dev',
+    governanceModel: 'owners',
+  },
+
+  // ─── llm-d ────────────────────────────────
+  {
+    name: 'llm-d',
+    githubOrg: 'llm-d',
+    communityRepo: {
+      repo: 'llm-d',
+      defaultBranch: 'main',
+      leadershipFiles: [
+        {
+          path: 'MAINTAINERS.md',
+          groupName: 'llm-d',
+          positionType: 'project_lead',
+        },
+        {
+          path: 'SIGS.md',
+          groupName: 'llm-d',
+          format: 'sig_sections',
+        },
+      ],
+    },
     governanceModel: 'owners',
   },
 

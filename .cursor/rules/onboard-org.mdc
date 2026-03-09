@@ -13,8 +13,19 @@ When asked to add/onboard a new upstream org, follow these steps in order.
 Before adding anything, check:
 - Does the org have a community repo? (e.g., `orgname/community`) — check GitHub
 - What governance format? OWNERS files, CODEOWNERS, or neither?
-- If community repo exists, what leadership files are available? (steering/TSC markdown, maintainers markdown, WGs YAML)
+- If community repo exists, what leadership files are available? (steering/TSC markdown, maintainers markdown, WGs/SIGs YAML or markdown)
 - What repos from this org should be tracked? Check `docs/upstream-projects.md` and the `opendatahub-io` fork list
+- **Team contributions** — check how many team members contribute to each repo and how much. Use the GitHub contributors API and compare against our team members list. Only track repos with meaningful team contribution.
+
+### Leadership & Governance Deep Check (DO NOT SKIP)
+
+Do not just check if governance files exist — **read the actual file content** and verify our parsers can handle the format. If they can't, implement parser support now. Do not defer to a future issue.
+
+1. **Read the files** — fetch and read `MAINTAINERS.md`, `GOVERNANCE.md`, `SIGS.md`, `OWNERS`, `CODEOWNERS` etc. from GitHub.
+2. **Verify format compatibility** — check the parser code in `backend/src/modules/collection/leadership-collector.ts` to confirm it can parse this org's file format. Don't assume — read the parser and compare against the actual file.
+3. **SIG/WG files** — if the org has SIGs or WGs, check the parser code to see which formats are supported. YAML files use `wgFile` config. Markdown files go in `leadershipFiles` with the appropriate `format` field (e.g., `format: 'sig_sections'` for blockquote-style leadership). If the format doesn't match any existing parser, add support.
+4. **Multiple leadership files** — some orgs have separate files for steering, TSC, maintainers. Add each to `leadershipFiles` array with appropriate `positionType`.
+5. **If format is unsupported** — implement the parser as part of this onboarding. Do not skip leadership data.
 
 ## 2. Add to Org Registry
 
