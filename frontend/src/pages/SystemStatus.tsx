@@ -286,7 +286,7 @@ function JobRow({ job, isExpanded, onToggle }: { job: JobRecord; isExpanded: boo
       : job.startedAt && isRunning
         ? Math.round((Date.now() - new Date(job.startedAt).getTime()) / 1000)
         : null;
-  const hasErrors = job.errorsCount > 0 && job.errorDetails;
+  const hasErrors = job.errorsCount > 0 && !!job.errorDetails;
   const clickable = !!hasErrors;
 
   return (
