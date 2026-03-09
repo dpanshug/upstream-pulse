@@ -102,6 +102,18 @@ Distributed LLM inference on Kubernetes. 24.6% team share in core repo.
 
 ---
 
+### MLflow (`mlflow/*`)
+
+ML experiment tracking, model registry, and AI agent development platform. LF AI & Data Foundation project.
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| `mlflow/mlflow` | ML experiment tracking & model registry | **Tracked** |
+
+**Governance**: No OWNERS/CODEOWNERS. Leadership (Core Members) sourced from `mlflow/mlflow` README.md.
+
+---
+
 ## Planned Additions
 
 ### Ray (`ray-project/*`)
@@ -176,7 +188,6 @@ Additional upstream projects across various organizations.
 
 | Upstream Repo | Description |
 |---|---|
-| `mlflow/mlflow` | ML experiment tracking & model registry |
 | `huggingface/text-generation-inference` | Text Generation Inference (TGI) |
 | `BerriAI/litellm` | LLM proxy / unified API |
 | `EleutherAI/lm-evaluation-harness` | LLM evaluation framework |
@@ -197,13 +208,14 @@ Additional upstream projects across various organizations.
 | **Feast** | 1 | 1 tracked |
 | **Llama Stack** | 2 | 2 tracked |
 | **llm-d** | 6 | 6 tracked |
+| **MLflow** | 1 | 1 tracked |
 | **Ray** | 1 | Planned |
 | **Kubernetes SIGs** | 2 | Planned |
 | **Argo** | 1 | Planned |
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
-| **Individual repos** | 8 | Planned |
-| **Total** | **47** | 26 tracked, 21 planned |
+| **Individual repos** | 7 | Planned |
+| **Total** | **47** | 27 tracked, 20 planned |
 
 ---
 
@@ -212,7 +224,7 @@ Additional upstream projects across various organizations.
 The following infrastructure is in place to support all upstream organizations listed above:
 
 1. **Org registry** (`backend/src/shared/config/org-registry.ts`) — static config that declares every supported org, its community repo, leadership files, and governance model. Adding a new org is a single PR to this file. See [Adding an Organization](adding-an-org.md).
-2. **Configurable leadership collector** — `LeadershipCollector` accepts an org config and dispatches to the appropriate parser. Supports markdown leadership tables (uniform-role and mixed-role), WGs/SIGs YAML, and is extensible per org.
+2. **Configurable leadership collector** — `LeadershipCollector` accepts an org config and dispatches to the appropriate parser. Supports markdown leadership tables (uniform-role and mixed-role), WGs/SIGs YAML, bullet-list formats (e.g. MLflow Core Members), and is extensible per org.
 3. **Multiple governance parsers** — Kubernetes/Kubeflow-style `OWNERS` files, GitHub-native `CODEOWNERS` files, and markdown `MAINTAINERS.md` tables are all supported. The `governanceModel` field in the org registry controls which parser runs.
 4. **Per-org leadership data** — the `leadershipPositions` table includes a `communityOrg` column. The scheduler dispatches one leadership job per org, and the metrics service returns leadership data grouped by org (`byOrg[]`).
 5. **Working Group mappings** — `repoToWorkingGroup` in the org registry replaces the hardcoded Kubeflow WG mapping. Orgs without WGs simply omit this field.
