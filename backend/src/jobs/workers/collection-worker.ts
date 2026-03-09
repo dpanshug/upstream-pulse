@@ -117,6 +117,17 @@ export const collectionWorker = new Worker<CollectionJobData>(
         sinceDate,
         ({ phase, collected }) => {
           job.updateProgress({ phase, collected });
+          if (phase === 'waiting_for_api') {
+            db.update(collectionJobs)
+              .set({ status: 'waiting_for_api' })
+              .where(eq(collectionJobs.id, jobRecordId))
+              .catch(() => {});
+          } else if (phase === 'resuming') {
+            db.update(collectionJobs)
+              .set({ status: 'running' })
+              .where(eq(collectionJobs.id, jobRecordId))
+              .catch(() => {});
+          }
         },
         async (phase, records) => {
           if (records.length === 0) return;

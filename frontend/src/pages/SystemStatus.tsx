@@ -178,6 +178,7 @@ const statusConfig: Record<string, { label: string; color: string; bg: string; b
 const jobStatusStyles: Record<string, { color: string; bg: string }> = {
   completed: { color: 'text-emerald-700', bg: 'bg-emerald-50' },
   running: { color: 'text-blue-700', bg: 'bg-blue-50' },
+  waiting_for_api: { color: 'text-amber-700', bg: 'bg-amber-50' },
   pending: { color: 'text-gray-600', bg: 'bg-gray-100' },
   failed: { color: 'text-red-700', bg: 'bg-red-50' },
 };
@@ -280,10 +281,12 @@ function JobRow({ job, isExpanded, onToggle }: { job: JobRecord; isExpanded: boo
   const style = jobStatusStyles[job.status] || jobStatusStyles.pending;
   const label = jobTypeLabels[job.jobType] || job.jobType;
   const isRunning = job.status === 'running';
+  const isWaiting = job.status === 'waiting_for_api';
+  const isActive = isRunning || isWaiting;
   const duration =
     job.startedAt && job.completedAt
       ? Math.round((new Date(job.completedAt).getTime() - new Date(job.startedAt).getTime()) / 1000)
-      : job.startedAt && isRunning
+      : job.startedAt && isActive
         ? Math.round((Date.now() - new Date(job.startedAt).getTime()) / 1000)
         : null;
   const hasErrors = job.errorsCount > 0 && !!job.errorDetails;
@@ -297,8 +300,8 @@ function JobRow({ job, isExpanded, onToggle }: { job: JobRecord; isExpanded: boo
       >
         <td className="py-3 px-4">
           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono font-semibold ${style.color} ${style.bg}`}>
-            {isRunning && <span className="sys-processing-dot-light" />}
-            {job.status.toUpperCase()}
+            {(isRunning || isWaiting) && <span className="sys-processing-dot-light" />}
+            {isWaiting ? 'WAITING FOR API' : job.status.toUpperCase()}
           </span>
         </td>
         <td className="py-3 px-4">

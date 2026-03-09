@@ -33,7 +33,7 @@ try {
       completedAt: new Date(),
       errorDetails: { message: 'marked failed on worker startup: previous worker crashed', source: 'startup_cleanup' },
     })
-    .where(sql`${collectionJobs.status} = 'running' AND ${collectionJobs.startedAt} < ${fiveMinutesAgo}`)
+    .where(sql`${collectionJobs.status} IN ('running', 'waiting_for_api') AND ${collectionJobs.startedAt} < ${fiveMinutesAgo}`)
     .returning({ id: collectionJobs.id });
 
   if (stale.length > 0) {

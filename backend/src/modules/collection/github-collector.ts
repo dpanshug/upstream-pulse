@@ -55,7 +55,7 @@ export class GitHubCollector {
   /**
    * Wait if rate limit is exhausted. Checks remaining calls and sleeps until reset if needed.
    */
-  private async waitIfRateLimited(): Promise<void> {
+  private async waitIfRateLimited(onProgress?: (detail: { phase: string; collected: number }) => void): Promise<void> {
     if (this.rateLimitRemaining > 50) return;
 
     const { data } = await this.octokit.rest.rateLimit.get();
@@ -67,9 +67,11 @@ export class GitHubCollector {
     const waitMs = Math.max(0, this.rateLimitReset.getTime() - Date.now()) + 5000;
     const waitMin = Math.ceil(waitMs / 60000);
     logger.warn(`Rate limit low (${this.rateLimitRemaining} remaining), waiting ${waitMin}m for reset at ${this.rateLimitReset.toISOString()}`);
+    onProgress?.({ phase: 'waiting_for_api', collected: -1 });
     await new Promise(resolve => setTimeout(resolve, waitMs));
     this.rateLimitRemaining = 5000;
     logger.info('Rate limit reset, resuming collection');
+    onProgress?.({ phase: 'resuming', collected: -1 });
   }
 
   /**
@@ -158,7 +160,7 @@ export class GitHubCollector {
         { owner: repo.githubOrg, repo: repo.githubRepo, since: since.toISOString(), per_page: 100 },
       )) {
         this.trackRateLimit(response.headers as Record<string, string | undefined>);
-        await this.waitIfRateLimited();
+        await this.waitIfRateLimited(onProgress);
         onProgress?.({ phase: `commits (page ${++page})`, collected: contributions.length });
 
         for (const commit of response.data) {
@@ -206,7 +208,7 @@ export class GitHubCollector {
         { owner: repo.githubOrg, repo: repo.githubRepo, state: 'all', sort: 'created', direction: 'desc', per_page: 100 },
       )) {
         this.trackRateLimit(response.headers as Record<string, string | undefined>);
-        await this.waitIfRateLimited();
+        await this.waitIfRateLimited(onProgress);
         onProgress?.({ phase: `pull_requests (page ${++page})`, collected: contributions.length });
 
         let allOlderThanSince = true;
@@ -266,7 +268,7 @@ export class GitHubCollector {
         { owner: repo.githubOrg, repo: repo.githubRepo, state: 'all', sort: 'updated', direction: 'desc', per_page: 100 },
       )) {
         this.trackRateLimit(response.headers as Record<string, string | undefined>);
-        await this.waitIfRateLimited();
+        await this.waitIfRateLimited(onProgress);
         onProgress?.({ phase: `reviews/listing PRs (page ${++page})`, collected: contributions.length });
 
         let allOlderThanSince = true;
@@ -285,7 +287,7 @@ export class GitHubCollector {
         if (++processed % 50 === 0) {
           onProgress?.({ phase: `reviews (${processed}/${recentPRs.length} PRs)`, collected: contributions.length });
         }
-        await this.waitIfRateLimited();
+        await this.waitIfRateLimited(onProgress);
         try {
           const reviews = await this.octokit.rest.pulls.listReviews({
             owner: repo.githubOrg,
@@ -346,7 +348,7 @@ export class GitHubCollector {
         { owner: repo.githubOrg, repo: repo.githubRepo, state: 'all', sort: 'updated', direction: 'desc', since: since.toISOString(), per_page: 100 },
       )) {
         this.trackRateLimit(response.headers as Record<string, string | undefined>);
-        await this.waitIfRateLimited();
+        await this.waitIfRateLimited(onProgress);
         onProgress?.({ phase: `issues (page ${++page})`, collected: contributions.length });
 
         for (const issue of response.data) {
