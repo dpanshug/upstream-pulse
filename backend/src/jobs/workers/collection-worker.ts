@@ -11,8 +11,9 @@ import { eq, sql } from 'drizzle-orm';
 
 interface CollectionJobData {
   projectId: string;
-  jobType: 'sync' | 'full_sync'; // 'sync' for daily/manual, 'full_sync' for new project bootstrap
-  since?: string; // ISO date string
+  jobType: 'sync' | 'full_sync';
+  since?: string;
+  phases?: ('commits' | 'pull_requests' | 'reviews' | 'issues')[];
 }
 
 const redisConnection = new Redis(config.redisUrl, {
@@ -63,12 +64,13 @@ async function resolveAndStore(
 export const collectionWorker = new Worker<CollectionJobData>(
   'contribution-collection',
   async (job: Job<CollectionJobData>) => {
-    const { projectId, jobType, since } = job.data;
+    const { projectId, jobType, since, phases } = job.data;
 
     logger.info('Starting collection job', {
       jobId: job.id,
       projectId,
       jobType,
+      phases: phases || 'all',
     });
 
     const jobRecordId = randomUUID();
@@ -128,6 +130,7 @@ export const collectionWorker = new Worker<CollectionJobData>(
           });
           await job.updateProgress({ phase: `${phase}_stored`, stored: recordsProcessed });
         },
+        phases,
       );
 
       await db.update(projects)

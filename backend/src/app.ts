@@ -320,10 +320,11 @@ app.post<{
     projectId: string;
     since?: string;        // ISO date string - fetch from this date
     fullHistory?: boolean; // Fetch from repo creation date (day 0)
+    phases?: ('commits' | 'pull_requests' | 'reviews' | 'issues')[];
   };
 }>('/api/admin/collect', async (request, reply) => {
   try {
-    const { projectId, since, fullHistory } = request.body;
+    const { projectId, since, fullHistory, phases } = request.body;
 
     if (!projectId) {
       reply.status(400);
@@ -365,7 +366,7 @@ app.post<{
       sinceDate = parsedDate;
     }
 
-    const job = await scheduler.triggerProjectCollection(projectId, sinceDate);
+    const job = await scheduler.triggerProjectCollection(projectId, sinceDate, phases);
 
     return {
       success: true,

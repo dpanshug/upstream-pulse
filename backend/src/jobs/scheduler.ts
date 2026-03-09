@@ -228,16 +228,14 @@ export class CollectionScheduler {
    * Manually trigger collection for a specific project
    * Fetches from a custom date or last_sync_at
    */
-  async triggerProjectCollection(projectId: string, since?: Date) {
-    logger.info('Manually triggering collection', { projectId });
+  async triggerProjectCollection(projectId: string, since?: Date, phases?: ('commits' | 'pull_requests' | 'reviews' | 'issues')[]) {
+    logger.info('Manually triggering collection', { projectId, phases: phases || 'all' });
 
-    // If no since date provided, fetch the project's last_sync_at
     let sinceDate = since;
     if (!sinceDate) {
       const project = await db.query.projects.findFirst({
         where: eq(projects.id, projectId),
       });
-      // Default to last 30 days if no last_sync_at
       sinceDate = project?.lastSyncAt || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     }
 
@@ -247,6 +245,7 @@ export class CollectionScheduler {
         projectId,
         jobType: 'sync',
         since: sinceDate.toISOString(),
+        ...(phases && { phases }),
       },
       {
         priority: 0, // Highest priority

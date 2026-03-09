@@ -60,8 +60,10 @@ export class GitHubCollector {
     since: Date,
     onProgress?: (detail: { phase: string; collected: number }) => void,
     onPhaseComplete?: (phase: string, records: ContributionRecord[]) => Promise<void>,
+    phases?: ('commits' | 'pull_requests' | 'reviews' | 'issues')[],
   ): Promise<ContributionRecord[]> {
-    logger.info(`Collecting contributions for ${repo.githubOrg}/${repo.githubRepo} since ${since.toISOString()}`);
+    const allPhases = phases || ['commits', 'pull_requests', 'reviews', 'issues'];
+    logger.info(`Collecting contributions for ${repo.githubOrg}/${repo.githubRepo} since ${since.toISOString()}`, { phases: allPhases });
 
     let totalCollected = 0;
     const signal = (phase: string) => onProgress?.({ phase, collected: totalCollected });
@@ -75,21 +77,29 @@ export class GitHubCollector {
     try {
       await this.checkRateLimit();
 
-      signal('commits');
-      const commits = await this.collectCommits(repo, since, onProgress);
-      await completePhase('commits', commits);
+      if (allPhases.includes('commits')) {
+        signal('commits');
+        const commits = await this.collectCommits(repo, since, onProgress);
+        await completePhase('commits', commits);
+      }
 
-      signal('pull_requests');
-      const prs = await this.collectPullRequests(repo, since, onProgress);
-      await completePhase('pull_requests', prs);
+      if (allPhases.includes('pull_requests')) {
+        signal('pull_requests');
+        const prs = await this.collectPullRequests(repo, since, onProgress);
+        await completePhase('pull_requests', prs);
+      }
 
-      signal('reviews');
-      const reviews = await this.collectReviews(repo, since, onProgress);
-      await completePhase('reviews', reviews);
+      if (allPhases.includes('reviews')) {
+        signal('reviews');
+        const reviews = await this.collectReviews(repo, since, onProgress);
+        await completePhase('reviews', reviews);
+      }
 
-      signal('issues');
-      const issues = await this.collectIssues(repo, since, onProgress);
-      await completePhase('issues', issues);
+      if (allPhases.includes('issues')) {
+        signal('issues');
+        const issues = await this.collectIssues(repo, since, onProgress);
+        await completePhase('issues', issues);
+      }
 
       signal('done');
       logger.info(`Total contributions collected: ${totalCollected}`);
