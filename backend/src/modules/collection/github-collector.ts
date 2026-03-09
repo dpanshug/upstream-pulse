@@ -53,6 +53,36 @@ export class GitHubCollector {
   }
 
   /**
+   * Wait if rate limit is exhausted. Checks remaining calls and sleeps until reset if needed.
+   */
+  private async waitIfRateLimited(): Promise<void> {
+    if (this.rateLimitRemaining > 50) return;
+
+    const { data } = await this.octokit.rest.rateLimit.get();
+    this.rateLimitRemaining = data.rate.remaining;
+    this.rateLimitReset = new Date(data.rate.reset * 1000);
+
+    if (this.rateLimitRemaining > 50) return;
+
+    const waitMs = Math.max(0, this.rateLimitReset.getTime() - Date.now()) + 5000;
+    const waitMin = Math.ceil(waitMs / 60000);
+    logger.warn(`Rate limit low (${this.rateLimitRemaining} remaining), waiting ${waitMin}m for reset at ${this.rateLimitReset.toISOString()}`);
+    await new Promise(resolve => setTimeout(resolve, waitMs));
+    this.rateLimitRemaining = 5000;
+    logger.info('Rate limit reset, resuming collection');
+  }
+
+  /**
+   * Update rate limit tracking from response headers
+   */
+  private trackRateLimit(headers: Record<string, string | undefined>): void {
+    const remaining = headers['x-ratelimit-remaining'];
+    const reset = headers['x-ratelimit-reset'];
+    if (remaining != null) this.rateLimitRemaining = parseInt(remaining, 10);
+    if (reset != null) this.rateLimitReset = new Date(parseInt(reset, 10) * 1000);
+  }
+
+  /**
    * Collect all contributions for a repository since a given date
    */
   async collectRepositoryContributions(
@@ -127,6 +157,8 @@ export class GitHubCollector {
         this.octokit.rest.repos.listCommits,
         { owner: repo.githubOrg, repo: repo.githubRepo, since: since.toISOString(), per_page: 100 },
       )) {
+        this.trackRateLimit(response.headers as Record<string, string | undefined>);
+        await this.waitIfRateLimited();
         onProgress?.({ phase: `commits (page ${++page})`, collected: contributions.length });
 
         for (const commit of response.data) {
@@ -173,6 +205,8 @@ export class GitHubCollector {
         this.octokit.rest.pulls.list,
         { owner: repo.githubOrg, repo: repo.githubRepo, state: 'all', sort: 'created', direction: 'desc', per_page: 100 },
       )) {
+        this.trackRateLimit(response.headers as Record<string, string | undefined>);
+        await this.waitIfRateLimited();
         onProgress?.({ phase: `pull_requests (page ${++page})`, collected: contributions.length });
 
         let allOlderThanSince = true;
@@ -231,6 +265,8 @@ export class GitHubCollector {
         this.octokit.rest.pulls.list,
         { owner: repo.githubOrg, repo: repo.githubRepo, state: 'all', sort: 'updated', direction: 'desc', per_page: 100 },
       )) {
+        this.trackRateLimit(response.headers as Record<string, string | undefined>);
+        await this.waitIfRateLimited();
         onProgress?.({ phase: `reviews/listing PRs (page ${++page})`, collected: contributions.length });
 
         let allOlderThanSince = true;
@@ -249,12 +285,14 @@ export class GitHubCollector {
         if (++processed % 50 === 0) {
           onProgress?.({ phase: `reviews (${processed}/${recentPRs.length} PRs)`, collected: contributions.length });
         }
+        await this.waitIfRateLimited();
         try {
           const reviews = await this.octokit.rest.pulls.listReviews({
             owner: repo.githubOrg,
             repo: repo.githubRepo,
             pull_number: pr.number,
           });
+          this.trackRateLimit(reviews.headers as Record<string, string | undefined>);
 
           for (const review of reviews.data) {
             if (!review.user || !review.submitted_at) continue;
@@ -307,6 +345,8 @@ export class GitHubCollector {
         this.octokit.rest.issues.listForRepo,
         { owner: repo.githubOrg, repo: repo.githubRepo, state: 'all', sort: 'updated', direction: 'desc', since: since.toISOString(), per_page: 100 },
       )) {
+        this.trackRateLimit(response.headers as Record<string, string | undefined>);
+        await this.waitIfRateLimited();
         onProgress?.({ phase: `issues (page ${++page})`, collected: contributions.length });
 
         for (const issue of response.data) {
