@@ -35,10 +35,110 @@ interface ContributionRecord {
   metadata?: Record<string, any>;
 }
 
+interface GraphQLReviewNode {
+  databaseId: number;
+  author: { login: string } | null;
+  submittedAt: string | null;
+  state: string;
+  body: string | null;
+  url: string;
+}
+
+interface GraphQLPageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+interface GraphQLRateLimit {
+  cost: number;
+  remaining: number;
+  resetAt: string;
+}
+
+interface GraphQLReviewsResponse {
+  repository: {
+    pullRequests: {
+      pageInfo: GraphQLPageInfo;
+      nodes: Array<{
+        number: number;
+        title: string;
+        updatedAt: string;
+        reviews: {
+          pageInfo: GraphQLPageInfo;
+          nodes: GraphQLReviewNode[];
+        };
+      }>;
+    };
+  };
+  rateLimit: GraphQLRateLimit;
+}
+
+interface GraphQLSinglePRReviewsResponse {
+  repository: {
+    pullRequest: {
+      reviews: {
+        pageInfo: GraphQLPageInfo;
+        nodes: GraphQLReviewNode[];
+      };
+    };
+  };
+  rateLimit: GraphQLRateLimit;
+}
+
+const REVIEWS_QUERY = `
+  query($owner: String!, $repo: String!, $cursor: String) {
+    repository(owner: $owner, name: $repo) {
+      pullRequests(first: 100, orderBy: {field: UPDATED_AT, direction: DESC}, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          number
+          title
+          updatedAt
+          reviews(first: 10) {
+            pageInfo { hasNextPage endCursor }
+            nodes {
+              databaseId
+              author { login }
+              submittedAt
+              state
+              body
+              url
+            }
+          }
+        }
+      }
+    }
+    rateLimit { cost remaining resetAt }
+  }
+`;
+
+const REMAINING_REVIEWS_QUERY = `
+  query($owner: String!, $repo: String!, $prNumber: Int!, $cursor: String!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $prNumber) {
+        reviews(first: 100, after: $cursor) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            databaseId
+            author { login }
+            submittedAt
+            state
+            body
+            url
+          }
+        }
+      }
+    }
+    rateLimit { cost remaining resetAt }
+  }
+`;
+
 export class GitHubCollector {
   private octokit: Octokit;
   private rateLimitRemaining: number = 5000;
   private rateLimitReset: Date | null = null;
+  private graphqlPointsRemaining: number = 5000;
+  private graphqlResetAt: Date | null = null;
 
   constructor(token?: string) {
     this.octokit = new Octokit({
@@ -82,6 +182,26 @@ export class GitHubCollector {
     const reset = headers['x-ratelimit-reset'];
     if (remaining != null) this.rateLimitRemaining = parseInt(remaining, 10);
     if (reset != null) this.rateLimitReset = new Date(parseInt(reset, 10) * 1000);
+  }
+
+  private trackGraphQLRateLimit(rateLimit: GraphQLRateLimit): void {
+    this.graphqlPointsRemaining = rateLimit.remaining;
+    this.graphqlResetAt = new Date(rateLimit.resetAt);
+  }
+
+  private async waitIfGraphQLRateLimited(onProgress?: (detail: { phase: string; collected: number }) => void): Promise<void> {
+    if (this.graphqlPointsRemaining > 50) return;
+
+    const waitMs = this.graphqlResetAt
+      ? Math.max(0, this.graphqlResetAt.getTime() - Date.now()) + 5000
+      : 60000;
+    const waitMin = Math.ceil(waitMs / 60000);
+    logger.warn(`GraphQL rate limit low (${this.graphqlPointsRemaining} points remaining), waiting ${waitMin}m`);
+    onProgress?.({ phase: 'waiting_for_api', collected: -1 });
+    await new Promise(resolve => setTimeout(resolve, waitMs));
+    this.graphqlPointsRemaining = 5000;
+    logger.info('GraphQL rate limit reset, resuming collection');
+    onProgress?.({ phase: 'resuming', collected: -1 });
   }
 
   /**
@@ -249,7 +369,8 @@ export class GitHubCollector {
   }
 
   /**
-   * Collect PR reviews since a given date
+   * Collect PR reviews since a given date using GraphQL.
+   * Fetches 100 PRs with nested reviews per query, eliminating the N+1 REST problem.
    */
   private async collectReviews(
     repo: Repository,
@@ -257,70 +378,53 @@ export class GitHubCollector {
     onProgress?: (detail: { phase: string; collected: number }) => void,
   ): Promise<ContributionRecord[]> {
     const contributions: ContributionRecord[] = [];
+    let cursor: string | null = null;
+    let page = 0;
 
     try {
-      // Collect recent PR numbers using iterator (memory-efficient)
-      const recentPRs: { number: number; title: string }[] = [];
-      let page = 0;
+      let hasNextPage = true;
+      while (hasNextPage) {
+        await this.waitIfGraphQLRateLimited(onProgress);
+        onProgress?.({ phase: `reviews (page ${++page})`, collected: contributions.length });
 
-      for await (const response of this.octokit.paginate.iterator(
-        this.octokit.rest.pulls.list,
-        { owner: repo.githubOrg, repo: repo.githubRepo, state: 'all', sort: 'updated', direction: 'desc', per_page: 100 },
-      )) {
-        this.trackRateLimit(response.headers as Record<string, string | undefined>);
-        await this.waitIfRateLimited(onProgress);
-        onProgress?.({ phase: `reviews/listing PRs (page ${++page})`, collected: contributions.length });
+        const vars = { owner: repo.githubOrg, repo: repo.githubRepo, cursor };
+        let data: GraphQLReviewsResponse;
+        try {
+          data = await this.octokit.graphql<GraphQLReviewsResponse>(REVIEWS_QUERY, vars);
+        } catch (error) {
+          logger.warn(`GraphQL reviews query failed (page ${page}), retrying after 3s`, { error: (error as Error).message });
+          await new Promise(r => setTimeout(r, 3000));
+          try {
+            data = await this.octokit.graphql<GraphQLReviewsResponse>(REVIEWS_QUERY, vars);
+          } catch (retryError) {
+            logger.error(`GraphQL reviews query failed after retry (page ${page})`, { error: (retryError as Error).message });
+            break;
+          }
+        }
+
+        this.trackGraphQLRateLimit(data.rateLimit);
+
+        const { pullRequests } = data.repository;
+        hasNextPage = pullRequests.pageInfo.hasNextPage;
+        cursor = pullRequests.pageInfo.endCursor;
 
         let allOlderThanSince = true;
-        for (const pr of response.data) {
-          if (new Date(pr.updated_at) >= since) {
-            allOlderThanSince = false;
-            recentPRs.push({ number: pr.number, title: pr.title });
+        for (const pr of pullRequests.nodes) {
+          if (new Date(pr.updatedAt) < since) continue;
+          allOlderThanSince = false;
+
+          this.pushReviewRecords(contributions, pr.reviews.nodes, pr.number, pr.title, since);
+
+          if (pr.reviews.pageInfo.hasNextPage && pr.reviews.pageInfo.endCursor) {
+            const remaining = await this.collectRemainingReviews(
+              repo.githubOrg, repo.githubRepo, pr.number, pr.title,
+              pr.reviews.pageInfo.endCursor, since, onProgress,
+            );
+            contributions.push(...remaining);
           }
         }
 
-        if (allOlderThanSince && response.data.length > 0) break;
-      }
-
-      let processed = 0;
-      for (const pr of recentPRs) {
-        if (++processed % 50 === 0) {
-          onProgress?.({ phase: `reviews (${processed}/${recentPRs.length} PRs)`, collected: contributions.length });
-        }
-        await this.waitIfRateLimited(onProgress);
-        try {
-          const reviews = await this.octokit.rest.pulls.listReviews({
-            owner: repo.githubOrg,
-            repo: repo.githubRepo,
-            pull_number: pr.number,
-          });
-          this.trackRateLimit(reviews.headers as Record<string, string | undefined>);
-
-          for (const review of reviews.data) {
-            if (!review.user || !review.submitted_at) continue;
-
-            const reviewDate = new Date(review.submitted_at);
-            if (reviewDate >= since) {
-              contributions.push({
-                type: 'review',
-                githubId: String(review.id),
-                author: review.user.login,
-                date: reviewDate,
-                metadata: {
-                  author: review.user.login,
-                  prNumber: pr.number,
-                  prTitle: pr.title,
-                  state: review.state,
-                  body: review.body,
-                  url: review.html_url,
-                },
-              });
-            }
-          }
-        } catch (error) {
-          logger.warn(`Error collecting reviews for PR #${pr.number}`, { error });
-          continue;
-        }
+        if (allOlderThanSince && pullRequests.nodes.length > 0) break;
       }
 
       return contributions;
@@ -328,6 +432,76 @@ export class GitHubCollector {
     } catch (error) {
       logger.error('Error collecting reviews', { error, repo });
       return contributions;
+    }
+  }
+
+  /**
+   * Paginate remaining reviews for a single PR that has more than 10 reviews.
+   */
+  private async collectRemainingReviews(
+    owner: string,
+    repo: string,
+    prNumber: number,
+    prTitle: string,
+    afterCursor: string,
+    since: Date,
+    onProgress?: (detail: { phase: string; collected: number }) => void,
+  ): Promise<ContributionRecord[]> {
+    const contributions: ContributionRecord[] = [];
+    let cursor: string | null = afterCursor;
+
+    try {
+      let hasNextPage = true;
+      while (hasNextPage) {
+        await this.waitIfGraphQLRateLimited(onProgress);
+
+        const data: GraphQLSinglePRReviewsResponse = await this.octokit.graphql(
+          REMAINING_REVIEWS_QUERY,
+          { owner, repo, prNumber, cursor },
+        );
+
+        this.trackGraphQLRateLimit(data.rateLimit);
+
+        const reviews = data.repository.pullRequest.reviews;
+        hasNextPage = reviews.pageInfo.hasNextPage;
+        cursor = reviews.pageInfo.endCursor;
+
+        this.pushReviewRecords(contributions, reviews.nodes, prNumber, prTitle, since);
+      }
+    } catch (error) {
+      logger.warn(`Error collecting remaining reviews for PR #${prNumber}`, { error });
+    }
+
+    return contributions;
+  }
+
+  private pushReviewRecords(
+    contributions: ContributionRecord[],
+    nodes: GraphQLReviewNode[],
+    prNumber: number,
+    prTitle: string,
+    since: Date,
+  ): void {
+    for (const review of nodes) {
+      if (!review.author || !review.submittedAt) continue;
+
+      const reviewDate = new Date(review.submittedAt);
+      if (reviewDate < since) continue;
+
+      contributions.push({
+        type: 'review',
+        githubId: String(review.databaseId),
+        author: review.author.login,
+        date: reviewDate,
+        metadata: {
+          author: review.author.login,
+          prNumber,
+          prTitle,
+          state: review.state.toLowerCase(),
+          body: review.body,
+          url: review.url,
+        },
+      });
     }
   }
 
