@@ -22,8 +22,15 @@ export interface LeadershipFileConfig {
    * Parser format. Defaults to 'table' (markdown table with columns).
    * - 'table': standard markdown table (Name, GitHub ID, Role columns)
    * - 'sig_sections': markdown with ### SIG {Name} sections and > Leadership: [Name](url) blockquotes
+   * - 'bullet_list': markdown bullet list with `- [Name](https://github.com/username)` entries
    */
-  format?: 'table' | 'sig_sections';
+  format?: 'table' | 'sig_sections' | 'bullet_list';
+  /**
+   * Optional heading to scope parsing to a specific section.
+   * Only content under this heading (until the next heading of equal or higher level) is parsed.
+   * Example: 'Core Members' to parse only the ## Core Members section.
+   */
+  sectionHeading?: string;
 }
 
 export interface CommunityRepoConfig {
@@ -203,6 +210,19 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'MLflow',
     githubOrg: 'mlflow',
+    communityRepo: {
+      repo: 'mlflow',
+      defaultBranch: 'master',
+      leadershipFiles: [
+        {
+          path: 'README.md',
+          groupName: 'MLflow Core Members',
+          positionType: 'core_member',
+          format: 'bullet_list',
+          sectionHeading: 'Core Members',
+        },
+      ],
+    },
     governanceModel: 'none',
   },
   {

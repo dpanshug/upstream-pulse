@@ -80,6 +80,9 @@ export class LeadershipCollector {
         if (format === 'sig_sections') {
           const positions = await this.parseSigFile(fileCfg.path);
           results.push(...positions);
+        } else if (format === 'bullet_list') {
+          const positions = await this.parseBulletListFile(fileCfg);
+          results.push(...positions);
         } else {
           const positions = await this.parseLeadershipMarkdown(fileCfg);
           results.push(...positions);
@@ -399,6 +402,84 @@ export class LeadershipCollector {
     }
 
     return positions;
+  }
+
+  // ── Bullet-list parser ─────────────────────────────────────────
+
+  /**
+   * Parse a markdown file with `- [Name](https://github.com/username)` bullet entries.
+   * Optionally scoped to a specific section via `fileCfg.sectionHeading`.
+   */
+  private async parseBulletListFile(fileCfg: LeadershipFileConfig): Promise<LeadershipPosition[]> {
+    const positions: LeadershipPosition[] = [];
+    const sourceUrl = `https://github.com/${this.githubOrg}/${this.communityRepo.repo}/blob/${this.communityRepo.defaultBranch}/${fileCfg.path}`;
+
+    try {
+      const { data } = await this.octokit.rest.repos.getContent({
+        owner: this.githubOrg,
+        repo: this.communityRepo.repo,
+        path: fileCfg.path,
+        ref: this.communityRepo.defaultBranch,
+      });
+
+      if (!('content' in data) || !data.content) return positions;
+
+      const content = Buffer.from(data.content, 'base64').toString('utf-8');
+      let lines = content.split('\n');
+
+      if (fileCfg.sectionHeading) {
+        lines = this.extractSection(lines, fileCfg.sectionHeading);
+      }
+
+      const linkPattern = /^[-*]\s+\[([^\]]+)\]\(https?:\/\/github\.com\/([^/)]+)\/?[^)]*\)/;
+      for (const line of lines) {
+        const match = line.trim().match(linkPattern);
+        if (!match) continue;
+
+        positions.push({
+          githubUsername: match[2],
+          name: match[1],
+          positionType: fileCfg.positionType || 'member',
+          groupName: fileCfg.groupName,
+          sourceUrl,
+          isActive: true,
+        });
+      }
+
+      logger.info(`Parsed ${positions.length} bullet-list leadership positions from ${fileCfg.path}`);
+    } catch (error) {
+      logger.error(`Failed to parse bullet-list file ${fileCfg.path}`, { error });
+    }
+
+    return positions;
+  }
+
+  /**
+   * Extract lines belonging to a specific markdown section (heading text match).
+   * Returns all lines from the matching heading until the next heading of equal or higher level.
+   */
+  private extractSection(lines: string[], heading: string): string[] {
+    const normalised = heading.replace(/[^\w\s]/g, '').trim().toLowerCase();
+    let capturing = false;
+    let headingLevel = 0;
+    const result: string[] = [];
+
+    for (const line of lines) {
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)/);
+      if (headingMatch) {
+        const level = headingMatch[1].length;
+        const text = headingMatch[2].replace(/[^\w\s]/g, '').trim().toLowerCase();
+        if (!capturing && text.includes(normalised)) {
+          capturing = true;
+          headingLevel = level;
+          continue;
+        }
+        if (capturing && level <= headingLevel) break;
+      }
+      if (capturing) result.push(line);
+    }
+
+    return result;
   }
 
   // ── Convenience: unique leaders map ─────────────────────────────
