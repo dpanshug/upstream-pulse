@@ -114,6 +114,22 @@ ML experiment tracking, model registry, and AI agent development platform. LF AI
 
 ---
 
+### Kubernetes SIGs (`kubernetes-sigs/*`)
+
+Kubernetes Special Interest Groups — infrastructure the team contributes to.
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| `kubernetes-sigs/kueue` | Job queueing for batch/ML workloads | **Tracked** |
+| `kubernetes-sigs/gateway-api-inference-extension` | Inference gateway extension for Gateway API | **Tracked** |
+| `kubernetes-sigs/wg-ai-gateway` | AI Gateway Working Group proposals & prototypes | **Tracked** |
+| `kubernetes-sigs/jobset` | K8s native API for distributed ML training | **Tracked** |
+| `kubernetes-sigs/lws` | LeaderWorkerSet for deploying pod groups | **Tracked** |
+
+**Governance**: Kubernetes-style OWNERS files. Similar governance model to Kubeflow.
+
+---
+
 ## Planned Additions
 
 ### Ray (`ray-project/*`)
@@ -125,19 +141,6 @@ Distributed computing framework for AI/ML workloads.
 | `ray-project/kuberay` | Ray operator for Kubernetes |
 
 **Governance**: Anyscale-led open-source project.
-
----
-
-### Kubernetes SIGs (`kubernetes-sigs/*`)
-
-Kubernetes Special Interest Groups — infrastructure the team contributes to.
-
-| Repo | Description |
-|------|-------------|
-| `kubernetes-sigs/kueue` | Job queueing for batch/ML workloads |
-| `kubernetes-sigs/gateway-api-inference-extension` | Inference gateway extension for Gateway API |
-
-**Governance**: Kubernetes-style OWNERS files. Similar governance model to Kubeflow.
 
 ---
 
@@ -209,13 +212,13 @@ Additional upstream projects across various organizations.
 | **Llama Stack** | 2 | 2 tracked |
 | **llm-d** | 6 | 6 tracked |
 | **MLflow** | 1 | 1 tracked |
+| **Kubernetes SIGs** | 5 | 5 tracked |
 | **Ray** | 1 | Planned |
-| **Kubernetes SIGs** | 2 | Planned |
 | **Argo** | 1 | Planned |
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
 | **Individual repos** | 7 | Planned |
-| **Total** | **47** | 27 tracked, 20 planned |
+| **Total** | **50** | 32 tracked, 18 planned |
 
 ---
 
