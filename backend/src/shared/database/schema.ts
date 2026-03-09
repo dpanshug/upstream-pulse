@@ -216,6 +216,14 @@ export const projectsRelations = relations(projects, ({ many }) => ({
   maintainerStatuses: many(maintainerStatus),
   leadershipPositions: many(leadershipPositions),
   metricsDaily: many(metricsDaily),
+  collectionJobs: many(collectionJobs),
+}));
+
+export const collectionJobsRelations = relations(collectionJobs, ({ one }) => ({
+  project: one(projects, {
+    fields: [collectionJobs.projectId],
+    references: [projects.id],
+  }),
 }));
 
 export const teamMembersRelations = relations(teamMembers, ({ many }) => ({

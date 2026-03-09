@@ -477,10 +477,10 @@ app.get('/api/system/status', async (request, reply) => {
       scheduler.getTeamSyncQueueStats(),
     ]);
 
-    // Fetch recent jobs (last 50) from the database
     const recentJobs = await db.query.collectionJobs.findMany({
       orderBy: (jobs, { desc }) => [desc(jobs.createdAt)],
       limit: 50,
+      with: { project: { columns: { name: true, githubOrg: true, githubRepo: true } } },
     });
 
     // Aggregate job stats by status
@@ -568,35 +568,40 @@ app.get('/api/system/status', async (request, reply) => {
       },
     ];
 
-    // Derive per-worker health status
     const workersWithHealth = workers.map(w => {
       let health: 'healthy' | 'warning' | 'error' | 'idle' = 'healthy';
 
-      // Only flag failures if they're significant relative to total throughput
       const totalProcessed = w.queue.completed + w.queue.failed;
       const failureRate = totalProcessed > 0 ? w.queue.failed / totalProcessed : 0;
 
       if (failureRate > 0.5 && w.queue.failed > 3) {
         health = 'error';
+      } else if (failureRate > 0.15 && w.queue.failed > 2) {
+        health = 'warning';
       } else if (w.queue.active > 0) {
         health = 'healthy';
       }
 
-      // Check data staleness: if last success is too old relative to schedule
-      if (w.lastSuccess) {
-        const lastMs = new Date(w.lastSuccess).getTime();
-        const ageHours = (now.getTime() - lastMs) / (1000 * 60 * 60);
+      if (health !== 'error') {
+        if (w.lastSuccess) {
+          const lastMs = new Date(w.lastSuccess).getTime();
+          const ageHours = (now.getTime() - lastMs) / (1000 * 60 * 60);
 
-        const cronParts = w.schedule.cron.split(' ');
-        const hasDayOfWeek = cronParts[4] !== '*';
-        const hasDayOfMonth = cronParts[2] !== '*';
-        const isMonthly = hasDayOfMonth;
-        const isWeekly = !hasDayOfMonth && hasDayOfWeek;
-        const isDaily = !hasDayOfMonth && !hasDayOfWeek;
+          const cronParts = w.schedule.cron.split(' ');
+          const hasDayOfWeek = cronParts[4] !== '*';
+          const hasDayOfMonth = cronParts[2] !== '*';
+          const isMonthly = hasDayOfMonth;
+          const isWeekly = !hasDayOfMonth && hasDayOfWeek;
+          const isDaily = !hasDayOfMonth && !hasDayOfWeek;
 
-        if (isDaily && ageHours > 48) health = 'warning';
-        if (isWeekly && ageHours > 14 * 24) health = 'warning';
-        if (isMonthly && ageHours > 60 * 24) health = 'warning';
+          if (isDaily && ageHours > 48) health = 'warning';
+          if (isWeekly && ageHours > 14 * 24) health = 'warning';
+          if (isMonthly && ageHours > 60 * 24) health = 'warning';
+        }
+      }
+
+      if (totalProcessed === 0 && w.queue.active === 0 && !w.lastSuccess) {
+        health = 'idle';
       }
 
       return { ...w, health };
@@ -615,19 +620,26 @@ app.get('/api/system/status', async (request, reply) => {
         version: pkg.version,
       },
       workers: workersWithHealth,
-      recentJobs: recentJobs.map(j => ({
-        id: j.id,
-        jobType: j.jobType,
-        status: j.status,
-        startedAt: j.startedAt,
-        completedAt: j.completedAt,
-        recordsProcessed: j.recordsProcessed,
-        errorsCount: j.errorsCount,
-        errorDetails: j.errorDetails,
-        metadata: j.metadata,
-        createdAt: j.createdAt,
-        projectId: j.projectId,
-      })),
+      recentJobs: recentJobs.map(j => {
+        const meta = j.metadata as Record<string, unknown> | null;
+        const scope = j.project
+          ? `${j.project.githubOrg}/${j.project.githubRepo}`
+          : (meta?.org as string) || (meta?.githubOrg as string) || null;
+        return {
+          id: j.id,
+          jobType: j.jobType,
+          status: j.status,
+          startedAt: j.startedAt,
+          completedAt: j.completedAt,
+          recordsProcessed: j.recordsProcessed,
+          errorsCount: j.errorsCount,
+          errorDetails: j.errorDetails,
+          metadata: j.metadata,
+          createdAt: j.createdAt,
+          projectId: j.projectId,
+          scope,
+        };
+      }),
       jobSummary: {
         total: recentJobs.length,
         ...jobStatusCounts,

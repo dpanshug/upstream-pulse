@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Activity,
@@ -15,6 +16,8 @@ import {
   RefreshCw,
   Zap,
   Server,
+  ChevronDown,
+  Tag,
 } from 'lucide-react';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
@@ -56,6 +59,7 @@ interface JobRecord {
   metadata: Record<string, unknown> | null;
   createdAt: string;
   projectId: string | null;
+  scope: string | null;
 }
 
 interface SystemStatusData {
@@ -267,46 +271,88 @@ function WorkerCard({ worker }: { worker: WorkerInfo }) {
   );
 }
 
-function JobRow({ job }: { job: JobRecord }) {
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function JobRow({ job, isExpanded, onToggle }: { job: JobRecord; isExpanded: boolean; onToggle: () => void }) {
   const style = jobStatusStyles[job.status] || jobStatusStyles.pending;
   const label = jobTypeLabels[job.jobType] || job.jobType;
+  const isRunning = job.status === 'running';
   const duration =
     job.startedAt && job.completedAt
       ? Math.round((new Date(job.completedAt).getTime() - new Date(job.startedAt).getTime()) / 1000)
-      : null;
+      : job.startedAt && isRunning
+        ? Math.round((Date.now() - new Date(job.startedAt).getTime()) / 1000)
+        : null;
+  const hasErrors = job.errorsCount > 0 && job.errorDetails;
+  const clickable = !!hasErrors;
 
   return (
-    <tr className="group border-b border-gray-50 hover:bg-gray-50/60 transition-colors">
-      <td className="py-3 px-4">
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono font-semibold ${style.color} ${style.bg}`}>
-          {job.status === 'running' && <span className="sys-processing-dot-light" />}
-          {job.status.toUpperCase()}
-        </span>
-      </td>
-      <td className="py-3 px-4">
-        <span className="text-sm font-medium text-gray-700">{label}</span>
-      </td>
-      <td className="py-3 px-4 text-sm text-gray-500 font-mono">{formatDateTime(job.startedAt || job.createdAt)}</td>
-      <td className="py-3 px-4">
-        {duration !== null ? (
-          <span className="text-sm font-mono text-gray-500">{duration < 60 ? `${duration}s` : `${Math.floor(duration / 60)}m ${duration % 60}s`}</span>
-        ) : (
-          <span className="text-sm text-gray-300">—</span>
-        )}
-      </td>
-      <td className="py-3 px-4 text-right">
-        <span className="text-sm font-mono text-gray-500">{job.recordsProcessed > 0 ? job.recordsProcessed.toLocaleString() : '—'}</span>
-      </td>
-      <td className="py-3 px-4 text-right">
-        <span className={`text-sm font-mono ${job.errorsCount > 0 ? 'text-red-600 font-semibold' : 'text-gray-300'}`}>
-          {job.errorsCount > 0 ? job.errorsCount : '—'}
-        </span>
-      </td>
-    </tr>
+    <>
+      <tr
+        className={`group border-b border-gray-50 hover:bg-gray-50/60 transition-colors ${clickable ? 'cursor-pointer' : ''}`}
+        onClick={clickable ? onToggle : undefined}
+      >
+        <td className="py-3 px-4">
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-mono font-semibold ${style.color} ${style.bg}`}>
+            {isRunning && <span className="sys-processing-dot-light" />}
+            {job.status.toUpperCase()}
+          </span>
+        </td>
+        <td className="py-3 px-4">
+          <span className="text-sm font-medium text-gray-700">{label}</span>
+        </td>
+        <td className="py-3 px-4">
+          {job.scope ? (
+            <span className="inline-flex items-center gap-1 text-xs font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded-md">
+              <Tag className="w-3 h-3 text-gray-400" />
+              {job.scope}
+            </span>
+          ) : (
+            <span className="text-xs text-gray-300">—</span>
+          )}
+        </td>
+        <td className="py-3 px-4 text-sm text-gray-500 font-mono">{formatDateTime(job.startedAt || job.createdAt)}</td>
+        <td className="py-3 px-4">
+          {duration !== null ? (
+            <span className={`text-sm font-mono ${isRunning ? 'text-blue-600' : 'text-gray-500'}`}>
+              {formatDuration(duration)}{isRunning ? '...' : ''}
+            </span>
+          ) : (
+            <span className="text-sm text-gray-300">—</span>
+          )}
+        </td>
+        <td className="py-3 px-4 text-right">
+          <span className="text-sm font-mono text-gray-500">{job.recordsProcessed > 0 ? job.recordsProcessed.toLocaleString() : '—'}</span>
+        </td>
+        <td className="py-3 px-4 text-right">
+          <div className="flex items-center justify-end gap-1.5">
+            <span className={`text-sm font-mono ${job.errorsCount > 0 ? 'text-red-600 font-semibold' : 'text-gray-300'}`}>
+              {job.errorsCount > 0 ? job.errorsCount : '—'}
+            </span>
+            {hasErrors && (
+              <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+            )}
+          </div>
+        </td>
+      </tr>
+      {isExpanded && hasErrors && (
+        <tr className="border-b border-gray-50">
+          <td colSpan={7} className="px-4 py-3 bg-red-50/50">
+            <pre className="text-xs font-mono text-red-700 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+              {typeof job.errorDetails === 'string' ? job.errorDetails : JSON.stringify(job.errorDetails, null, 2)}
+            </pre>
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
 export default function SystemStatus() {
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const { data, isLoading, error, refetch, isFetching } = useQuery({
     queryKey: ['system-status'],
     queryFn: fetchSystemStatus,
@@ -373,6 +419,7 @@ export default function SystemStatus() {
             </div>
             <div className="flex gap-6">
               {[
+                { icon: Tag, label: 'Version', value: data.system.version },
                 { icon: Timer, label: 'Uptime', value: formatUptime(data.system.uptime) },
                 { icon: Layers, label: 'Workers', value: String(data.workers.length) },
                 { icon: Zap, label: 'Jobs (recent)', value: String(data.jobSummary.total) },
@@ -395,11 +442,18 @@ export default function SystemStatus() {
             <Server className="w-4 h-4 text-gray-400" />
             <h2 className="text-lg font-semibold text-gray-900">Data Pipeline Workers</h2>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {data.workers.map((worker) => (
-              <WorkerCard key={worker.id} worker={worker} />
-            ))}
-          </div>
+          {data.workers.length === 0 ? (
+            <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
+              <Server className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-400">No workers configured</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {data.workers.map((worker) => (
+                <WorkerCard key={worker.id} worker={worker} />
+              ))}
+            </div>
+          )}
         </section>
 
         {/* Job Summary Stats */}
@@ -440,6 +494,7 @@ export default function SystemStatus() {
                   <tr className="border-b border-gray-100 bg-gray-50/50">
                     <th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-4">Status</th>
                     <th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-4">Job Type</th>
+                    <th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-4">Scope</th>
                     <th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-4">Started</th>
                     <th className="text-left text-xs font-medium text-gray-500 uppercase py-3 px-4">Duration</th>
                     <th className="text-right text-xs font-medium text-gray-500 uppercase py-3 px-4">Records</th>
@@ -449,13 +504,18 @@ export default function SystemStatus() {
                 <tbody>
                   {data.recentJobs.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-8 text-sm text-gray-400">
+                      <td colSpan={7} className="text-center py-8 text-sm text-gray-400">
                         No job executions recorded yet
                       </td>
                     </tr>
                   ) : (
-                    data.recentJobs.slice(0, 20).map((job) => (
-                      <JobRow key={job.id} job={job} />
+                    data.recentJobs.map((job) => (
+                      <JobRow
+                        key={job.id}
+                        job={job}
+                        isExpanded={expandedJobId === job.id}
+                        onToggle={() => setExpandedJobId(expandedJobId === job.id ? null : job.id)}
+                      />
                     ))
                   )}
                 </tbody>
@@ -463,8 +523,6 @@ export default function SystemStatus() {
             </div>
           </div>
         </section>
-
-      
       </div>
     </div>
   );
