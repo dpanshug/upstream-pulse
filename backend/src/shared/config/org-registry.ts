@@ -121,13 +121,13 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     name: 'Argo',
     githubOrg: 'argoproj',
     communityRepo: {
-      repo: 'argo-workflows',
-      defaultBranch: 'main',
+      repo: 'argoproj',
+      defaultBranch: 'master',
       leadershipFiles: [
         {
           path: 'MAINTAINERS.md',
-          groupName: 'Argo Workflows',
-          // positionType unset → parser reads role from each row
+          groupName: 'Argoproj',
+          // positionType unset → parser reads role from each row (e.g. "Lead - Workflows", "Approver - CD")
         },
       ],
     },

@@ -130,31 +130,32 @@ Kubernetes Special Interest Groups — infrastructure the team contributes to.
 
 ---
 
-## Planned Additions
-
 ### Ray (`ray-project/*`)
 
 Distributed computing framework for AI/ML workloads.
 
-| Repo | Description |
-|------|-------------|
-| `ray-project/kuberay` | Ray operator for Kubernetes |
+| Repo | Description | Status |
+|------|-------------|--------|
+| `ray-project/kuberay` | Ray operator for Kubernetes | **Tracked** |
 
-**Governance**: Anyscale-led open-source project.
+**Governance**: Anyscale-led open-source project. Uses CODEOWNERS.
 
 ---
 
 ### Argo (`argoproj/*`)
 
-Workflow and CI/CD tooling. Argo Workflows underpins Kubeflow Pipelines.
+Workflow and CI/CD tooling under CNCF. Yuan Tang (Red Hat) is Argo Workflows project Lead.
 
-| Repo | Description |
-|------|-------------|
-| `argoproj/argo-workflows` | Container-native workflow engine |
+| Repo | Description | Status |
+|------|-------------|--------|
+| `argoproj/argo-workflows` | Container-native workflow engine | **Tracked** |
+| `argoproj/argo-cd` | Declarative GitOps continuous delivery | **Tracked** |
 
-**Governance**: Argoproj community governance under CNCF.
+**Governance**: Leadership data sourced from `argoproj/argoproj` MAINTAINERS.md (authoritative, all subprojects). OWNERS files supported.
 
 ---
+
+## Planned Additions
 
 ### OpenVINO (`openvinotoolkit/*`)
 
@@ -213,12 +214,12 @@ Additional upstream projects across various organizations.
 | **llm-d** | 6 | 6 tracked |
 | **MLflow** | 1 | 1 tracked |
 | **Kubernetes SIGs** | 5 | 5 tracked |
-| **Ray** | 1 | Planned |
-| **Argo** | 1 | Planned |
+| **Ray** | 1 | 1 tracked |
+| **Argo** | 2 | 2 tracked |
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
 | **Individual repos** | 7 | Planned |
-| **Total** | **50** | 32 tracked, 18 planned |
+| **Total** | **51** | 35 tracked, 16 planned |
 
 ---
 
