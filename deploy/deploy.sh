@@ -64,7 +64,21 @@ build_images() {
     log "Images built successfully"
 }
 
+ensure_docker_login() {
+    info "Ensuring Docker is logged in to ${PUSH_REGISTRY}..."
+    local token
+    token="$(oc whoami -t)"
+    if echo "${token}" | docker login "${PUSH_REGISTRY}" -u "$(oc whoami)" --password-stdin &>/dev/null; then
+        log "Docker authenticated to ${PUSH_REGISTRY}"
+    else
+        err "Failed to authenticate Docker to ${PUSH_REGISTRY}"
+        err "Try manually: docker login ${PUSH_REGISTRY} -u \$(oc whoami) -p \$(oc whoami -t)"
+        exit 1
+    fi
+}
+
 push_images() {
+    ensure_docker_login
     log "Pushing backend image: ${PUSH_BACKEND_IMAGE}"
     docker push "${PUSH_BACKEND_IMAGE}"
 
