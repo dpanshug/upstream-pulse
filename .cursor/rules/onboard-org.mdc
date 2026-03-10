@@ -121,3 +121,13 @@ After successful onboarding, update `docs/upstream-projects.md`:
 - **Leadership empty**: Org may not have a `communityRepo` in the registry, or the parser doesn't match the file format
 - **CODEOWNERS empty**: Parser only handles `@username`, skips `@org/team` references
 - **Repo not found**: Verify the GitHub org/repo exists and is public
+- **Incomplete PRs/issues after deploy or crash**: If a sync job is interrupted (e.g., by a deploy), commits may be complete but PRs/reviews/issues will be missing. The worker marks interrupted jobs as failed on startup but does NOT re-queue them. When manually re-triggering, **always use `fullHistory: true`** — without it, the collector defaults to `lastSyncAt` or 30-day lookback, which skips all historical PRs/issues. Example:
+  ```bash
+  oc exec -n upstream-pulse deploy/backend -- node -e "
+  fetch('http://127.0.0.1:3000/api/admin/collect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId: '<id>', fullHistory: true })
+  }).then(r=>r.text()).then(console.log)
+  "
+  ```
