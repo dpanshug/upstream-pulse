@@ -141,6 +141,18 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     governanceModel: 'codeowners',
   },
 
+  // ─── Kubernetes ────────────────────────────
+  {
+    name: 'Kubernetes',
+    githubOrg: 'kubernetes',
+    communityRepo: {
+      repo: 'community',
+      defaultBranch: 'master',
+      wgFile: 'sigs.yaml',
+    },
+    governanceModel: 'owners',
+  },
+
   // ─── Kubernetes SIGs ────────────────────────
   {
     name: 'Kubernetes SIGs',

@@ -341,6 +341,7 @@ export class LeadershipCollector {
 
       processGroups(wgsData.sigs, 'SIG', 'sig_chair', 'sig_tech_lead');
       processGroups(wgsData.workinggroups, 'WG', 'wg_chair', 'wg_tech_lead');
+      processGroups(wgsData.committees, 'Committee', 'committee_chair', 'committee_tech_lead');
 
       logger.info(`Parsed ${positions.length} WG/SIG leadership positions from ${wgFile}`);
     } catch (error) {

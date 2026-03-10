@@ -117,6 +117,24 @@ ML experiment tracking, model registry, and AI agent development platform. LF AI
 
 ---
 
+### Kubernetes (`kubernetes/*`)
+
+Core Kubernetes project — production-grade container orchestration. Red Hat leads or co-leads 16 of 24 SIGs and 6 of 9 WGs.
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| `kubernetes/kubernetes` | Core container orchestration platform | **Tracked** |
+| `kubernetes/community` | Community governance, SIGs, and proposals | **Tracked** |
+| `kubernetes/enhancements` | Kubernetes Enhancement Proposals (KEPs) | **Tracked** |
+| `kubernetes/kubectl` | Kubernetes CLI | **Tracked** |
+| `kubernetes/autoscaler` | Cluster and pod autoscaling | **Tracked** |
+| `kubernetes/client-go` | Go client library | **Tracked** |
+| `kubernetes/ingress-nginx` | NGINX ingress controller | **Tracked** |
+
+**Governance**: Leadership data sourced from `kubernetes/community` `sigs.yaml` (24 SIGs, 9 WGs, 3 committees). OWNERS files supported.
+
+---
+
 ### Kubernetes SIGs (`kubernetes-sigs/*`)
 
 Kubernetes Special Interest Groups — infrastructure the team contributes to.
@@ -232,6 +250,7 @@ Additional upstream projects across various organizations.
 | **Llama Stack** | 2 | 2 tracked |
 | **llm-d** | 6 | 6 tracked |
 | **MLflow** | 1 | 1 tracked |
+| **Kubernetes** | 7 | 7 tracked |
 | **Kubernetes SIGs** | 7 | 7 tracked |
 | **Ray** | 1 | 1 tracked |
 | **Argo** | 2 | 2 tracked |
@@ -239,7 +258,7 @@ Additional upstream projects across various organizations.
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
 | **Individual repos** | 6 | Planned |
-| **Total** | **59** | 44 tracked, 15 planned |
+| **Total** | **66** | 51 tracked, 15 planned |
 
 ---
 
