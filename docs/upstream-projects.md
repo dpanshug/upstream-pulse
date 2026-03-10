@@ -2,7 +2,7 @@
 
 Upstream Pulse provides contribution tracking and governance insights for the following upstream open-source organizations and projects. This document lists what is currently supported and what is planned next, organized by upstream organization.
 
-**Last updated**: 2026-03-09
+**Last updated**: 2026-03-10
 
 ---
 
@@ -24,6 +24,7 @@ The primary upstream org for Kubernetes-native ML platform components.
 | `kubeflow/kale` | Notebook-to-pipeline conversion | **Tracked** |
 | `kubeflow/manifests` | Deployment manifests | **Tracked** |
 | `kubeflow/mpi-operator` | MPI distributed training | **Tracked** |
+| `kubeflow/community` | Community proposals and governance | **Tracked** |
 | `kubeflow/kubeflow` | Main umbrella repo | Not tracked |
 | `kubeflow/training-operator` | Distributed training (v1, separate from `trainer`) | Not tracked |
 
@@ -42,6 +43,8 @@ Model serving and inference platform for Kubernetes.
 | `kserve/modelmesh` | Core ModelMesh runtime | **Tracked** |
 | `kserve/modelmesh-runtime-adapter` | Runtime adapter layer | **Tracked** |
 | `kserve/rest-proxy` | REST proxy for inference | **Tracked** |
+| `kserve/community` | Community docs for contributions and process | **Tracked** |
+| `kserve/website` | User documentation for KServe | **Tracked** |
 
 **Governance**: Leadership data sourced from `kserve/community` (TSC, maintainers). OWNERS files supported.
 
@@ -125,6 +128,8 @@ Kubernetes Special Interest Groups — infrastructure the team contributes to.
 | `kubernetes-sigs/wg-ai-gateway` | AI Gateway Working Group proposals & prototypes | **Tracked** |
 | `kubernetes-sigs/jobset` | K8s native API for distributed ML training | **Tracked** |
 | `kubernetes-sigs/lws` | LeaderWorkerSet for deploying pod groups | **Tracked** |
+| `kubernetes-sigs/ai-conformance` | AI Conformance definitions, proposals, and tests | **Tracked** |
+| `kubernetes-sigs/wg-serving` | WG Serving proposals and prototypes | **Tracked** |
 
 **Governance**: Kubernetes-style OWNERS files. Similar governance model to Kubeflow.
 
@@ -152,6 +157,21 @@ Workflow and CI/CD tooling under CNCF. Yuan Tang (Red Hat) is Argo Workflows pro
 | `argoproj/argo-cd` | Declarative GitOps continuous delivery | **Tracked** |
 
 **Governance**: Leadership data sourced from `argoproj/argoproj` MAINTAINERS.md (authoritative, all subprojects). OWNERS files supported.
+
+---
+
+### NVIDIA (`NVIDIA/*`)
+
+NVIDIA AI/ML infrastructure — large-scale training, inference, and LLM security tooling.
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| `NVIDIA/NeMo-Guardrails` | Programmable guardrails for LLM-based systems | **Tracked** |
+| `NVIDIA/garak` | LLM vulnerability scanner | **Tracked** |
+| `NVIDIA/TensorRT-LLM` | High-performance LLM inference with TensorRT | **Tracked** |
+| `NVIDIA/Megatron-LM` | Large-scale transformer training at scale | **Tracked** |
+
+**Governance**: Uses GitHub CODEOWNERS. NVIDIA-led open-source projects.
 
 ---
 
@@ -197,7 +217,6 @@ Additional upstream projects across various organizations.
 | `EleutherAI/lm-evaluation-harness` | LLM evaluation framework |
 | `elyra-ai/elyra` | Notebook pipeline editor |
 | `project-codeflare/codeflare-operator` | Distributed computing operator |
-| `NVIDIA/NeMo-Guardrails` | AI safety guardrails |
 | `SeldonIO/MLServer` | ML model server (used by KServe) |
 
 ---
@@ -206,20 +225,21 @@ Additional upstream projects across various organizations.
 
 | Organization | Repos | Status |
 |---|---|---|
-| **Kubeflow** | 12 | 10 tracked, 2 to add |
-| **KServe** | 5 | 5 tracked |
+| **Kubeflow** | 13 | 11 tracked, 2 to add |
+| **KServe** | 7 | 7 tracked |
 | **vLLM** | 2 | 2 tracked |
 | **Feast** | 1 | 1 tracked |
 | **Llama Stack** | 2 | 2 tracked |
 | **llm-d** | 6 | 6 tracked |
 | **MLflow** | 1 | 1 tracked |
-| **Kubernetes SIGs** | 5 | 5 tracked |
+| **Kubernetes SIGs** | 7 | 7 tracked |
 | **Ray** | 1 | 1 tracked |
 | **Argo** | 2 | 2 tracked |
+| **NVIDIA** | 4 | 4 tracked |
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
-| **Individual repos** | 7 | Planned |
-| **Total** | **51** | 35 tracked, 16 planned |
+| **Individual repos** | 6 | Planned |
+| **Total** | **59** | 44 tracked, 15 planned |
 
 ---
 

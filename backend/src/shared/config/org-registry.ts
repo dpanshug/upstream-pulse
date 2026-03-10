@@ -253,7 +253,7 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'NVIDIA',
     githubOrg: 'NVIDIA',
-    governanceModel: 'none',
+    governanceModel: 'codeowners',
   },
   {
     name: 'Seldon',
