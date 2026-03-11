@@ -420,7 +420,11 @@ export default function Projects() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right">
-                          <span className="text-sm text-gray-900">{project.teamContributions}</span>
+                          {dashboardLoading ? (
+                            <div className="h-4 w-10 bg-gray-200 rounded animate-pulse ml-auto" />
+                          ) : (
+                            <span className="text-sm text-gray-900">{project.teamContributions}</span>
+                          )}
                         </td>
                       </tr>
                     ))}

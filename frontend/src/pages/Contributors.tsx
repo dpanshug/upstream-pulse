@@ -302,13 +302,19 @@ export default function Contributors() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <span className="text-sm font-bold text-gray-900">{member.total}</span>
-                        <div className="hidden group-hover:flex items-center justify-end gap-3 mt-1 text-xs text-gray-500">
-                          <span>{member.commits} <span className="text-gray-400">commits</span></span>
-                          <span>{member.pullRequests} <span className="text-gray-400">PRs</span></span>
-                          <span>{member.reviews} <span className="text-gray-400">reviews</span></span>
-                          <span>{member.issues} <span className="text-gray-400">issues</span></span>
-                        </div>
+                        {contribLoading ? (
+                          <div className="h-4 w-10 bg-gray-200 rounded animate-pulse ml-auto" />
+                        ) : (
+                          <>
+                            <span className="text-sm font-bold text-gray-900">{member.total}</span>
+                            <div className="hidden group-hover:flex items-center justify-end gap-3 mt-1 text-xs text-gray-500">
+                              <span>{member.commits} <span className="text-gray-400">commits</span></span>
+                              <span>{member.pullRequests} <span className="text-gray-400">PRs</span></span>
+                              <span>{member.reviews} <span className="text-gray-400">reviews</span></span>
+                              <span>{member.issues} <span className="text-gray-400">issues</span></span>
+                            </div>
+                          </>
+                        )}
                       </td>
                     </tr>
                   ))}
