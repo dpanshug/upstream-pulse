@@ -111,15 +111,13 @@ export const governanceWorker = new Worker<GovernanceJobData>(
 
             for (const owner of ownersMaintainers) {
               const teamMember = usernameToTeamMember.get(owner.username.toLowerCase());
-              if (!teamMember) continue;
-
               const positionType = owner.role === 'approver' ? 'maintainer' : 'reviewer';
 
               try {
                 const existing = await db.query.maintainerStatus.findFirst({
                   where: and(
                     eq(maintainerStatus.projectId, project.id),
-                    eq(maintainerStatus.teamMemberId, teamMember.id),
+                    eq(maintainerStatus.githubUsername, owner.username.toLowerCase()),
                     eq(maintainerStatus.source, 'OWNERS_file'),
                   ),
                 });
@@ -128,6 +126,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                   await db.update(maintainerStatus)
                     .set({
                       positionType,
+                      teamMemberId: teamMember?.id || null,
                       isActive: true,
                       evidenceUrl: owner.sources[0],
                       notes: `Paths: ${owner.paths.join(', ')}`,
@@ -137,7 +136,8 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                 } else {
                   await db.insert(maintainerStatus).values({
                     projectId: project.id,
-                    teamMemberId: teamMember.id,
+                    teamMemberId: teamMember?.id || null,
+                    githubUsername: owner.username.toLowerCase(),
                     positionType,
                     positionTitle: owner.role === 'approver' ? 'Approver' : 'Reviewer',
                     isActive: true,
@@ -161,13 +161,12 @@ export const governanceWorker = new Worker<GovernanceJobData>(
 
             for (const entry of entries) {
               const teamMember = usernameToTeamMember.get(entry.username.toLowerCase());
-              if (!teamMember) continue;
 
               try {
                 const existing = await db.query.maintainerStatus.findFirst({
                   where: and(
                     eq(maintainerStatus.projectId, project.id),
-                    eq(maintainerStatus.teamMemberId, teamMember.id),
+                    eq(maintainerStatus.githubUsername, entry.username.toLowerCase()),
                     eq(maintainerStatus.source, 'CODEOWNERS'),
                   ),
                 });
@@ -176,6 +175,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                   await db.update(maintainerStatus)
                     .set({
                       positionType: 'maintainer',
+                      teamMemberId: teamMember?.id || null,
                       isActive: true,
                       evidenceUrl: entry.source,
                       notes: `Paths: ${entry.paths.join(', ')}`,
@@ -185,7 +185,8 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                 } else {
                   await db.insert(maintainerStatus).values({
                     projectId: project.id,
-                    teamMemberId: teamMember.id,
+                    teamMemberId: teamMember?.id || null,
+                    githubUsername: entry.username.toLowerCase(),
                     positionType: 'maintainer',
                     positionTitle: 'Code Owner',
                     isActive: true,

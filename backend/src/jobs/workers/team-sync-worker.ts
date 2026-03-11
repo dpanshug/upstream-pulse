@@ -17,7 +17,7 @@ import { logger } from '../../shared/utils/logger.js';
 import { db } from '../../shared/database/client.js';
 import { collectionJobs, teamMembers } from '../../shared/database/schema.js';
 import { fetchGitHubOrgMembers, fetchGitHubUser } from '../../shared/utils/github.js';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 interface TeamSyncJobData {
   trigger: 'scheduled' | 'manual';
@@ -31,6 +31,7 @@ interface SyncStats {
   reactivated: number;
   unchanged: number;
   errors: number;
+  relinked: number;
 }
 
 const redisConnection = new Redis(config.redisUrl, {
@@ -61,6 +62,7 @@ export const teamSyncWorker = new Worker<TeamSyncJobData>(
       reactivated: 0,
       unchanged: 0,
       errors: 0,
+      relinked: 0,
     };
 
     try {
@@ -174,6 +176,64 @@ export const teamSyncWorker = new Worker<TeamSyncJobData>(
 
           stats.deactivated++;
           logger.info(`Deactivated departed member: @${member.githubUsername} (${member.name})`);
+        }
+      }
+
+      // --- Phase 3: Re-link orphaned records across all tables ---
+      // When new members are added (or reactivated), match their GitHub username
+      // against records that were collected before they were in team_members.
+      if (stats.added > 0 || stats.reactivated > 0) {
+        // Re-link contributions (author stored in double-encoded metadata jsonb)
+        try {
+          const result = await db.execute(sql`
+            UPDATE contributions c
+            SET team_member_id = tm.id
+            FROM team_members tm
+            WHERE c.team_member_id IS NULL
+              AND tm.github_username IS NOT NULL
+              AND tm.is_active = true
+              AND (c.metadata #>> '{}')::jsonb->>'author' = tm.github_username
+          `) as unknown as { rowCount: number };
+          stats.relinked += result.rowCount;
+          logger.info(`Re-linked ${result.rowCount} orphaned contributions to team members`);
+        } catch (error) {
+          logger.error('Error re-linking orphaned contributions', { error });
+        }
+
+        // Re-link governance roles (maintainer_status)
+        try {
+          const result = await db.execute(sql`
+            UPDATE maintainer_status ms
+            SET team_member_id = tm.id
+            FROM team_members tm
+            WHERE ms.team_member_id IS NULL
+              AND ms.github_username IS NOT NULL
+              AND tm.github_username IS NOT NULL
+              AND tm.is_active = true
+              AND ms.github_username = tm.github_username
+          `) as unknown as { rowCount: number };
+          stats.relinked += result.rowCount;
+          logger.info(`Re-linked ${result.rowCount} orphaned governance roles to team members`);
+        } catch (error) {
+          logger.error('Error re-linking orphaned governance roles', { error });
+        }
+
+        // Re-link leadership positions
+        try {
+          const result = await db.execute(sql`
+            UPDATE leadership_positions lp
+            SET team_member_id = tm.id
+            FROM team_members tm
+            WHERE lp.team_member_id IS NULL
+              AND lp.github_username IS NOT NULL
+              AND tm.github_username IS NOT NULL
+              AND tm.is_active = true
+              AND lp.github_username = tm.github_username
+          `) as unknown as { rowCount: number };
+          stats.relinked += result.rowCount;
+          logger.info(`Re-linked ${result.rowCount} orphaned leadership positions to team members`);
+        } catch (error) {
+          logger.error('Error re-linking orphaned leadership positions', { error });
         }
       }
 

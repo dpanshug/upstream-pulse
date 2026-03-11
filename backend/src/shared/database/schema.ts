@@ -75,10 +75,13 @@ export const contributions = pgTable('contributions', {
 }));
 
 // Maintainer status tracking
+// Stores ALL OWNERS/CODEOWNERS entries — both team members and external contributors.
+// For team members: teamMemberId is set. For external: teamMemberId is null, githubUsername identifies the person.
 export const maintainerStatus = pgTable('maintainer_status', {
   id: uuid('id').defaultRandom().primaryKey(),
   projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
   teamMemberId: uuid('team_member_id').references(() => teamMembers.id, { onDelete: 'cascade' }),
+  githubUsername: varchar('github_username', { length: 255 }),
   positionType: varchar('position_type', { length: 100 }).notNull(), // 'maintainer', 'committer', 'reviewer'
   positionTitle: varchar('position_title', { length: 255 }),
   grantedDate: date('granted_date'),
@@ -92,6 +95,7 @@ export const maintainerStatus = pgTable('maintainer_status', {
 }, (table) => ({
   projectMemberIdx: index('maintainer_project_member_idx').on(table.projectId, table.teamMemberId),
   activeIdx: index('maintainer_active_idx').on(table.isActive),
+  githubUsernameIdx: index('maintainer_github_username_idx').on(table.githubUsername),
 }));
 
 // Leadership positions (steering committees, working groups)
