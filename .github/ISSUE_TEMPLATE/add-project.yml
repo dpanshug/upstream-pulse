@@ -1,0 +1,73 @@
+name: Request New Project or Organization
+description: Request tracking for an upstream or CNCF project that isn't currently in the dashboard.
+title: "[Add Project] "
+labels: ["enhancement", "new-project"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping us expand coverage! Please provide as much detail as you can
+        so we can evaluate and onboard the project quickly.
+
+  - type: input
+    id: github_org
+    attributes:
+      label: GitHub Organization
+      description: The GitHub org slug (e.g. `kubeflow`, `kubernetes-sigs`, `argoproj`).
+      placeholder: e.g. my-org
+    validations:
+      required: true
+
+  - type: textarea
+    id: repos
+    attributes:
+      label: Repositories to Track
+      description: |
+        List the specific repos under this org that should be tracked.
+        If you want the entire org tracked, say "all" and we'll evaluate which repos have meaningful team contributions.
+      placeholder: |
+        - my-org/repo-one
+        - my-org/repo-two
+    validations:
+      required: true
+
+  - type: dropdown
+    id: governance
+    attributes:
+      label: Governance Model
+      description: What governance format does this project use? Check the repo for OWNERS files, .github/CODEOWNERS, or neither.
+      options:
+        - OWNERS files (Kubernetes-style)
+        - CODEOWNERS (.github/CODEOWNERS)
+        - None / Unknown
+    validations:
+      required: true
+
+  - type: textarea
+    id: community_repo
+    attributes:
+      label: Community / Governance Repo (if any)
+      description: |
+        Does this org have a community repo with leadership data (steering committee, TSC, maintainers, WGs/SIGs)?
+        If so, provide the repo name and any relevant file paths.
+      placeholder: |
+        Community repo: my-org/community
+        Leadership files:
+        - STEERING-COMMITTEE.md
+        - MAINTAINERS.md
+        - sigs.yaml
+
+  - type: textarea
+    id: justification
+    attributes:
+      label: Why should we track this?
+      description: Brief context on why this project matters — e.g. team members contribute here, it's a strategic dependency, CNCF project we should monitor.
+      placeholder: Our team has 5 active contributors to this project and we need visibility into maintainer status.
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Anything else — links to relevant docs, CNCF landscape entry, related projects already tracked, etc.

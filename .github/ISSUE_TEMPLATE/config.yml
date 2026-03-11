@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Instance-Specific Data Issue (Seat Counts, Team Members, Identity Fixes)
+    url: https://github.com/dpanshug/upstream-pulse/blob/main/CONTRIBUTING.md#deployment-specific-issues-contact-your-admin
+    about: "Wrong seat count, missing team member, or identity merge needed? These are specific to your deployment — contact your dashboard admin via the About page. Don't file a public issue."
+  - name: Adding a Project Yourself (PR Guide)
+    url: https://github.com/dpanshug/upstream-pulse/blob/main/docs/adding-an-org.md
+    about: Know your way around code? Follow this guide to add a new upstream org via PR — no issue needed.
+  - name: Currently Tracked Projects
+    url: https://github.com/dpanshug/upstream-pulse/blob/main/docs/upstream-projects.md
+    about: Check the full list of tracked projects before requesting a new one.

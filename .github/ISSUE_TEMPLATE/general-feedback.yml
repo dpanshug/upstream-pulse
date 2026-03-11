@@ -1,0 +1,50 @@
+name: Feedback or Feature Request
+description: Suggest a new feature, report a dashboard bug, or share general feedback.
+title: "[Feedback] "
+labels: ["feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We'd love to hear your thoughts! Use this form for feature ideas, dashboard bugs,
+        UX improvements, or anything else that doesn't fit the other templates.
+
+  - type: dropdown
+    id: feedback_type
+    attributes:
+      label: Type of Feedback
+      options:
+        - Feature request
+        - Dashboard bug / UI issue
+        - UX improvement
+        - New metric or visualization
+        - Documentation improvement
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe your idea, issue, or suggestion in detail.
+      placeholder: |
+        It would be great if the dashboard showed contribution trends over the last 6 months
+        as a line chart, not just the current snapshot.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use Case / Motivation
+      description: Why is this important? Who benefits?
+      placeholder: |
+        Our manager needs quarterly trend data for upstream contribution reports.
+        Right now we have to manually pull this from GitHub.
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Screenshots, links, mockups, or anything else that helps explain your request.

@@ -1,0 +1,68 @@
+name: Bug in Data Collection or Sync
+description: Report a bug in how contributions, team members, or governance data are collected or displayed — e.g. sync logic issues, parser failures, missing contribution types.
+title: "[Data Bug] "
+labels: ["bug", "data-collection"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to report **software bugs** in how Upstream Pulse collects,
+        syncs, or displays data. For example:
+
+        - Team sync misses members with certain account configurations
+        - OWNERS/CODEOWNERS parser fails on a specific file format
+        - Contributions aren't attributed correctly by the identity resolver
+        - A metric calculation seems wrong across all projects
+
+        > **Are you a dashboard user reporting an issue specific to your team's deployment?**
+        > (e.g. wrong seat count, person missing, identity merge needed)
+        >
+        > These are instance-specific data issues, not software bugs. Please contact
+        > your **dashboard administrator** — you can find their contact info on the
+        > dashboard's **About** page. Filing these as public issues would expose
+        > internal team information.
+
+  - type: dropdown
+    id: bug_area
+    attributes:
+      label: Affected Area
+      options:
+        - Team member sync (GitHub org sync logic)
+        - Contribution collection (commits, PRs, reviews, issues)
+        - Identity resolution (mapping contributors to team members)
+        - Governance / OWNERS / CODEOWNERS parsing
+        - Leadership collection (steering, TSC, maintainers, WGs)
+        - Metrics calculation or aggregation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Describe the behavior you observed and what you expected instead.
+      placeholder: |
+        The CODEOWNERS parser skips entries that use GitHub team references (@org/team-name).
+        It only picks up individual @username entries, so repos that use team-based
+        CODEOWNERS show zero maintainers.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can someone reproduce this? Include org/repo names if they're public.
+      placeholder: |
+        1. Add an org that uses team-based CODEOWNERS (e.g. `example-org/example-repo`)
+        2. Trigger governance refresh
+        3. Check maintainer_status — no entries for this project
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Logs, error messages, screenshots, or links to the specific upstream files that cause the issue.

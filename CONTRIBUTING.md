@@ -6,7 +6,33 @@ Thank you for your interest in contributing to Upstream Pulse! This document pro
 
 This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
 
-## How to Contribute
+## Dashboard Users — Start Here
+
+You don't need to write code to contribute. But because this is an **open-source project** that can be deployed by anyone, it's important to use the right channel depending on what you need.
+
+### Public GitHub Issues (for the open-source project)
+
+Use these for requests and bugs that improve the software for everyone:
+
+| I want to... | Template |
+|---|---|
+| **Add a new upstream project or org** to the codebase | [Request New Project](https://github.com/dpanshug/upstream-pulse/issues/new?template=add-project.yml) |
+| **Report a bug** in data collection, sync, or parsing logic | [Data Collection Bug](https://github.com/dpanshug/upstream-pulse/issues/new?template=data-correction.yml) |
+| **Suggest a feature** or report a dashboard UI issue | [Feedback](https://github.com/dpanshug/upstream-pulse/issues/new?template=general-feedback.yml) |
+
+> **Want to check what's already tracked?** See [docs/upstream-projects.md](docs/upstream-projects.md) for the full list.
+
+### Deployment-Specific Issues (contact your admin)
+
+If your issue is about **your team's specific dashboard instance** — wrong seat counts, a person missing from the team list, identity merge requests, or stale data — these should **not** be filed as public GitHub issues because they contain internal team information.
+
+Instead, contact your **dashboard administrator** — you can find their info on the **About** page of your dashboard. Admins can fix team member records, trigger re-syncs, and adjust identity mappings directly.
+
+---
+
+## Developer Contributions
+
+The rest of this guide is for developers who want to contribute code changes.
 
 ### Reporting Issues
 
