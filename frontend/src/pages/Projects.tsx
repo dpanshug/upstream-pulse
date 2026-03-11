@@ -34,7 +34,7 @@ interface MergedProject extends Project {
   teamContributions: number;
 }
 
-type SortField = 'name' | 'githubOrg' | 'ecosystem' | 'trackingEnabled' | 'teamContributions';
+type SortField = 'name' | 'githubOrg' | 'trackingEnabled' | 'teamContributions';
 type SortDirection = 'asc' | 'desc';
 type ViewMode = 'table' | 'grid';
 
@@ -44,7 +44,6 @@ const GRID_PAGE_SIZE = 12;
 const COLUMNS: { label: string; field: SortField }[] = [
   { label: 'Project', field: 'name' },
   { label: 'Organization', field: 'githubOrg' },
-  { label: 'Ecosystem', field: 'ecosystem' },
   { label: 'Status', field: 'trackingEnabled' },
   { label: 'Team Contributions', field: 'teamContributions' },
 ];
@@ -408,11 +407,6 @@ export default function Projects() {
                           >
                             {project.githubOrg}
                           </Link>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="text-sm text-gray-500">
-                            {project.ecosystem || '-'}
-                          </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span
