@@ -9,5 +9,6 @@ export { PeriodSelector } from './PeriodSelector';
 export { LeadershipMemberCard } from './LeadershipMemberCard';
 export { LeadershipSection } from './LeadershipSection';
 export { PeriodSummary } from './PeriodSummary';
-export { ProjectCards } from './ProjectCards';
+export { ProjectCard, ProjectCards } from './ProjectCards';
+export type { ProjectData, ProjectMetric } from './ProjectCards';
 export { OrgActivityCard } from './OrgActivityCard';
