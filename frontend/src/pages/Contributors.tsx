@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
+import { PeriodSelector } from '../components/dashboard/PeriodSelector';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -23,23 +24,50 @@ interface TeamMember {
   isActive: boolean;
 }
 
-type SortField = 'name' | 'primaryEmail' | 'githubUsername' | 'department' | 'isActive';
+interface MergedContributor extends TeamMember {
+  total: number;
+  commits: number;
+  pullRequests: number;
+  reviews: number;
+  issues: number;
+}
+
+type SortField = 'name' | 'githubUsername' | 'isActive' | 'total';
+
 type SortDirection = 'asc' | 'desc';
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
 const COLUMNS: { label: string; field: SortField }[] = [
   { label: 'Name', field: 'name' },
-  { label: 'Email', field: 'primaryEmail' },
   { label: 'GitHub', field: 'githubUsername' },
-  { label: 'Department', field: 'department' },
   { label: 'Status', field: 'isActive' },
+  { label: 'Contributions', field: 'total' },
 ];
 
 async function fetchTeamMembers() {
   const res = await fetch(`${API_URL}/api/team-members`);
   if (!res.ok) throw new Error('Failed to fetch team members');
   return res.json();
+}
+
+interface ContributorMetric {
+  id: string;
+  name: string;
+  githubUsername: string | null;
+  contributions: {
+    commits: number;
+    prs: number;
+    reviews: number;
+    issues: number;
+    total: number;
+  };
+}
+
+async function fetchContributors(days: number) {
+  const res = await fetch(`${API_URL}/api/metrics/contributors?days=${days}&limit=1000`);
+  if (!res.ok) throw new Error('Failed to fetch contribution data');
+  return res.json() as Promise<{ contributors: ContributorMetric[]; count: number; days: number }>;
 }
 
 function SortIcon({ field, activeField, direction }: {
@@ -69,9 +97,19 @@ function getPageRange(current: number, total: number): (number | 'ellipsis')[] {
 }
 
 export default function Contributors() {
+  const [selectedDays, setSelectedDays] = useState(0);
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['team-members'],
     queryFn: fetchTeamMembers,
+  });
+
+  const {
+    data: contribData,
+    isLoading: contribLoading,
+  } = useQuery({
+    queryKey: ['contributors-metrics', selectedDays],
+    queryFn: () => fetchContributors(selectedDays),
   });
 
   const [inputValue, setInputValue] = useState('');
@@ -90,30 +128,50 @@ export default function Contributors() {
   }, [inputValue]);
 
   const members: TeamMember[] = data?.members ?? [];
+  const contributorMetrics = contribData?.contributors ?? [];
+
+  const mergedMembers: MergedContributor[] = useMemo(() => {
+    const metricsById = new Map<string, ContributorMetric>();
+    for (const c of contributorMetrics) {
+      metricsById.set(c.id, c);
+    }
+    return members.map((m) => {
+      const c = metricsById.get(m.id)?.contributions;
+      return {
+        ...m,
+        total: c?.total ?? 0,
+        commits: c?.commits ?? 0,
+        pullRequests: c?.prs ?? 0,
+        reviews: c?.reviews ?? 0,
+        issues: c?.issues ?? 0,
+      };
+    });
+  }, [members, contributorMetrics]);
 
   const filteredMembers = useMemo(() => {
-    if (!searchQuery.trim()) return members;
+    if (!searchQuery.trim()) return mergedMembers;
     const q = searchQuery.toLowerCase();
-    return members.filter((m) =>
+    return mergedMembers.filter((m) =>
       m.name?.toLowerCase().includes(q) ||
       m.primaryEmail?.toLowerCase().includes(q) ||
-      m.githubUsername?.toLowerCase().includes(q) ||
-      m.department?.toLowerCase().includes(q)
+      m.githubUsername?.toLowerCase().includes(q)
     );
-  }, [members, searchQuery]);
+  }, [mergedMembers, searchQuery]);
 
   const sortedMembers = useMemo(() => {
     return [...filteredMembers].sort((a, b) => {
-      const aRaw = a[sortField];
-      const bRaw = b[sortField];
-
       if (sortField === 'isActive') {
-        const cmp = (aRaw === bRaw) ? 0 : aRaw ? -1 : 1;
+        const cmp = (a.isActive === b.isActive) ? 0 : a.isActive ? -1 : 1;
         return sortDirection === 'asc' ? cmp : -cmp;
       }
 
-      const aStr = (aRaw as string | null) ?? '';
-      const bStr = (bRaw as string | null) ?? '';
+      if (sortField === 'total') {
+        const cmp = a.total - b.total;
+        return sortDirection === 'asc' ? cmp : -cmp;
+      }
+
+      const aStr = (a[sortField] as string | null) ?? '';
+      const bStr = (b[sortField] as string | null) ?? '';
       const cmp = aStr.localeCompare(bStr);
       return sortDirection === 'asc' ? cmp : -cmp;
     });
@@ -129,7 +187,7 @@ export default function Contributors() {
       setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortField(field);
-      setSortDirection('asc');
+      setSortDirection(field === 'total' ? 'desc' : 'asc');
     }
     setCurrentPage(1);
   }
@@ -159,57 +217,64 @@ export default function Contributors() {
           />
         ) : (
           <>
-            {/* Search bar */}
-            <div className="mb-4">
-              <div className="relative max-w-md">
+            <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="relative max-w-md flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search by name, email, GitHub, or department..."
+                  placeholder="Search by name, email, or GitHub..."
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
                 />
               </div>
+              <PeriodSelector
+                selectedDays={selectedDays}
+                onSelect={(days) => { setSelectedDays(days); setCurrentPage(1); }}
+                isLoading={contribLoading}
+              />
             </div>
 
             <div className="bg-white rounded-lg shadow overflow-hidden">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="min-w-full divide-y divide-gray-200 table-fixed">
                 <thead className="bg-gray-50">
                   <tr>
-                    {COLUMNS.map(({ label, field }) => (
-                      <th
-                        key={field}
-                        role="columnheader"
-                        tabIndex={0}
-                        aria-sort={sortField === field ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
-                        onClick={() => handleSort(field)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSort(field); } }}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:bg-gray-100 transition-colors"
-                      >
-                        <div className="flex items-center">
-                          {label}
-                          <SortIcon field={field} activeField={sortField} direction={sortDirection} />
-                        </div>
-                      </th>
-                    ))}
+                    {COLUMNS.map(({ label, field }) => {
+                      const widthClass =
+                        field === 'name' ? 'w-1/3' :
+                        field === 'githubUsername' ? 'w-1/4' :
+                        field === 'isActive' ? 'w-28' : '';
+                      return (
+                        <th
+                          key={field}
+                          role="columnheader"
+                          tabIndex={0}
+                          aria-sort={sortField === field ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
+                          onClick={() => handleSort(field)}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSort(field); } }}
+                          className={`px-6 py-3 text-xs font-medium text-gray-500 uppercase cursor-pointer select-none hover:bg-gray-100 transition-colors ${widthClass} ${
+                            field === 'total' ? 'text-right' : 'text-left'
+                          }`}
+                        >
+                          <div className={`flex items-center ${field === 'total' ? 'justify-end' : ''}`}>
+                            {label}
+                            <SortIcon field={field} activeField={sortField} direction={sortDirection} />
+                          </div>
+                        </th>
+                      );
+                    })}
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {paginatedMembers.map((member) => (
-                    <tr key={member.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={member.id} className="group hover:bg-gray-50 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
-                          <User className="w-5 h-5 text-gray-400 mr-2" />
+                          <User className="w-5 h-5 text-gray-400 mr-2 flex-shrink-0" />
                           <span className="text-sm font-medium text-gray-900">
                             {member.name}
                           </span>
                         </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-500">
-                          {member.primaryEmail}
-                        </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {member.githubUsername ? (
@@ -226,11 +291,6 @@ export default function Contributors() {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="text-sm text-gray-500">
-                          {member.department || '-'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
                         <span
                           className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                             member.isActive
@@ -240,6 +300,15 @@ export default function Contributors() {
                         >
                           {member.isActive ? 'Active' : 'Inactive'}
                         </span>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <span className="text-sm font-bold text-gray-900">{member.total}</span>
+                        <div className="hidden group-hover:flex items-center justify-end gap-3 mt-1 text-xs text-gray-500">
+                          <span>{member.commits} <span className="text-gray-400">commits</span></span>
+                          <span>{member.pullRequests} <span className="text-gray-400">PRs</span></span>
+                          <span>{member.reviews} <span className="text-gray-400">reviews</span></span>
+                          <span>{member.issues} <span className="text-gray-400">issues</span></span>
+                        </div>
                       </td>
                     </tr>
                   ))}
