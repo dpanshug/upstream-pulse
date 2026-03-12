@@ -1,0 +1,30 @@
+---
+description: Safety rules for production cluster operations — never run destructive commands without explicit user approval
+alwaysApply: true
+---
+
+# Cluster Safety
+
+## Never Run Without Asking
+
+Before executing any of the following against the cluster, **stop and ask the user for approval**. Do not proceed on your own.
+
+- `DELETE`, `UPDATE`, `DROP`, `TRUNCATE` SQL statements via `oc exec deploy/postgres`
+- `oc delete` of any resource (pods, deployments, secrets, configmaps, PVCs)
+- `oc scale` to zero replicas
+- `oc rollback` or `oc rollout undo`
+- Any `POST` or `DELETE` to admin API endpoints (`/api/admin/*`)
+- `npm run deploy` or `deploy.sh` — the user deploys, not the agent
+
+## Safe to Run Without Asking
+
+- `SELECT` queries against the database (read-only)
+- `oc get`, `oc describe`, `oc logs` (read-only inspection)
+- `GET` requests to any API endpoint
+- `oc exec ... node -e "fetch(...).then(...)"` for read-only API calls
+
+## When Proposing Destructive Operations
+
+1. State exactly what will be changed and how many rows/resources are affected
+2. Provide the command for the user to copy and run themselves
+3. Wait for explicit confirmation before executing

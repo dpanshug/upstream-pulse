@@ -1126,11 +1126,26 @@ export class MetricsService {
         positions: Array.from(o.positions.values()),
       }));
 
-      // ── Maintainer counts ──
+      // ── Maintainer counts (real totals from DB, not estimates) ──
       const teamApprovers = maintainerStatuses.filter(s => s.positionType === 'maintainer').length;
       const teamReviewers = maintainerStatuses.filter(s => s.positionType === 'reviewer').length;
-      const totalApprovers = Math.max(teamApprovers * 2, 6);
-      const totalReviewers = Math.max(teamReviewers * 2, 5);
+
+      const totalMsConditions = [eq(maintainerStatus.isActive, true)];
+      if (projectId) totalMsConditions.push(eq(maintainerStatus.projectId, projectId));
+      if (githubOrg) totalMsConditions.push(eq(projects.githubOrg, githubOrg));
+
+      const totalMsCounts = await db
+        .select({
+          positionType: maintainerStatus.positionType,
+          count: sql<number>`count(distinct ${maintainerStatus.githubUsername})::int`,
+        })
+        .from(maintainerStatus)
+        .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
+        .where(and(...totalMsConditions))
+        .groupBy(maintainerStatus.positionType);
+
+      const totalApprovers = totalMsCounts.find(r => r.positionType === 'maintainer')?.count ?? 0;
+      const totalReviewers = totalMsCounts.find(r => r.positionType === 'reviewer')?.count ?? 0;
 
       // ── teamLeaders — comprehensive member map ──
       const memberMap = new Map<string, {

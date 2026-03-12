@@ -221,19 +221,11 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   },
 
   // ─── Containers (Podman, AI Lab Recipes, RamaLama, OLOT) ────
+  // No communityRepo — the org has no centralized leadership file.
+  // Podman's MAINTAINERS.md only covers Podman, not the whole org.
   {
     name: 'Containers',
     githubOrg: 'containers',
-    communityRepo: {
-      repo: 'podman',
-      defaultBranch: 'main',
-      leadershipFiles: [
-        {
-          path: 'MAINTAINERS.md',
-          groupName: 'Podman',
-        },
-      ],
-    },
     governanceModel: 'owners',
     repoGovernanceOverride: {
       'ramalama': 'codeowners',

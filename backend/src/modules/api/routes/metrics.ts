@@ -3,7 +3,7 @@ import { metricsService } from '../../metrics/metrics-service.js';
 import { logger } from '../../../shared/utils/logger.js';
 import { db } from '../../../shared/database/client.js';
 import { maintainerStatus, teamMembers, projects } from '../../../shared/database/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 
 export async function metricsRoutes(app: FastifyInstance) {
 
@@ -239,18 +239,22 @@ export async function metricsRoutes(app: FastifyInstance) {
         .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
         .where(eq(maintainerStatus.isActive, true));
 
-      // Count total approvers and reviewers (including non-team members)
-      // For now, we only count team members - could expand to count all OWNERS entries
       const teamApprovers = statuses.filter(s => s.positionType === 'maintainer');
       const teamReviewers = statuses.filter(s => s.positionType === 'reviewer');
 
-      // Get unique projects with any maintainers
       const projectsWithMaintainers = [...new Set(statuses.map(s => s.projectId))];
 
-      // Get total counts (this would ideally come from OWNERS files directly)
-      // For now, estimate based on what we have
-      const totalApproversEstimate = Math.max(teamApprovers.length * 2, 6); // Rough estimate
-      const totalReviewersEstimate = Math.max(teamReviewers.length * 2, 5);
+      const totalMsCounts = await db
+        .select({
+          positionType: maintainerStatus.positionType,
+          count: sql<number>`count(distinct ${maintainerStatus.githubUsername})::int`,
+        })
+        .from(maintainerStatus)
+        .where(eq(maintainerStatus.isActive, true))
+        .groupBy(maintainerStatus.positionType);
+
+      const totalApproversEstimate = totalMsCounts.find(r => r.positionType === 'maintainer')?.count ?? 0;
+      const totalReviewersEstimate = totalMsCounts.find(r => r.positionType === 'reviewer')?.count ?? 0;
 
       // Group by team member for the response
       const memberMap = new Map<string, {
