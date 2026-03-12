@@ -53,6 +53,8 @@ export interface UpstreamOrgConfig {
   communityRepo?: CommunityRepoConfig;
   /** Which maintainer-file format this org uses at the repo level */
   governanceModel: 'owners' | 'codeowners' | 'none';
+  /** Per-repo override of governanceModel. Repos not listed use the org-level default. */
+  repoGovernanceOverride?: Record<string, 'owners' | 'codeowners' | 'none'>;
   /** Maps repo names to their owning working groups (only relevant for orgs with WGs) */
   repoToWorkingGroup?: Record<string, string[]>;
 }
@@ -216,6 +218,29 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
       ],
     },
     governanceModel: 'owners',
+  },
+
+  // ─── Containers (Podman, AI Lab Recipes, RamaLama, OLOT) ────
+  {
+    name: 'Containers',
+    githubOrg: 'containers',
+    communityRepo: {
+      repo: 'podman',
+      defaultBranch: 'main',
+      leadershipFiles: [
+        {
+          path: 'MAINTAINERS.md',
+          groupName: 'Podman',
+        },
+      ],
+    },
+    governanceModel: 'owners',
+    repoGovernanceOverride: {
+      'ramalama': 'codeowners',
+      'ai-lab-recipes': 'none',
+      'ramalama-stack': 'none',
+      'olot': 'none',
+    },
   },
 
   // ─── Individual repos (various orgs) ────────

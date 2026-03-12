@@ -79,7 +79,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
         try {
           // Determine governance model from org registry; default to 'owners'
           const orgCfg = getOrgConfig(project.githubOrg);
-          const model = orgCfg?.governanceModel ?? 'owners';
+          const model = orgCfg?.repoGovernanceOverride?.[project.githubRepo] ?? orgCfg?.governanceModel ?? 'owners';
 
           if (model === 'none') {
             logger.debug(`Skipping governance for ${project.name} (model=none)`);
