@@ -2,7 +2,7 @@
 
 Upstream Pulse provides contribution tracking and governance insights for the following upstream open-source organizations and projects. This document lists what is currently supported and what is planned next, organized by upstream organization.
 
-**Last updated**: 2026-03-10
+**Last updated**: 2026-03-12
 
 ---
 
@@ -193,6 +193,22 @@ NVIDIA AI/ML infrastructure — large-scale training, inference, and LLM securit
 
 ---
 
+### Containers (`containers/*`)
+
+Container tooling ecosystem — Podman, RamaLama, AI Lab Recipes, OLOT. Mixed governance: podman uses OWNERS, ramalama uses CODEOWNERS, others have neither. Per-repo governance overrides handle this.
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| `containers/podman` | OCI container management tool | **Tracked** |
+| `containers/ramalama` | Local AI model serving with containers | **Tracked** |
+| `containers/ai-lab-recipes` | AI application recipes for containers | **Tracked** |
+| `containers/ramalama-stack` | Llama Stack provider for RamaLama | **Tracked** |
+| `containers/olot` | OCI Layers On Top — append layers to OCI images | **Tracked** |
+
+**Governance**: Leadership from `containers/podman` MAINTAINERS.md (6 Core Maintainers, 5 Maintainers, 10 Reviewers, 3 Community Managers). Podman uses OWNERS (27 approvers, 14 reviewers). RamaLama uses CODEOWNERS (11 owners). Uses `repoGovernanceOverride` for per-repo model selection.
+
+---
+
 ## Planned Additions
 
 ### OpenVINO (`openvinotoolkit/*`)
@@ -255,10 +271,11 @@ Additional upstream projects across various organizations.
 | **Ray** | 1 | 1 tracked |
 | **Argo** | 2 | 2 tracked |
 | **NVIDIA** | 4 | 4 tracked |
+| **Containers** | 5 | 5 tracked |
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
 | **Individual repos** | 6 | Planned |
-| **Total** | **66** | 51 tracked, 15 planned |
+| **Total** | **71** | 56 tracked, 15 planned |
 
 ---
 
@@ -268,7 +285,7 @@ The following infrastructure is in place to support all upstream organizations l
 
 1. **Org registry** (`backend/src/shared/config/org-registry.ts`) — static config that declares every supported org, its community repo, leadership files, and governance model. Adding a new org is a single PR to this file. See [Adding an Organization](adding-an-org.md).
 2. **Configurable leadership collector** — `LeadershipCollector` accepts an org config and dispatches to the appropriate parser. Supports markdown leadership tables (uniform-role and mixed-role), WGs/SIGs YAML, bullet-list formats (e.g. MLflow Core Members), and is extensible per org.
-3. **Multiple governance parsers** — Kubernetes/Kubeflow-style `OWNERS` files, GitHub-native `CODEOWNERS` files, and markdown `MAINTAINERS.md` tables are all supported. The `governanceModel` field in the org registry controls which parser runs.
+3. **Multiple governance parsers** — Kubernetes/Kubeflow-style `OWNERS` files, GitHub-native `CODEOWNERS` files, and markdown `MAINTAINERS.md` tables are all supported. The `governanceModel` field in the org registry controls which parser runs. `repoGovernanceOverride` allows per-repo overrides for mixed-governance orgs (e.g. `containers`: podman uses OWNERS, ramalama uses CODEOWNERS).
 4. **Per-org leadership data** — the `leadershipPositions` table includes a `communityOrg` column. The scheduler dispatches one leadership job per org, and the metrics service returns leadership data grouped by org (`byOrg[]`).
 5. **Working Group mappings** — `repoToWorkingGroup` in the org registry replaces the hardcoded Kubeflow WG mapping. Orgs without WGs simply omit this field.
 6. **API support** — `GET /api/orgs` returns the org registry. `POST /api/leadership/refresh` accepts an optional `githubOrg` to scope the refresh. `POST /api/projects` auto-triggers a leadership refresh for the new project's org.

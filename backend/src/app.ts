@@ -95,7 +95,6 @@ app.get<{
         if (githubOrg) conditions.push(eq(projects.githubOrg, githubOrg));
         return drizzleAnd(...conditions);
       },
-      limit: 50,
     });
 
     return {
