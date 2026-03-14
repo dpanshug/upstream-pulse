@@ -1,19 +1,15 @@
-# GitHub API Scaling Strategy
+# GitHub API Usage
 
-This document outlines the current architecture and future scaling strategy for GitHub data collection.
+This document describes how Upstream Pulse uses the GitHub API and the current rate limit constraints.
 
 ---
 
-## Current Architecture
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        CURRENT STATE                                        │
-└─────────────────────────────────────────────────────────────────────────────┘
-
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
 │  API Server  │     │  Scheduler   │     │    Worker    │
-│  (app.ts)    │     │ (2 AM cron)  │     │ (single)     │
+│  (app.ts)    │     │ (2 AM cron)  │     │ (3 concur.) │
 └──────┬───────┘     └──────┬───────┘     └──────┬───────┘
        │                    │                    │
        │   Enqueue jobs     │                    │
@@ -23,30 +19,36 @@ This document outlines the current architecture and future scaling strategy for 
 │           (BullMQ)                  │◀─────────┘
 │                                     │   Process jobs
 │  • contribution-collection          │
-│  • insight-generation               │
+│  • governance-refresh               │
+│  • leadership-refresh               │
+│  • team-sync                        │
 └─────────────────────────────────────┘
                     │
                     ▼
          ┌────────────────────┐
-         │  Single GitHub     │
-         │  Token (PAT)       │
+         │  GitHub Tokens     │
          │                    │
-         │  🔑 GITHUB_TOKEN   │
+         │  GITHUB_TOKEN      │  ← collection, governance, leadership
+         │  GITHUB_TEAM_TOKEN │  ← team sync (read:org scope)
          └─────────┬──────────┘
                    │
-                   │  REST API calls
-                   │  (no caching)
+                   │  REST + GraphQL
                    ▼
 ┌─────────────────────────────────────┐
 │          GitHub API                 │
 │                                     │
-│    ⚠️  5,000 requests/hour limit    │
+│  REST:  5,000 requests/hour         │
+│  GraphQL: 5,000 points/hour         │
 │                                     │
-│  Endpoints used:                    │
+│  REST endpoints:                    │
 │  • /repos/{owner}/{repo}/commits    │
 │  • /repos/{owner}/{repo}/pulls      │
 │  • /repos/{owner}/{repo}/issues     │
-│  • /pulls/{number}/reviews          │
+│  • /repos/{owner}/{repo}/git/trees  │
+│  • /repos/{owner}/{repo}/contents   │
+│                                     │
+│  GraphQL:                           │
+│  • PR reviews (100 PRs × 10 nested) │
 └─────────────────────────────────────┘
                    │
                    ▼
@@ -54,289 +56,71 @@ This document outlines the current architecture and future scaling strategy for 
          │    PostgreSQL      │
          │                    │
          │  • contributions   │
-         │  • projects        │
-         │  • team_members    │
+         │  • maintainer_status│
+         │  • leadership_pos. │
          └────────────────────┘
-
-
-╔═══════════════════════════════════════════════════════════════════════════╗
-║  LIMITATIONS                                                               ║
-╠═══════════════════════════════════════════════════════════════════════════╣
-║  ❌ Single token = max 5,000 req/hr                                       ║
-║  ❌ No ETag caching (every request counts against limit)                  ║
-║  ❌ All data fetched via API (including commits)                          ║
-║  ❌ Single worker process                                                 ║
-║  ❌ No request deduplication                                              ║
-╚═══════════════════════════════════════════════════════════════════════════╝
-
-
-CAPACITY ESTIMATES (Current):
-┌────────────────────────┬─────────────┬──────────────────┐
-│ Scenario               │ API Calls   │ Time @ 5K/hr     │
-├────────────────────────┼─────────────┼──────────────────┤
-│ Daily sync (10 repos)  │ ~150        │ ~2 min           │
-│ Daily sync (100 repos) │ ~1,500      │ ~20 min          │
-│ Daily sync (500 repos) │ ~7,500      │ ~1.5 hrs         │
-│ Full sync (1 repo)     │ ~300        │ ~4 min           │
-│ Full sync (100 repos)  │ ~30,000     │ ~6 hrs           │
-└────────────────────────┴─────────────┴──────────────────┘
 ```
 
 ---
 
-## Future Architecture (Proposed)
+## API Calls Per Operation
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        FUTURE STATE - SCALABLE                              │
-└─────────────────────────────────────────────────────────────────────────────┘
+### Contribution Collection
 
-                              DATA SOURCES
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                                                             │
-│   ┌─────────────────────┐              ┌─────────────────────┐              │
-│   │    GitHub API       │              │   Local Git Clones  │              │
-│   │                     │              │   (Facade Worker)   │              │
-│   │  • REST API         │              │                     │              │
-│   │  • GraphQL API      │              │  📁 /repos/         │              │
-│   │                     │              │    ├── org1/repo1   │              │
-│   │  5,000 req/hr/token │              │    ├── org1/repo2   │              │
-│   └──────────┬──────────┘              │    └── org2/repo1   │              │
-│              │                         └──────────┬──────────┘              │
-│              │                                    │                         │
-└──────────────┼────────────────────────────────────┼─────────────────────────┘
-               │                                    │
-               │   REST/GraphQL                     │  git fetch + log parse
-               │                                    │  (0 API calls!)
-               ▼                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           PROCESSING LAYER                                  │
-│                                                                             │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                         Token Pool                                    │  │
-│  │  ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐                             │  │
-│  │  │ 🔑1 │ │ 🔑2 │ │ 🔑3 │ │ 🔑4 │ │ 🔑5 │  ──▶  25,000 req/hr!        │  │
-│  │  └─────┘ └─────┘ └─────┘ └─────┘ └─────┘                             │  │
-│  │                                                                       │  │
-│  │  • Rotate on rate limit hit                                          │  │
-│  │  • Track remaining quota per token                                   │  │
-│  │  • Auto-select token with most capacity                              │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                                                             │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                         ETag Cache                                    │  │
-│  │                                                                       │  │
-│  │   Request ──▶ Check ETag ──▶ If-None-Match header ──▶ GitHub         │  │
-│  │                                                           │           │  │
-│  │                              ┌────────────────────────────┘           │  │
-│  │                              ▼                                        │  │
-│  │                    ┌─────────────────────┐                            │  │
-│  │                    │  304 Not Modified?  │                            │  │
-│  │                    └─────────┬───────────┘                            │  │
-│  │                              │                                        │  │
-│  │              ┌───────────────┴───────────────┐                        │  │
-│  │              ▼                               ▼                        │  │
-│  │     ┌──────────────┐               ┌──────────────┐                   │  │
-│  │     │ YES: Use     │               │ NO: Process  │                   │  │
-│  │     │ cached data  │               │ new data     │                   │  │
-│  │     │              │               │              │                   │  │
-│  │     │ 🎉 FREE!     │               │ Update cache │                   │  │
-│  │     │ No rate hit  │               │ + ETag       │                   │  │
-│  │     └──────────────┘               └──────────────┘                   │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                                                                             │
-│  ┌────────────────────────────────────────────────────────────────────────┐ │
-│  │                      Distributed Workers                               │ │
-│  │                                                                        │ │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐               │ │
-│  │  │ Worker 1 │  │ Worker 2 │  │ Worker 3 │  │ Worker N │               │ │
-│  │  │          │  │          │  │          │  │   ...    │               │ │
-│  │  │ API jobs │  │ API jobs │  │ Facade   │  │          │               │ │
-│  │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘               │ │
-│  │       │             │             │             │                      │ │
-│  │       └─────────────┴─────────────┴─────────────┘                      │ │
-│  │                           │                                            │ │
-│  │                           ▼                                            │ │
-│  │              ┌─────────────────────────┐                               │ │
-│  │              │     Message Broker      │                               │ │
-│  │              │   (Redis / RabbitMQ)    │                               │ │
-│  │              └─────────────────────────┘                               │ │
-│  └────────────────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           STORAGE LAYER                                     │
-│                                                                             │
-│    ┌─────────────────────────────────────────────────────────────────┐      │
-│    │                      PostgreSQL                                 │      │
-│    │                                                                 │      │
-│    │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │      │
-│    │  │  contributions  │  │ collection_     │  │  github_tokens  │ │      │
-│    │  │                 │  │ status          │  │  (token pool)   │ │      │
-│    │  │ commits, PRs,   │  │                 │  │                 │ │      │
-│    │  │ issues, reviews │  │ per-repo job    │  │ token, limit,   │ │      │
-│    │  │                 │  │ progress        │  │ reset_at        │ │      │
-│    │  └─────────────────┘  └─────────────────┘  └─────────────────┘ │      │
-│    │                                                                 │      │
-│    │  ┌─────────────────┐  ┌─────────────────┐                      │      │
-│    │  │  etag_cache     │  │  projects       │                      │      │
-│    │  │                 │  │                 │                      │      │
-│    │  │ url, etag,      │  │ last_sync_at,   │                      │      │
-│    │  │ cached_data     │  │ sync_status     │                      │      │
-│    │  └─────────────────┘  └─────────────────┘                      │      │
-│    └─────────────────────────────────────────────────────────────────┘      │
-│                                                                             │
-│    ┌─────────────────────────────────────────────────────────────────┐      │
-│    │                      Redis                                      │      │
-│    │                                                                 │      │
-│    │  • Job queues (BullMQ)                                          │      │
-│    │  • In-memory ETag cache (fast lookups)                          │      │
-│    │  • Rate limit counters per token                                │      │
-│    └─────────────────────────────────────────────────────────────────┘      │
-└─────────────────────────────────────────────────────────────────────────────┘
+| Data Type | API | Calls per sync | Notes |
+|-----------|-----|---------------|-------|
+| Commits | REST `repos.listCommits` | 1 per 100 commits | Paginated, filtered by `since` |
+| Pull Requests | REST `pulls.list` | 1 per 100 PRs | Early break when all older than `since` |
+| Reviews | **GraphQL** | 1 per 100 PRs (nested) | Avoids N+1 REST problem |
+| Issues | REST `issues.listForRepo` | 1 per 100 issues | Filtered by `since` param |
 
+### Governance Collection
 
-╔═══════════════════════════════════════════════════════════════════════════╗
-║  BENEFITS                                                                  ║
-╠═══════════════════════════════════════════════════════════════════════════╣
-║  ✅ N tokens = N × 5,000 req/hr capacity                                  ║
-║  ✅ ETag caching = ~90% fewer counted requests                            ║
-║  ✅ Facade worker = 0 API calls for commit data                           ║
-║  ✅ Parallel workers = horizontal scaling                                 ║
-║  ✅ Collection status = resume interrupted jobs                           ║
-║  ✅ GraphQL = fewer requests for complex queries                          ║
-╚═══════════════════════════════════════════════════════════════════════════╝
+| Data Type | API | Calls per repo | Notes |
+|-----------|-----|---------------|-------|
+| OWNERS files | REST `git.getTree` + `repos.getContent` | 1 (tree) + 1 per OWNERS file | Tree fetched recursively |
+| OWNERS_ALIASES | REST `repos.getContent` | 1-2 | Checks two paths |
+| CODEOWNERS | REST `repos.getContent` | 1-3 | Checks three paths |
 
+### Leadership Collection
 
-CAPACITY ESTIMATES (Future with 5 tokens + ETag + Facade):
-┌────────────────────────┬─────────────┬──────────────────┐
-│ Scenario               │ API Calls   │ Time             │
-├────────────────────────┼─────────────┼──────────────────┤
-│ Daily sync (10 repos)  │ ~15*        │ <1 min           │
-│ Daily sync (100 repos) │ ~150*       │ ~2 min           │
-│ Daily sync (500 repos) │ ~750*       │ ~10 min          │
-│ Full sync (1 repo)     │ ~50**       │ <1 min           │
-│ Full sync (100 repos)  │ ~5,000**    │ ~15 min          │
-└────────────────────────┴─────────────┴──────────────────┘
-* With ETag caching (90% reduction assumed)
-** With Facade worker (commits via git clone, not API)
-```
+| Data Type | API | Calls per org | Notes |
+|-----------|-----|---------------|-------|
+| Markdown files | REST `repos.getContent` | 1 per file | Raw content from community repo |
+| WG/SIG YAML | REST `repos.getContent` | 1 | Single YAML file |
 
 ---
 
-## Implementation Phases
+## Rate Limit Handling
 
-### Phase 1: ETag Caching (Quick Win)
-**Effort:** Low | **Impact:** High
+The collector tracks rate limits from both REST and GraphQL:
 
-```typescript
-// Add to github.ts
-interface CachedResponse {
-  etag: string;
-  data: any;
-  cachedAt: Date;
-}
+- **REST**: Reads `x-ratelimit-remaining` and `x-ratelimit-reset` from response headers after every call
+- **GraphQL**: Reads `rateLimit.remaining` and `rateLimit.resetAt` from the query response
 
-const etagCache = new Map<string, CachedResponse>();
-
-async function fetchWithEtag(url: string, options: RequestInit) {
-  const cached = etagCache.get(url);
-  const headers = { ...options.headers };
-  
-  if (cached) {
-    headers['If-None-Match'] = cached.etag;
-  }
-  
-  const response = await fetch(url, { ...options, headers });
-  
-  if (response.status === 304) {
-    // Didn't count against rate limit!
-    return cached.data;
-  }
-  
-  const data = await response.json();
-  const etag = response.headers.get('etag');
-  
-  if (etag) {
-    etagCache.set(url, { etag, data, cachedAt: new Date() });
-  }
-  
-  return data;
-}
-```
-
-### Phase 2: Token Pool
-**Effort:** Medium | **Impact:** High
-
-```sql
--- New table for token management
-CREATE TABLE github_tokens (
-  id UUID PRIMARY KEY,
-  token_hash VARCHAR(64) UNIQUE,  -- Don't store plain tokens
-  encrypted_token TEXT,
-  rate_limit_remaining INT DEFAULT 5000,
-  rate_limit_reset_at TIMESTAMP,
-  last_used_at TIMESTAMP,
-  is_active BOOLEAN DEFAULT true,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-### Phase 3: Facade Worker (Local Git)
-**Effort:** High | **Impact:** Very High for commit-heavy repos
-
-- Clone repos to local disk
-- Parse `git log` for commits
-- Only use API for PRs, issues, reviews
-- Significantly reduces API dependency
-
-### Phase 4: GraphQL Migration
-**Effort:** Medium | **Impact:** Medium
-
-- Batch queries (get PR + reviews + comments in one call)
-- More efficient for nested data
-- Separate rate limit pool
+When remaining calls drop below **50**, the collector sleeps until the reset window (plus a 5-second buffer). During the wait, the job status is updated to `waiting_for_api` so the system status page reflects what's happening. Collection resumes automatically after the reset.
 
 ---
 
-## Comparison with Augur
+## Capacity Estimates
 
-| Feature | Upstream Pulse (Current) | Upstream Pulse (Future) | Augur |
-|---------|-------------------------|------------------------|-------|
-| Token Pool | ❌ Single token | ✅ Multiple tokens | ✅ worker_oauth table |
-| ETag Caching | ❌ No | ✅ Yes | ❓ Unknown |
-| Local Git Clone | ❌ No | ✅ Facade worker | ✅ Facade worker |
-| Distributed Workers | ⚠️ Single process | ✅ Multiple workers | ✅ Celery workers |
-| Message Broker | ✅ Redis/BullMQ | ✅ Redis/BullMQ | ✅ RabbitMQ |
-| Collection Status | ⚠️ Basic | ✅ Per-repo tracking | ✅ collection_status |
-| GraphQL | ❌ REST only | ✅ GraphQL | ❌ REST only |
+Based on a single GitHub PAT with 5,000 REST requests/hour:
+
+| Scenario | Estimated API Calls | Time |
+|----------|-------------------|------|
+| Daily sync (10 repos) | ~150 | ~2 min |
+| Daily sync (100 repos) | ~1,500 | ~20 min |
+| Daily sync (500 repos) | ~7,500 | ~1.5 hrs |
+| Full sync (1 repo) | ~300 | ~4 min |
+| Full sync (100 repos) | ~30,000 | ~6 hrs |
+
+Daily syncs use `lastSyncAt` per project, so the actual call count depends on how much activity occurred since the last sync. Quiet repos may need only 4-5 calls; active repos with hundreds of daily PRs will need more.
 
 ---
 
-## Priority Recommendation
+## Known Limitations
 
-```
-                    IMPACT
-                      ▲
-                      │
-           High ──────┼────────────────────────────
-                      │         ┌─────────────┐
-                      │         │ Token Pool  │
-                      │         │ (Phase 2)   │
-                      │         └─────────────┘
-                      │  ┌──────────────┐
-                      │  │ ETag Cache   │    ┌─────────────┐
-                      │  │ (Phase 1)    │    │ Facade      │
-                      │  └──────────────┘    │ (Phase 3)   │
-                      │                      └─────────────┘
-           Low ───────┼────────────────────────────
-                      │              ┌─────────────┐
-                      │              │ GraphQL     │
-                      │              │ (Phase 4)   │
-                      │              └─────────────┘
-                      └────────────────────────────────▶ EFFORT
-                           Low              High
-
-Start with Phase 1 (ETag) - immediate wins with minimal effort.
-```
+- **Two tokens, one budget** — `GITHUB_TOKEN` handles collection, governance, and leadership. `GITHUB_TEAM_TOKEN` (separate PAT with `read:org`) handles team sync. But all collection work still shares one token's 5,000 req/hr budget
+- **No ETag caching** — Every request counts against the rate limit, even if data hasn't changed
+- **No local git clones** — Commit data is fetched entirely via API; cloning repos and parsing `git log` would use zero API calls for commits
+- **Single worker process** — One process with 3 concurrent collection jobs; horizontal scaling would require multiple worker deployments

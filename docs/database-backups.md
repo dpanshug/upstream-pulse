@@ -101,7 +101,7 @@ oc -n upstream-pulse rollout status deploy/worker --timeout=120s
 ```bash
 # Check the backend is healthy
 oc -n upstream-pulse exec deploy/backend -- \
-  node -e "fetch('http://localhost:3000/api/health').then(r=>r.json()).then(console.log)"
+  node -e "fetch('http://localhost:4321/health').then(r=>r.json()).then(console.log)"
 
 # Spot-check data
 oc -n upstream-pulse exec deploy/postgres -- \

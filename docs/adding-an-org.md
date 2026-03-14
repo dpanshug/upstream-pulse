@@ -170,7 +170,7 @@ cd backend && npm run dev
 ### Trigger a leadership refresh for your new org
 
 ```bash
-curl -X POST http://localhost:3000/api/leadership/refresh \
+curl -X POST http://localhost:4321/api/leadership/refresh \
   -H "Content-Type: application/json" \
   -d '{"githubOrg": "your-org-slug"}'
 ```
@@ -178,13 +178,13 @@ curl -X POST http://localhost:3000/api/leadership/refresh \
 ### Verify leadership data was collected
 
 ```bash
-curl http://localhost:3000/api/metrics/overview | jq '.leadership.byOrg'
+curl http://localhost:4321/api/metrics/overview | jq '.leadership.byOrg'
 ```
 
 ### Check the org registry endpoint
 
 ```bash
-curl http://localhost:3000/api/orgs | jq '.[] | select(.githubOrg == "your-org-slug")'
+curl http://localhost:4321/api/orgs | jq '.[] | select(.githubOrg == "your-org-slug")'
 ```
 
 ### Verify governance data (OWNERS / CODEOWNERS)
@@ -193,7 +193,7 @@ Add a tracked project for the org, then trigger governance refresh:
 
 ```bash
 # Add a project
-curl -X POST http://localhost:3000/api/projects \
+curl -X POST http://localhost:4321/api/projects \
   -H "Content-Type: application/json" \
   -d '{"githubOrg": "your-org-slug", "githubRepo": "repo-name", "ecosystem": "your-ecosystem"}'
 
