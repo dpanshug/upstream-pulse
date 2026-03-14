@@ -48,3 +48,4 @@ access-stats-*.txt
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+backups/

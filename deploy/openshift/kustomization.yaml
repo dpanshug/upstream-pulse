@@ -28,8 +28,10 @@ resources:
   - frontend-service.yaml
   - frontend-route.yaml
 
-  # Backups (uncomment when ready — see postgres-backup-cronjob.yaml for setup)
+  # Backups (uncomment after creating aws-s3-credentials secret — see secrets.example.yaml)
   # - postgres-backup-cronjob.yaml
+  # - postgres-backup-monitor-cronjob.yaml
+  # - postgres-restore-test-cronjob.yaml
 
 commonLabels:
   app.kubernetes.io/managed-by: kustomize

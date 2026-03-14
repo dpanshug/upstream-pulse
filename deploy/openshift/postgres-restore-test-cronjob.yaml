@@ -1,0 +1,158 @@
+# =============================================================================
+# PostgreSQL Restore Test — monthly verification that backups are restorable
+#
+# Runs on the 1st of each month at 4:00 AM UTC.
+# Spins up a throwaway Postgres instance inside the pod (ephemeral storage),
+# restores the latest backup into it, and runs sanity checks.
+# Zero risk to the production database.
+#
+# Check results via:
+#   oc -n upstream-pulse logs -l app.kubernetes.io/name=postgres-restore-test --tail=50
+# =============================================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-restore-test
+  namespace: upstream-pulse
+  labels:
+    app.kubernetes.io/name: postgres-restore-test
+    app.kubernetes.io/part-of: upstream-pulse
+    app.kubernetes.io/component: backup
+spec:
+  schedule: "0 4 1 * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 86400
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: postgres-restore-test
+            app.kubernetes.io/part-of: upstream-pulse
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: restore-test
+              image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/pg-backup:16-alpine
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+
+                  TEST_PORT=5433
+                  TEST_DIR=/tmp/pgdata
+                  TEST_DB=restore_test
+                  RESULT="FAIL"
+
+                  cleanup() {
+                    echo "[$(date -u)] Cleaning up..."
+                    pg_ctl stop -D "${TEST_DIR}" -m fast 2>/dev/null || true
+                    rm -rf "${TEST_DIR}" /tmp/backup.sql.gz
+                  }
+                  trap cleanup EXIT
+
+                  echo "[$(date -u)] Finding latest backup..."
+                  LATEST_FILE=$(aws s3 ls "s3://${S3_BUCKET}/backups/" \
+                    | awk '{print $4}' \
+                    | { grep '\.sql\.gz$' || true; } \
+                    | sort \
+                    | tail -1)
+
+                  if [ -z "${LATEST_FILE}" ]; then
+                    echo "FAIL: No backups found in s3://${S3_BUCKET}/backups/"
+                    exit 1
+                  fi
+
+                  echo "[$(date -u)] Testing restore of: ${LATEST_FILE}"
+
+                  echo "[$(date -u)] Downloading backup..."
+                  aws s3 cp "s3://${S3_BUCKET}/backups/${LATEST_FILE}" /tmp/backup.sql.gz
+                  DOWNLOAD_SIZE=$(wc -c < /tmp/backup.sql.gz | tr -d ' ')
+                  echo "[$(date -u)] Downloaded ${DOWNLOAD_SIZE} bytes"
+
+                  echo "[$(date -u)] Starting throwaway Postgres on port ${TEST_PORT}..."
+                  initdb -D "${TEST_DIR}" --auth=trust --no-locale --encoding=UTF8 > /dev/null
+                  pg_ctl start -D "${TEST_DIR}" -o "-p ${TEST_PORT} -k /tmp" -l /tmp/pg.log
+                  until pg_isready -p "${TEST_PORT}" -h /tmp > /dev/null 2>&1; do sleep 1; done
+
+                  createdb -p "${TEST_PORT}" -h /tmp "${TEST_DB}"
+
+                  echo "[$(date -u)] Restoring backup..."
+                  gunzip -c /tmp/backup.sql.gz | psql -p "${TEST_PORT}" -h /tmp "${TEST_DB}" > /dev/null 2>&1
+
+                  echo "[$(date -u)] Running sanity checks..."
+
+                  check_table() {
+                    local table="$1"
+                    local count
+                    count=$(psql -p "${TEST_PORT}" -h /tmp "${TEST_DB}" -t -c \
+                      "SELECT count(*) FROM ${table};" 2>/dev/null | tr -d ' ')
+                    if [ -z "${count}" ] || [ "${count}" = "" ]; then
+                      echo "  ${table}: MISSING"
+                      return 1
+                    fi
+                    echo "  ${table}: ${count} rows"
+                    return 0
+                  }
+
+                  CHECKS_PASSED=0
+                  CHECKS_TOTAL=0
+
+                  for table in projects team_members contributions; do
+                    CHECKS_TOTAL=$(( CHECKS_TOTAL + 1 ))
+                    if check_table "${table}"; then
+                      CHECKS_PASSED=$(( CHECKS_PASSED + 1 ))
+                    fi
+                  done
+
+                  TABLE_COUNT=$(psql -p "${TEST_PORT}" -h /tmp "${TEST_DB}" -t -c \
+                    "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public';" \
+                    | tr -d ' ')
+
+                  echo ""
+                  echo "[$(date -u)] Total tables in public schema: ${TABLE_COUNT}"
+                  echo "[$(date -u)] Sanity checks: ${CHECKS_PASSED}/${CHECKS_TOTAL} passed"
+
+                  if [ "${CHECKS_PASSED}" -eq "${CHECKS_TOTAL}" ] && [ "${TABLE_COUNT}" -gt 0 ]; then
+                    RESULT="PASS"
+                    echo ""
+                    echo "PASS: Backup ${LATEST_FILE} is restorable (${TABLE_COUNT} tables, all sanity checks passed)"
+                  else
+                    echo ""
+                    echo "FAIL: Restore completed but sanity checks failed (${CHECKS_PASSED}/${CHECKS_TOTAL})"
+                    exit 1
+                  fi
+              env:
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-s3-credentials
+                      key: AWS_ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-s3-credentials
+                      key: AWS_SECRET_ACCESS_KEY
+                - name: AWS_DEFAULT_REGION
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-s3-credentials
+                      key: AWS_DEFAULT_REGION
+                - name: S3_BUCKET
+                  valueFrom:
+                    secretKeyRef:
+                      name: aws-s3-credentials
+                      key: S3_BUCKET
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 512Mi
+                limits:
+                  cpu: "1"
+                  memory: 1Gi

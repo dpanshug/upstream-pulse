@@ -1,0 +1,149 @@
+# =============================================================================
+# PostgreSQL Restore Job — download from S3 and restore into Postgres
+#
+# This is a manually-triggered Job for disaster recovery. Usage:
+#
+#   # 1. List available backups
+#   aws s3 ls s3://upstream-pulse-db-backups/backups/
+#
+#   # 2. Scale down app components
+#   oc -n upstream-pulse scale deploy/backend deploy/worker --replicas=0
+#
+#   # 3. Run the restore (replace BACKUP_FILE with the filename)
+#   oc -n upstream-pulse create -f deploy/openshift/postgres-restore-job.yaml
+#     -- OR use the CronJob method: --
+#   oc -n upstream-pulse create job restore-$(date +%s) \
+#     --from=cronjob/postgres-backup \
+#     -- (this only runs a new backup, not a restore)
+#
+#   For restore, edit the BACKUP_FILE value below, then:
+#   oc -n upstream-pulse apply -f deploy/openshift/postgres-restore-job.yaml
+#   oc -n upstream-pulse logs -f job/postgres-restore
+#
+#   # 4. Scale app back up (migrations run automatically via init container)
+#   oc -n upstream-pulse scale deploy/backend --replicas=1
+#   oc -n upstream-pulse scale deploy/worker --replicas=1
+#
+# WARNING: This drops and recreates the database. All existing data will be
+# replaced with the backup contents.
+# =============================================================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: postgres-restore
+  namespace: upstream-pulse
+  labels:
+    app.kubernetes.io/name: postgres-restore
+    app.kubernetes.io/part-of: upstream-pulse
+    app.kubernetes.io/component: backup
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgres-restore
+        app.kubernetes.io/part-of: upstream-pulse
+        app.kubernetes.io/component: backup
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: pg-restore
+          image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/pg-backup:16-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -euo pipefail
+
+              if [ -z "${BACKUP_FILE:-}" ]; then
+                echo "ERROR: BACKUP_FILE env var is not set."
+                echo "Set it to the S3 object key, e.g. upstream-pulse-20260310-020000.sql.gz"
+                exit 1
+              fi
+
+              S3_PATH="s3://${S3_BUCKET}/backups/${BACKUP_FILE}"
+              ADMIN_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/postgres"
+              RESTORE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+
+              echo "[$(date -u)] Starting restore from ${S3_PATH}..."
+
+              echo "[$(date -u)] Downloading backup..."
+              aws s3 cp "${S3_PATH}" /tmp/backup.sql.gz
+              DOWNLOAD_SIZE=$(wc -c < /tmp/backup.sql.gz | tr -d ' ')
+              echo "[$(date -u)] Downloaded ${DOWNLOAD_SIZE} bytes"
+
+              if [ "${DOWNLOAD_SIZE}" -lt 100 ]; then
+                echo "ERROR: Downloaded file is too small (${DOWNLOAD_SIZE} bytes). Aborting."
+                exit 1
+              fi
+
+              echo "[$(date -u)] Terminating existing connections to ${POSTGRES_DB}..."
+              psql "${ADMIN_URL}" -c "
+                SELECT pg_terminate_backend(pid)
+                FROM pg_stat_activity
+                WHERE datname = '${POSTGRES_DB}' AND pid <> pg_backend_pid();
+              " || true
+
+              echo "[$(date -u)] Dropping and recreating database..."
+              psql "${ADMIN_URL}" -c "DROP DATABASE IF EXISTS ${POSTGRES_DB};"
+              psql "${ADMIN_URL}" -c "CREATE DATABASE ${POSTGRES_DB} OWNER ${POSTGRES_USER};"
+
+              echo "[$(date -u)] Restoring backup..."
+              gunzip -c /tmp/backup.sql.gz | psql "${RESTORE_URL}"
+
+              echo "[$(date -u)] Verifying restore..."
+              TABLE_COUNT=$(psql "${RESTORE_URL}" -t -c "
+                SELECT count(*) FROM information_schema.tables
+                WHERE table_schema = 'public';
+              " | tr -d ' ')
+
+              echo "[$(date -u)] Restore complete. Found ${TABLE_COUNT} tables in public schema."
+
+              rm -f /tmp/backup.sql.gz
+              echo "[$(date -u)] Done."
+          env:
+            - name: BACKUP_FILE
+              value: "CHANGE-ME"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: POSTGRES_DB
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: aws-s3-credentials
+                  key: AWS_ACCESS_KEY_ID
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: aws-s3-credentials
+                  key: AWS_SECRET_ACCESS_KEY
+            - name: AWS_DEFAULT_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: aws-s3-credentials
+                  key: AWS_DEFAULT_REGION
+            - name: S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: aws-s3-credentials
+                  key: S3_BUCKET
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

@@ -31,6 +31,7 @@ fi
 
 DEPLOY_BACKEND_IMAGE="${DEPLOY_REGISTRY}/${NAMESPACE}/backend:${IMAGE_TAG}"
 DEPLOY_FRONTEND_IMAGE="${DEPLOY_REGISTRY}/${NAMESPACE}/frontend:${IMAGE_TAG}"
+DEPLOY_BACKUP_IMAGE="${DEPLOY_REGISTRY}/${NAMESPACE}/pg-backup:16-alpine"
 
 # Colors
 RED='\033[0;31m'
@@ -61,6 +62,13 @@ build_images() {
         -f "${PROJECT_ROOT}/frontend/Dockerfile" \
         "${PROJECT_ROOT}/frontend"
 
+    log "Building backup image: ${PUSH_BACKUP_IMAGE}"
+    docker build \
+        --platform linux/amd64 \
+        -t "${PUSH_BACKUP_IMAGE}" \
+        -f "${PROJECT_ROOT}/deploy/openshift/backup.Dockerfile" \
+        "${PROJECT_ROOT}/deploy/openshift"
+
     log "Images built successfully"
 }
 
@@ -84,6 +92,9 @@ push_images() {
 
     log "Pushing frontend image: ${PUSH_FRONTEND_IMAGE}"
     docker push "${PUSH_FRONTEND_IMAGE}"
+
+    log "Pushing backup image: ${PUSH_BACKUP_IMAGE}"
+    docker push "${PUSH_BACKUP_IMAGE}"
 
     log "Images pushed successfully"
 }
@@ -273,6 +284,39 @@ ensure_push_registry() {
 
     PUSH_BACKEND_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/backend:${IMAGE_TAG}"
     PUSH_FRONTEND_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/frontend:${IMAGE_TAG}"
+    PUSH_BACKUP_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/pg-backup:16-alpine"
+}
+
+pre_deploy_backup() {
+    if ! oc -n "${NAMESPACE}" get cronjob/postgres-backup &>/dev/null; then
+        warn "Backup CronJob not found — skipping pre-deploy backup"
+        return 0
+    fi
+
+    if ! oc -n "${NAMESPACE}" get secret/aws-s3-credentials &>/dev/null; then
+        warn "aws-s3-credentials secret not found — skipping pre-deploy backup"
+        return 0
+    fi
+
+    local job_name="pre-deploy-backup-$(date +%s)"
+    info "Triggering pre-deploy backup: ${job_name}"
+
+    oc -n "${NAMESPACE}" create job "${job_name}" --from=cronjob/postgres-backup
+
+    info "Waiting for pre-deploy backup to complete (timeout: 10 min)..."
+    if oc -n "${NAMESPACE}" wait --for=condition=complete "job/${job_name}" --timeout=600s 2>/dev/null; then
+        log "Pre-deploy backup completed successfully"
+    else
+        local job_status
+        job_status=$(oc -n "${NAMESPACE}" get "job/${job_name}" -o jsonpath='{.status.conditions[0].type}' 2>/dev/null || echo "Unknown")
+        if [ "${job_status}" = "Failed" ]; then
+            err "Pre-deploy backup FAILED. Aborting deployment."
+            err "Check logs: oc -n ${NAMESPACE} logs job/${job_name}"
+            exit 1
+        else
+            warn "Pre-deploy backup timed out (status: ${job_status}). Proceeding with caution."
+        fi
+    fi
 }
 
 apply_manifests() {
@@ -310,6 +354,7 @@ apply_manifests() {
     fi
 
     save_access_stats
+    pre_deploy_backup
     set_runtime_images
 
     log "Waiting for PostgreSQL to be ready..."
