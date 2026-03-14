@@ -1,0 +1,90 @@
+---
+description: OpenShift deployment manifest conventions for Upstream Pulse
+globs: deploy/**/*.{yaml,yml,sh}
+alwaysApply: false
+---
+
+# OpenShift Deployment Conventions
+
+## Namespace
+
+All resources deploy to `upstream-pulse`. Manifests use Kustomize (`oc apply -k deploy/openshift`).
+
+## Resource Order
+
+ConfigMap → Postgres → Redis → Backend → Worker → Frontend (with OAuth proxy).
+
+## Labels
+
+All resources use standard Kubernetes labels:
+
+```yaml
+labels:
+  app.kubernetes.io/name: <component>
+  app.kubernetes.io/part-of: upstream-pulse
+  app.kubernetes.io/component: <component>
+```
+
+## Images
+
+- Manifests use placeholder `DEPLOY_REGISTRY/upstream-pulse/<component>:latest`.
+- `deploy.sh` replaces at deploy time via `oc set image`.
+- Internal registry: `image-registry.openshift-image-registry.svc:5000/upstream-pulse/<component>`.
+- Postgres: `postgres:16-alpine` (pushed to internal registry).
+- OAuth proxy: `quay.io/openshift/origin-oauth-proxy:4.16`.
+
+## Non-Root
+
+No `securityContext` in manifests — enforced at image level. Both backend and frontend Dockerfiles use `USER 1001`. Init containers set `HOME=/tmp`.
+
+## Resource Limits
+
+| Component | CPU req/limit | Memory req/limit |
+|-----------|--------------|-----------------|
+| Backend | 100m / 500m | 256Mi / 512Mi |
+| Worker | 100m / 500m | 256Mi / 512Mi |
+| Frontend (nginx) | 50m / 200m | 64Mi / 128Mi |
+| OAuth proxy | 10m / 100m | 32Mi / 64Mi |
+| Postgres | 100m / 500m | 256Mi / 512Mi |
+| Redis | 50m / 250m | 64Mi / 256Mi |
+
+## Probes
+
+- **Backend**: liveness `GET /health:3000`, readiness `GET /ready:3000`.
+- **Frontend**: liveness/readiness `GET /healthz:8080`.
+- **OAuth proxy**: `tcpSocket:4180`.
+- **Redis**: liveness/readiness `exec redis-cli ping`.
+- **Postgres**: `exec pg_isready -U postgres`.
+
+## Environment Variables
+
+- **Secrets** (`oc create secret`, not in git):
+  - `postgres-credentials`: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+  - `upstream-pulse-secrets`: `GITHUB_TOKEN`, `GOOGLE_AI_API_KEY`, `JWT_SECRET`, `GITHUB_TEAM_TOKEN`
+- **ConfigMap** (`upstream-pulse-config`): `NODE_ENV`, `PORT`, `LOG_LEVEL`, `PROMETHEUS_ENABLED`, `GITHUB_TEAM_ORG`
+- **Derived**: `DATABASE_URL` built from secret vars in the manifest.
+
+## Volumes
+
+- `postgres-data` PVC (5Gi) → `/var/lib/postgresql/data`
+- `redis-data` PVC (1Gi)
+- OAuth proxy TLS and cookie secrets (readOnly mounts)
+
+## Deploy Script
+
+`deploy.sh` is **user-run only** — the agent must not execute it. Commands:
+
+- `build` — Docker images (linux/amd64)
+- `push` — Push to OpenShift registry
+- `apply` — `oc apply -k` + ConfigMap patch + set images + rollout
+- `status` — Show pods, services, routes
+- `logs [component]` — Tail logs
+- `deploy` — Full cycle (build + push + apply)
+
+## Rules
+
+- Never commit secrets. Use `oc create secret` per `secrets.example.yaml`.
+- Postgres uses `Recreate` strategy (single PVC, no rolling update).
+- Worker shares the backend image; only the command differs (`node dist/worker.js`).
+- Frontend uses `serviceAccountName: frontend-proxy` for OAuth sidecar.
+- Init container `db-migrate` runs before the backend starts.

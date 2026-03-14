@@ -1,20 +1,20 @@
 ---
-description: Guide for onboarding a new upstream organization — add to registry, add projects, verify collection and dashboard
-globs: backend/src/shared/config/org-registry.ts
-alwaysApply: false
+name: onboard-org
+description: Onboards a new upstream organization into Upstream Pulse — researches the org's governance and repos, adds to org-registry.ts, creates projects via API, verifies collection/leadership/governance data, checks dashboard, and updates docs. Use when asked to add, onboard, or track a new upstream org.
 ---
 
-# Onboarding a New Upstream Organization
+# Onboard a New Upstream Organization
 
-When asked to add/onboard a new upstream org, follow these steps in order.
+Follow these steps in order when asked to add or onboard a new upstream org.
 
-## 1. Research the Org
+## Step 1: Research the Org
 
-Before adding anything, check:
-- Does the org have a community repo? (e.g., `orgname/community`) — check GitHub
+Before adding anything, investigate:
+
+- Does the org have a community repo? (e.g., `orgname/community`) — check GitHub.
 - What governance format? OWNERS files, CODEOWNERS, or neither? **Check each repo individually** — repos within an org often differ.
-- If community repo exists, what leadership files are available? (steering/TSC markdown, maintainers markdown, WGs/SIGs YAML or markdown)
-- What repos from this org should be tracked? Check `docs/upstream-projects.md` and the `opendatahub-io` fork list
+- If a community repo exists, what leadership files are available? (steering/TSC markdown, maintainers markdown, WGs/SIGs YAML or markdown)
+- What repos should be tracked? Check `docs/upstream-projects.md` and the `opendatahub-io` fork list.
 - **Team contributions** — fetch the team members list from `GET /api/team-members`, then for each candidate repo use `gh api "repos/{org}/{repo}/contributors?per_page=100"` to get contributors and cross-reference against the team list. Only track repos where team members appear in the top 100 contributors. For borderline cases, check PR counts with `gh api "search/issues?q=repo:{org}/{repo}+type:pr+author:{username}"`.
 
 ### Leadership & Governance Deep Check (DO NOT SKIP)
@@ -28,22 +28,23 @@ Do not just check if governance files exist — **read the actual file content**
 5. **If format is unsupported** — implement the parser as part of this onboarding. Do not skip leadership data.
 6. **Alumni/Emeritus sections** — the parser auto-detects `## Alumni` or `## Emeritus` headings and marks those entries as inactive. Verify the org's file uses one of these headings if it has former members listed.
 
-## 2. Add to Org Registry
+## Step 2: Add to Org Registry
 
 Edit `backend/src/shared/config/org-registry.ts` and add an entry to `ORG_REGISTRY`.
 
 Key fields:
-- `governanceModel`: `'owners'` if repo has OWNERS files, `'codeowners'` if .github/CODEOWNERS, `'none'` if neither. Set this to the **dominant model** for the repos you plan to track.
-- `repoGovernanceOverride`: if repos within the org use **different** governance models, use this to specify per-repo overrides. Repos not listed fall back to the org-level `governanceModel`. Example: `{ 'ramalama': 'codeowners', 'ai-lab-recipes': 'none' }`. Repos with `'none'` skip governance entirely (zero API calls).
-- `communityRepo`: set if the org has leadership files to parse. This does **not** have to be a dedicated community repo — it can be any repo containing leadership data (e.g., `containers` uses `podman` since that's where `MAINTAINERS.md` lives).
+
+- `governanceModel`: `'owners'` if repo has OWNERS files, `'codeowners'` if .github/CODEOWNERS, `'none'` if neither. Set to the **dominant model** for the tracked repos.
+- `repoGovernanceOverride`: if repos use **different** governance models, specify per-repo overrides. Repos not listed fall back to the org-level `governanceModel`. Example: `{ 'ramalama': 'codeowners', 'ai-lab-recipes': 'none' }`. Repos with `'none'` skip governance entirely.
+- `communityRepo`: set if the org has leadership files to parse. Can be any repo containing leadership data (e.g., `containers` uses `podman` since that's where `MAINTAINERS.md` lives).
 - `leadershipFiles`: for each markdown file with leadership data:
-  - Set `positionType` if everyone in the file has the same role (e.g., TSC members)
-  - Leave `positionType` unset if roles vary per row (e.g., MAINTAINERS.md with Lead/Approver/Reviewer)
-- `repoToWorkingGroup`: only needed if the org has WGs and you want project-level leadership filtering
+  - Set `positionType` if everyone in the file has the same role (e.g., TSC members).
+  - Leave `positionType` unset if roles vary per row.
+- `repoToWorkingGroup`: only needed if the org has WGs and you want project-level leadership filtering.
 
-## 3. Add Projects via API
+## Step 3: Add Projects via API
 
-The backend container does **not** have `curl`. Use `node -e` with `fetch()` for all `oc exec` calls.
+The backend container does **not** have `curl`. Use `node -e` with `fetch()`.
 
 ```bash
 oc exec -n upstream-pulse deploy/backend -- node -e "
@@ -62,11 +63,11 @@ const projects = [
 "
 ```
 
-If a project returns `409`, it already exists in the database.
+A `409` response means the project already exists.
 
-## 4. Verify Collection
+## Step 4: Verify Collection
 
-After adding projects, check contribution counts via direct DB query:
+Check contribution counts via DB query:
 
 ```bash
 oc exec -n upstream-pulse deploy/postgres -- psql -U postgres -d upstream_pulse \
@@ -85,7 +86,7 @@ fetch('http://127.0.0.1:3000/api/admin/collect', {
 "
 ```
 
-## 5. Verify Leadership (if community repo configured)
+## Step 5: Verify Leadership
 
 ```bash
 oc exec -n upstream-pulse deploy/postgres -- psql -U postgres -d upstream_pulse \
@@ -104,7 +105,7 @@ fetch('http://127.0.0.1:3000/api/leadership/refresh', {
 "
 ```
 
-## 6. Verify Governance
+## Step 6: Verify Governance
 
 ```bash
 oc exec -n upstream-pulse deploy/postgres -- psql -U postgres -d upstream_pulse \
@@ -113,26 +114,28 @@ oc exec -n upstream-pulse deploy/postgres -- psql -U postgres -d upstream_pulse 
 
 If using `repoGovernanceOverride`, verify each repo used the correct source (OWNERS_file vs CODEOWNERS) and repos with `'none'` have no entries.
 
-## 7. Check Dashboard
+## Step 7: Check Dashboard
 
-Verify the dashboard shows the new org's data correctly:
-- Contributions appear in the project cards
-- Leadership section shows per-org positions (if community repo configured)
-- OWNERS/CODEOWNERS roles appear in governance section
-- **Open individual project detail pages** and verify the project name and GitHub repo link display correctly (not "Project" fallback)
+Verify the dashboard shows the new org's data:
 
-## 8. Update Docs
+- Contributions appear in the project cards.
+- Leadership section shows per-org positions (if community repo configured).
+- OWNERS/CODEOWNERS roles appear in governance section.
+- Open individual project detail pages and verify project name and GitHub repo link display correctly.
 
-After successful onboarding, update `docs/upstream-projects.md`:
-- Add the org section under "Currently Tracked" with a table of repos
-- Document the governance setup (leadership source, OWNERS/CODEOWNERS, any per-repo overrides)
-- Update the summary table totals
+## Step 8: Update Docs
+
+Update `docs/upstream-projects.md`:
+
+- Add the org section under "Currently Tracked" with a table of repos.
+- Document the governance setup (leadership source, OWNERS/CODEOWNERS, per-repo overrides).
+- Update the summary table totals.
 
 ## Common Issues
 
-- **No contributions collected**: Check if `startCollection: true` was set. If not, trigger manually via `POST /api/admin/collect`
-- **Leadership empty**: Org may not have a `communityRepo` in the registry, or the parser doesn't match the file format
-- **CODEOWNERS empty**: Parser only handles `@username`, skips `@org/team` references
-- **Repo not found**: Verify the GitHub org/repo exists and is public
-- **Mixed governance in one org**: Use `repoGovernanceOverride` to set per-repo models. Do not change the governance worker logic — use config.
-- **Incomplete PRs/issues after deploy or crash**: If a sync job is interrupted (e.g., by a deploy), commits may be complete but PRs/reviews/issues will be missing. The worker marks interrupted jobs as failed on startup but does NOT re-queue them. When manually re-triggering, **always use `fullHistory: true`** — without it, the collector defaults to `lastSyncAt` or 30-day lookback, which skips all historical PRs/issues.
+- **No contributions collected**: Check `startCollection: true`. If not set, trigger via `POST /api/admin/collect`.
+- **Leadership empty**: Org may not have a `communityRepo` in the registry, or the parser doesn't match the file format.
+- **CODEOWNERS empty**: Parser only handles `@username`, skips `@org/team` references.
+- **Repo not found**: Verify the GitHub org/repo exists and is public.
+- **Mixed governance**: Use `repoGovernanceOverride` for per-repo models. Do not change worker logic.
+- **Incomplete PRs/issues after crash**: Worker marks interrupted jobs as failed but does NOT re-queue them. When re-triggering, **always use `fullHistory: true`** — otherwise the collector defaults to `lastSyncAt` or 30-day lookback, skipping historical data.

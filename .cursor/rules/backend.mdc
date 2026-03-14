@@ -1,0 +1,138 @@
+---
+description: Backend conventions for the Upstream Pulse API and workers
+globs: backend/src/**/*.ts
+alwaysApply: false
+---
+
+# Backend Conventions
+
+## Stack
+
+Node.js 20+, TypeScript 5 (strict, ESM), Fastify 4, Drizzle ORM with `postgres` driver, PostgreSQL 16, BullMQ + ioredis, node-cron, Octokit, `@google/generative-ai` (Gemini), Winston logger.
+
+## Structure
+
+```
+backend/src/
+├── app.ts                        # Fastify server, inline routes, startup
+├── worker.ts                     # BullMQ worker process (separate from app)
+├── jobs/
+│   ├── scheduler.ts              # Cron → BullMQ dispatch
+│   └── workers/                  # collection, governance, leadership, team-sync
+├── modules/
+│   ├── api/routes/metrics.ts     # Modular route file
+│   ├── collection/               # GitHubCollector, CodeownersParser, LeadershipCollector
+│   ├── identity/resolver.ts      # Contributor → team member matching
+│   ├── insights/ai-engine.ts     # Gemini integration
+│   └── metrics/                  # MetricsService (singleton), types, calculator
+├── scripts/                      # One-off scripts (seed, backfill)
+└── shared/
+    ├── config/index.ts           # dotenv config + validateConfig()
+    ├── config/org-registry.ts    # Static upstream org definitions
+    ├── database/client.ts        # Drizzle client (pool of 10)
+    ├── database/schema.ts        # pgTable definitions + relations
+    ├── database/migrations/      # SQL migration files (drizzle-kit)
+    ├── types/index.ts            # InferSelectModel/InferInsertModel exports
+    └── utils/                    # logger.ts (Winston), github.ts (Octokit)
+```
+
+## Two Processes
+
+`app.ts` (API server) and `worker.ts` (BullMQ workers) run as separate deployments. They share code but are independent processes.
+
+## Fastify Routes
+
+**Inline routes** in `app.ts` for simple endpoints. **Modular routes** via `app.register()` for complex groups (e.g., `modules/api/routes/metrics.ts`).
+
+```typescript
+app.get<{
+  Querystring: { days?: string; projectId?: string };
+}>('/api/endpoint', async (request, reply) => {
+  const days = parseInt(request.query.days || '90', 10);
+  // ...
+});
+```
+
+- Fastify generics for `Querystring`, `Params`, `Body` typing.
+- Manual validation in handlers (Zod is in deps but not used on routes).
+- Return objects directly — Fastify serializes to JSON.
+
+## Error Handling
+
+```typescript
+// Global handler in app.ts
+app.setErrorHandler((error, request, reply) => {
+  logger.error('Request error', { error, method: request.method, url: request.url });
+  reply.status(error.statusCode || 500).send({
+    error: error.message || 'Internal Server Error',
+    statusCode: error.statusCode || 500,
+  });
+});
+```
+
+- Per-handler: `try/catch` with `logger.error()`.
+- DB unique violations: `(error as any).code === '23505'` → 409.
+- No custom error classes — plain objects with `error` and `message`.
+
+## Database (Drizzle ORM)
+
+Schema in `shared/database/schema.ts` using `pgTable` with UUID primary keys, timestamps, indexes.
+
+```typescript
+// Query builder
+const rows = await db.query.projects.findMany({
+  where: eq(schema.projects.isActive, true),
+});
+
+// Select builder
+const results = await db.select().from(schema.contributions).where(...);
+
+// Raw SQL for complex queries
+const rows = await db.execute(sql`SELECT ... GROUP BY ...`);
+```
+
+**Types from schema:**
+
+```typescript
+import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
+type Project = InferSelectModel<typeof projects>;
+type NewProject = InferInsertModel<typeof projects>;
+```
+
+**Migrations:** `drizzle-kit generate` → SQL files → `tsx src/shared/database/run-migrate.ts`.
+
+## BullMQ Workers
+
+| Queue | Worker | Concurrency | Schedule |
+|-------|--------|-------------|----------|
+| `contribution-collection` | collection-worker | 3 | Daily 2 AM |
+| `governance-refresh` | governance-worker | 1 | Weekly Mon 3 AM |
+| `leadership-refresh` | leadership-worker | 1 | Monthly 1st 4 AM |
+| `team-sync` | team-sync-worker | 1 | Weekly Mon 1 AM |
+
+- Track job progress in `collectionJobs` table.
+- Stale `running` jobs (>5 min) marked failed on worker startup.
+- Re-throw errors so BullMQ handles retries.
+- When adding a new queue: add queue name, worker file, and cron schedule in `scheduler.ts`.
+
+## Imports
+
+```typescript
+import { eq, and, sql } from 'drizzle-orm';
+import { db } from '../shared/database/client.js';
+import * as schema from '../shared/database/schema.js';
+import { config } from '../shared/config/index.js';
+import { logger } from '../shared/utils/logger.js';
+import type { Project } from '../shared/types/index.js';
+```
+
+- **ESM with `.js` extensions** on all relative imports.
+- `import type` for type-only imports.
+- `@/` alias configured but not used — stick with relative imports.
+
+## Rules
+
+- Log with `logger.info/warn/error()`, not `console.log`.
+- The backend container has no `curl` — use `node -e "fetch(...)"` for API calls via `oc exec`.
+- No test files; don't generate test boilerplate unless asked.
+- Health endpoints: `GET /health` (liveness), `GET /ready` (DB check).

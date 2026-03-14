@@ -1,0 +1,114 @@
+---
+description: Frontend conventions for the Upstream Pulse React dashboard
+globs: frontend/src/**/*.{ts,tsx,css}
+alwaysApply: false
+---
+
+# Frontend Conventions
+
+## Stack
+
+React 18, Vite 5, TypeScript 5 (strict), Tailwind CSS 3, TanStack Query 5, react-router-dom v6, Recharts, Lucide React icons.
+
+## Structure
+
+```
+frontend/src/
+├── components/
+│   ├── common/       # PageLoading, PageError
+│   ├── dashboard/    # StatCard, ContributionTypeCard, etc. (barrel exported via index.ts)
+│   │   ├── index.ts
+│   │   └── types.ts  # Shared dashboard response types
+│   ├── layout/       # AppLayout (Outlet), Sidebar
+│   └── ui/           # Breadcrumb, other primitives
+├── pages/            # Route-level components (default export)
+├── App.tsx           # QueryClient, BrowserRouter, route table
+├── main.tsx
+└── index.css         # Tailwind directives + HSL CSS variable definitions (light only)
+```
+
+## Component Patterns
+
+- Function components only. No class components.
+- **Pages**: `export default function PageName()` — registered in `App.tsx`, linked in `Sidebar.tsx`.
+- **Reusable components**: named export — `export function StatCard()`.
+- **Dashboard components**: barrel-exported from `components/dashboard/index.ts`.
+
+### Props and Types
+
+- `interface` for component props (`interface StatCardProps`).
+- `type` for unions/aliases (`type SortField = 'name' | 'count'`).
+- Destructure props in function parameters.
+- Icons: `icon: React.ElementType`, render as `<Icon />`.
+
+## Styling
+
+- Inline `className` strings with Tailwind classes.
+- Conditional classes via template literals — not `clsx` or `cn()`.
+- No dark mode. Light theme only.
+- `tailwind.config.js` has semantic HSL CSS variables but components use raw Tailwind (`bg-white`, `text-gray-900`).
+
+## Data Fetching
+
+All server state via TanStack Query. No Zustand stores (listed in deps but unused).
+
+```tsx
+const { data, isLoading, error } = useQuery({
+  queryKey: ['dashboard', selectedDays],
+  queryFn: () => fetchDashboard(selectedDays),
+});
+```
+
+**QueryClient defaults** (App.tsx): `refetchOnWindowFocus: false`, `retry: 1`, `staleTime: 5 * 60 * 1000`.
+
+**Existing query keys**: `['dashboard', days]`, `['projects']`, `['org-dashboard', org, days]`, `['org-name', org]`, `['project-dashboard', projectId, days]`, `['contributors', days]`, `['system-status']`.
+
+## API Layer
+
+Per-page fetch functions. No shared API client.
+
+```tsx
+const API_URL = import.meta.env.VITE_API_URL ?? '';
+
+async function fetchData(): Promise<ResponseType> {
+  const res = await fetch(`${API_URL}/api/endpoint`);
+  if (!res.ok) throw new Error('Failed to fetch');
+  return res.json();
+}
+```
+
+`VITE_API_URL` is empty in production — nginx proxies `/api` to the backend.
+
+## Routing
+
+react-router-dom v6 with nested routes under `AppLayout` (uses `Outlet`).
+
+| Path | Component |
+|------|-----------|
+| `/` | Dashboard |
+| `/organizations` | Organizations |
+| `/organizations/:org` | OrganizationDetail |
+| `/organizations/:org/projects/:projectId` | ProjectDetail |
+| `/projects` | Projects |
+| `/projects/:projectId` | ProjectDetail |
+| `/contributors` | Contributors |
+| `/system` | SystemStatus |
+| `/about` | About |
+
+When adding a new page: register route in `App.tsx`, add sidebar link in `Sidebar.tsx`.
+
+## Charts (Recharts)
+
+- Custom tooltips via `content` prop.
+- `linearGradient` for area fills.
+- `isAnimationActive={false}` for performance.
+
+## Imports
+
+- Relative imports (`'../components/dashboard'`, `'./Sidebar'`). The `@/` alias is configured but not used — keep using relative paths.
+
+## Rules
+
+- No test files; don't generate test boilerplate unless asked.
+- TypeScript strict mode with `noUnusedLocals` and `noUnusedParameters`.
+- ESLint with `react-hooks` and `react-refresh` plugins; `--max-warnings 0`.
