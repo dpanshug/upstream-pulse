@@ -11,12 +11,13 @@ export interface OwnersEntry {
   source: string; // Full path to the OWNERS file
 }
 
-interface OwnersFileContent {
-  approvers?: string[];
-  reviewers?: string[];
-  labels?: string[];
-  options?: Record<string, unknown>;
-}
+type OwnersFileContent = Record<string, unknown>;
+
+const OWNERS_SKIP_KEYS = new Set([
+  'labels', 'options', 'filters',
+  'emeritus_approvers', 'emeritus_reviewers', 'emeritus_maintainers',
+  'security_contacts', 'auto-assign',
+]);
 
 interface OwnersAliases {
   aliases?: Record<string, string[]>;
@@ -816,32 +817,25 @@ export class GitHubCollector {
       // Get the directory path (where this OWNERS file applies)
       const directoryPath = filePath.replace(/\/?OWNERS$/, '') || '/';
 
-      // Process approvers
-      if (parsed?.approvers) {
-        for (const approver of parsed.approvers) {
-          const resolvedUsers = this.resolveAlias(approver, aliases);
-          for (const username of resolvedUsers) {
-            entries.push({
-              username: username.toLowerCase(),
-              role: 'approver',
-              path: directoryPath,
-              source: `https://github.com/${org}/${repo}/blob/main/${filePath}`,
-            });
-          }
-        }
-      }
+      // Process all keys that contain arrays of usernames
+      if (parsed && typeof parsed === 'object') {
+        for (const [key, value] of Object.entries(parsed)) {
+          if (OWNERS_SKIP_KEYS.has(key)) continue;
+          if (!Array.isArray(value)) continue;
+          if (!value.every(v => typeof v === 'string')) continue;
 
-      // Process reviewers
-      if (parsed?.reviewers) {
-        for (const reviewer of parsed.reviewers) {
-          const resolvedUsers = this.resolveAlias(reviewer, aliases);
-          for (const username of resolvedUsers) {
-            entries.push({
-              username: username.toLowerCase(),
-              role: 'reviewer',
-              path: directoryPath,
-              source: `https://github.com/${org}/${repo}/blob/main/${filePath}`,
-            });
+          const role: 'approver' | 'reviewer' = key === 'reviewers' ? 'reviewer' : 'approver';
+
+          for (const entry of value as string[]) {
+            const resolvedUsers = this.resolveAlias(entry, aliases);
+            for (const username of resolvedUsers) {
+              entries.push({
+                username: username.toLowerCase(),
+                role,
+                path: directoryPath,
+                source: `https://github.com/${org}/${repo}/blob/main/${filePath}`,
+              });
+            }
           }
         }
       }

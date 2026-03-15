@@ -33,20 +33,15 @@ function PositionStatCard({ group }: { group: Pick<OrgPositionGroup, 'positionTy
   );
 }
 
-function roleCategoryOrder(type: string): number {
+function positionTypeOrder(type: string): number {
   if (type.includes('steering') || type.includes('tsc')) return 0;
   if (type.includes('committee')) return 1;
-  if (type.includes('chair')) return 2;
-  if (type.includes('lead')) return 3;
-  return 4;
-}
-
-function roleCategoryLabel(type: string): string {
-  if (type.includes('steering') || type.includes('tsc')) return 'Steering / TSC';
-  if (type.includes('committee')) return 'Committee';
-  if (type.includes('chair')) return 'WG Chairs';
-  if (type.includes('lead')) return 'WG Tech Leads';
-  return 'Members';
+  if (type.includes('project_lead') || type.includes('lead_-_')) return 2;
+  if (type.includes('chair')) return 3;
+  if (type.includes('lead')) return 4;
+  if (type.includes('approver')) return 5;
+  if (type.includes('reviewer')) return 6;
+  return 7;
 }
 
 interface CategoryMember {
@@ -77,33 +72,32 @@ function OrgLeadershipBlock({ orgData, showOrgName }: { orgData: OrgLeadership; 
   }
   const stats = Array.from(statMap.values())
     .filter(s => s.teamCount > 0)
-    .sort((a, b) => roleCategoryOrder(a.positionType) - roleCategoryOrder(b.positionType));
+    .sort((a, b) => positionTypeOrder(a.positionType) - positionTypeOrder(b.positionType));
 
-  // Group members by role category
-  const categoryMap = new Map<number, { label: string; color: ReturnType<typeof positionColor>; members: CategoryMember[] }>();
+  // Group members by positionType — labels come from the data, not hardcoded categories
+  const roleMap = new Map<string, { label: string; color: ReturnType<typeof positionColor>; order: number; members: CategoryMember[] }>();
   for (const group of orgData.positions) {
-    const order = roleCategoryOrder(group.positionType);
-    if (!categoryMap.has(order)) {
-      categoryMap.set(order, {
-        label: roleCategoryLabel(group.positionType),
+    if (!roleMap.has(group.positionType)) {
+      roleMap.set(group.positionType, {
+        label: group.roleTitle,
         color: positionColor(group.positionType),
+        order: positionTypeOrder(group.positionType),
         members: [],
       });
     }
-    const category = categoryMap.get(order)!;
+    const entry = roleMap.get(group.positionType)!;
     const gn = group.groupName || group.members[0]?.groupName || '';
     for (const member of group.members) {
-      category.members.push({
+      entry.members.push({
         ...member,
         groupName: gn,
         positionType: group.positionType,
       });
     }
   }
-  const categories = Array.from(categoryMap.entries())
-    .sort(([a], [b]) => a - b)
-    .map(([, v]) => v)
-    .filter(c => c.members.length > 0);
+  const sections = Array.from(roleMap.values())
+    .sort((a, b) => a.order - b.order)
+    .filter(s => s.members.length > 0);
 
   return (
     <div className="mb-6">
@@ -124,18 +118,18 @@ function OrgLeadershipBlock({ orgData, showOrgName }: { orgData: OrgLeadership; 
         </div>
       )}
 
-      {/* One card per role category */}
-      {categories.map(category => (
+      {/* One card per position type — label from data */}
+      {sections.map(section => (
         <div
-          key={category.label}
-          className={`bg-gradient-to-r ${category.color.bg} rounded-xl shadow-sm border ${category.color.border} p-5 mb-3`}
+          key={section.label}
+          className={`bg-gradient-to-r ${section.color.bg} rounded-xl shadow-sm border ${section.color.border} p-5 mb-3`}
         >
-          <h4 className={`text-sm font-medium ${category.color.text} mb-3 flex items-center gap-2`}>
+          <h4 className={`text-sm font-medium ${section.color.text} mb-3 flex items-center gap-2`}>
             <Crown className="w-4 h-4" />
-            {category.label}
+            {section.label}
           </h4>
           <div className="flex flex-wrap gap-3">
-            {category.members.map(member => (
+            {section.members.map(member => (
               <div key={`${member.id}-${member.groupName}`} className="flex items-center gap-3 bg-white rounded-lg px-4 py-3 shadow-sm">
                 <img
                   src={member.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=e5e7eb&color=374151`}
@@ -146,7 +140,7 @@ function OrgLeadershipBlock({ orgData, showOrgName }: { orgData: OrgLeadership; 
                   <div className="flex items-center gap-1.5">
                     <p className="text-sm font-medium text-gray-900">{member.name}</p>
                     {member.groupName && member.groupName !== orgData.orgName && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${category.color.badge} whitespace-nowrap`}>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${section.color.badge} whitespace-nowrap`}>
                         {member.groupName}
                       </span>
                     )}
