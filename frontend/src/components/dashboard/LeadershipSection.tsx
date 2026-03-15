@@ -76,6 +76,7 @@ function OrgLeadershipBlock({ orgData, showOrgName }: { orgData: OrgLeadership; 
     }
   }
   const stats = Array.from(statMap.values())
+    .filter(s => s.teamCount > 0)
     .sort((a, b) => roleCategoryOrder(a.positionType) - roleCategoryOrder(b.positionType));
 
   // Group members by role category

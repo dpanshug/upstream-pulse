@@ -1125,6 +1125,36 @@ export class MetricsService {
         });
       }
 
+      // Add position groups that have zero team members so stat cards show correct totals
+      // Only add for orgs that are already in orgMap (i.e., relevant to current query scope)
+      const relevantOrgs = new Set(orgMap.keys());
+      // If no team members found yet but we're scoped to a specific org, ensure it's included
+      if (githubOrg && !relevantOrgs.has(githubOrg)) relevantOrgs.add(githubOrg);
+      for (const row of totalLpCounts) {
+        const orgSlug = row.communityOrg ?? 'unknown';
+        if (!relevantOrgs.has(orgSlug)) continue;
+        if (!orgMap.has(orgSlug)) {
+          const orgCfg = getOrgConfig(orgSlug);
+          orgMap.set(orgSlug, {
+            org: orgSlug,
+            orgName: orgCfg?.name ?? orgSlug,
+            positions: new Map(),
+          });
+        }
+        const orgEntry = orgMap.get(orgSlug)!;
+        const groupKey = `${row.positionType}::${row.committeeName ?? 'default'}`;
+        if (!orgEntry.positions.has(groupKey)) {
+          orgEntry.positions.set(groupKey, {
+            positionType: row.positionType,
+            roleTitle: row.positionType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            groupName: row.committeeName || orgSlug,
+            teamCount: 0,
+            totalCount: row.count,
+            members: [],
+          });
+        }
+      }
+
       const byOrg = Array.from(orgMap.values()).map(o => ({
         org: o.org,
         orgName: o.orgName,
