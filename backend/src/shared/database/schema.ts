@@ -90,12 +90,14 @@ export const maintainerStatus = pgTable('maintainer_status', {
   source: varchar('source', { length: 100 }), // 'MAINTAINERS_file', 'github_permissions', 'manual'
   evidenceUrl: varchar('evidence_url', { length: 500 }),
   notes: varchar('notes', { length: 1000 }),
+  scope: varchar('scope', { length: 20 }).default('root'), // 'root' = repo root OWNERS, 'component' = subdirectory OWNERS
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
   projectMemberIdx: index('maintainer_project_member_idx').on(table.projectId, table.teamMemberId),
   activeIdx: index('maintainer_active_idx').on(table.isActive),
   githubUsernameIdx: index('maintainer_github_username_idx').on(table.githubUsername),
+  scopeIdx: index('maintainer_scope_idx').on(table.scope),
 }));
 
 // Leadership positions (steering committees, working groups)

@@ -172,8 +172,49 @@ export interface DashboardMetrics {
   dailyTrend: DailyContribution[];
 }
 
+// Leadership summary returned by the dashboard API
+export interface LeadershipSummaryResponse {
+  byOrg: Array<{
+    org: string;
+    orgName: string;
+    positions: Array<{
+      positionType: string;
+      roleTitle: string;
+      groupName?: string;
+      teamCount: number;
+      totalCount: number;
+      members: Array<{
+        id: string;
+        name: string;
+        githubUsername: string | null;
+        avatarUrl?: string;
+        groupName: string;
+        votingRights: boolean;
+      }>;
+    }>;
+  }>;
+  maintainers: {
+    teamApprovers: number;
+    teamReviewers: number;
+    totalApprovers: number;
+    totalReviewers: number;
+    rootApprovers: number;
+    rootReviewers: number;
+    componentApprovers: number;
+    componentReviewers: number;
+  };
+  teamLeaders: Array<{
+    id: string;
+    name: string;
+    githubUsername: string | null;
+    avatarUrl?: string;
+    roles: Array<{ projectId: string; projectName: string; roleType: string; isActive: boolean }>;
+    leadershipRoles: Array<{ positionType: string; groupName: string; roleTitle: string; votingRights: boolean }>;
+  }>;
+}
+
 // Extended dashboard response with leadership data
 export interface DashboardResponseWithLeadership extends DashboardResponse {
-  leadership: unknown;
+  leadership: LeadershipSummaryResponse;
   orgActivity?: OrgActivityItem[];
 }

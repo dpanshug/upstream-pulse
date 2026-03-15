@@ -49,3 +49,4 @@ access-stats-*.txt
 *.sqlite-shm
 *.sqlite-wal
 backups/
+AUDIT-*.md

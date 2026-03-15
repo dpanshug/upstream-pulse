@@ -1050,6 +1050,7 @@ export class MetricsService {
       type OrgPositionGroup = {
         positionType: string;
         roleTitle: string;
+        groupName?: string;
         teamCount: number;
         totalCount: number;
         members: Array<{
@@ -1068,19 +1069,20 @@ export class MetricsService {
         positions: Map<string, OrgPositionGroup>;
       }>();
 
-      // Count total positions (all, not just team) by org+type
+      // Count total positions (all, not just team) by org+type+committee
       const totalLpCounts = await db
         .select({
           communityOrg: leadershipPositions.communityOrg,
           positionType: leadershipPositions.positionType,
+          committeeName: leadershipPositions.committeeName,
           count: sql<number>`count(*)::int`,
         })
         .from(leadershipPositions)
         .where(eq(leadershipPositions.isActive, true))
-        .groupBy(leadershipPositions.communityOrg, leadershipPositions.positionType);
+        .groupBy(leadershipPositions.communityOrg, leadershipPositions.positionType, leadershipPositions.committeeName);
 
-      const totalKey = (org: string, type: string) => `${org}::${type}`;
-      const totalMap = new Map(totalLpCounts.map(r => [totalKey(r.communityOrg ?? '', r.positionType), r.count]));
+      const totalKey = (org: string, type: string, committee: string) => `${org}::${type}::${committee}`;
+      const totalMap = new Map(totalLpCounts.map(r => [totalKey(r.communityOrg ?? 'unknown', r.positionType, r.committeeName ?? ''), r.count]));
 
       for (const pos of filteredLp) {
         const orgSlug = pos.communityOrg ?? 'unknown';
@@ -1094,19 +1096,21 @@ export class MetricsService {
         }
         const orgEntry = orgMap.get(orgSlug)!;
 
-        if (!orgEntry.positions.has(pos.positionType)) {
+        const groupKey = `${pos.positionType}::${pos.committeeName ?? 'default'}`;
+        if (!orgEntry.positions.has(groupKey)) {
           const roleTitle = pos.roleTitle
             || pos.positionType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-          orgEntry.positions.set(pos.positionType, {
+          orgEntry.positions.set(groupKey, {
             positionType: pos.positionType,
             roleTitle,
+            groupName: pos.committeeName || orgSlug,
             teamCount: 0,
-            totalCount: totalMap.get(totalKey(orgSlug, pos.positionType)) ?? 0,
+            totalCount: totalMap.get(totalKey(orgSlug, pos.positionType, pos.committeeName ?? '')) ?? 0,
             members: [],
           });
         }
 
-        const group = orgEntry.positions.get(pos.positionType)!;
+        const group = orgEntry.positions.get(groupKey)!;
         group.teamCount++;
         group.members.push({
           id: pos.teamMemberId!,
@@ -1137,15 +1141,23 @@ export class MetricsService {
       const totalMsCounts = await db
         .select({
           positionType: maintainerStatus.positionType,
+          scope: maintainerStatus.scope,
           count: sql<number>`count(distinct ${maintainerStatus.githubUsername})::int`,
         })
         .from(maintainerStatus)
         .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
         .where(and(...totalMsConditions))
-        .groupBy(maintainerStatus.positionType);
+        .groupBy(maintainerStatus.positionType, maintainerStatus.scope);
 
-      const totalApprovers = totalMsCounts.find(r => r.positionType === 'maintainer')?.count ?? 0;
-      const totalReviewers = totalMsCounts.find(r => r.positionType === 'reviewer')?.count ?? 0;
+      const sumByType = (type: string) => totalMsCounts.filter(r => r.positionType === type).reduce((s, r) => s + r.count, 0);
+      const countByTypeScope = (type: string, scope: string) => totalMsCounts.find(r => r.positionType === type && r.scope === scope)?.count ?? 0;
+
+      const totalApprovers = sumByType('maintainer');
+      const totalReviewers = sumByType('reviewer');
+      const rootApprovers = countByTypeScope('maintainer', 'root');
+      const rootReviewers = countByTypeScope('reviewer', 'root');
+      const componentApprovers = countByTypeScope('maintainer', 'component');
+      const componentReviewers = countByTypeScope('reviewer', 'component');
 
       // ── teamLeaders — comprehensive member map ──
       const memberMap = new Map<string, {
@@ -1153,7 +1165,7 @@ export class MetricsService {
         name: string;
         githubUsername: string | null;
         avatarUrl?: string;
-        roles: Array<{ projectId?: string; projectName?: string; roleType: string; isActive: boolean }>;
+        roles: Array<{ projectId: string; projectName: string; roleType: string; isActive: boolean }>;
         leadershipRoles: Array<{ positionType: string; groupName: string; roleTitle: string; votingRights: boolean }>;
       }>();
 
@@ -1189,14 +1201,20 @@ export class MetricsService {
 
       return {
         byOrg,
-        maintainers: { teamApprovers, teamReviewers, totalApprovers, totalReviewers },
+        maintainers: {
+          teamApprovers, teamReviewers, totalApprovers, totalReviewers,
+          rootApprovers, rootReviewers, componentApprovers, componentReviewers,
+        },
         teamLeaders: Array.from(memberMap.values()),
       };
     } catch (error) {
       logger.warn('Error fetching leadership data', { error });
       return {
         byOrg: [],
-        maintainers: { teamApprovers: 0, teamReviewers: 0, totalApprovers: 0, totalReviewers: 0 },
+        maintainers: {
+          teamApprovers: 0, teamReviewers: 0, totalApprovers: 0, totalReviewers: 0,
+          rootApprovers: 0, rootReviewers: 0, componentApprovers: 0, componentReviewers: 0,
+        },
         teamLeaders: [],
       };
     }

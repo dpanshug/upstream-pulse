@@ -112,6 +112,8 @@ export const governanceWorker = new Worker<GovernanceJobData>(
             for (const owner of ownersMaintainers) {
               const teamMember = usernameToTeamMember.get(owner.username.toLowerCase());
               const positionType = owner.role === 'approver' ? 'maintainer' : 'reviewer';
+              const isRoot = owner.paths.some(p => p === '/' || p === '');
+              const scope = isRoot ? 'root' : 'component';
 
               try {
                 const existing = await db.query.maintainerStatus.findFirst({
@@ -128,6 +130,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                       positionType,
                       teamMemberId: teamMember?.id || null,
                       isActive: true,
+                      scope,
                       evidenceUrl: owner.sources[0],
                       notes: `Paths: ${owner.paths.join(', ')}`,
                       updatedAt: new Date(),
@@ -141,6 +144,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                     positionType,
                     positionTitle: owner.role === 'approver' ? 'Approver' : 'Reviewer',
                     isActive: true,
+                    scope,
                     source: 'OWNERS_file',
                     evidenceUrl: owner.sources[0],
                     notes: `Paths: ${owner.paths.join(', ')}`,
@@ -177,6 +181,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                       positionType: 'maintainer',
                       teamMemberId: teamMember?.id || null,
                       isActive: true,
+                      scope: 'root',
                       evidenceUrl: entry.source,
                       notes: `Paths: ${entry.paths.join(', ')}`,
                       updatedAt: new Date(),
@@ -190,6 +195,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                     positionType: 'maintainer',
                     positionTitle: 'Code Owner',
                     isActive: true,
+                    scope: 'root',
                     source: 'CODEOWNERS',
                     evidenceUrl: entry.source,
                     notes: `Paths: ${entry.paths.join(', ')}`,

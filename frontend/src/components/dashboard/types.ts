@@ -52,6 +52,7 @@ export interface LeadershipMember {
 export interface OrgPositionGroup {
   positionType: string;
   roleTitle: string;
+  groupName?: string;
   teamCount: number;
   totalCount: number;
   members: Array<{
@@ -77,6 +78,10 @@ export interface LeadershipData {
     totalReviewers: number;
     teamApprovers: number;
     teamReviewers: number;
+    rootApprovers?: number;
+    rootReviewers?: number;
+    componentApprovers?: number;
+    componentReviewers?: number;
   };
   teamLeaders: LeadershipMember[];
 }
@@ -99,6 +104,29 @@ export interface OrgActivity {
   activeTeamMembers: number;
 }
 
+export interface ProjectMetric {
+  id: string;
+  name: string;
+  githubOrg: string;
+  githubRepo: string;
+  contributions: {
+    commits: ContributionTypeMetric;
+    pullRequests: ContributionTypeMetric;
+    reviews: ContributionTypeMetric;
+    issues: ContributionTypeMetric;
+    all: ContributionTypeMetric;
+  };
+  activeContributors: number;
+}
+
+export interface DailyDataPoint {
+  date: string;
+  commits: { total: number; team: number };
+  pullRequests: { total: number; team: number };
+  reviews: { total: number; team: number };
+  issues: { total: number; team: number };
+}
+
 export interface DashboardData {
   summary: {
     periodDays: number;
@@ -119,8 +147,8 @@ export interface DashboardData {
     activeContributors: TrendMetric;
   };
   topContributors: ContributorRanking[];
-  topProjects: any[];
-  dailyBreakdown: any[];
+  topProjects: ProjectMetric[];
+  dailyBreakdown: DailyDataPoint[];
   leadership?: LeadershipData;
   orgActivity?: OrgActivity[];
 }
