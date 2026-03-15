@@ -238,41 +238,45 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
       ))}
 
       {/* Approvers/Reviewers stats */}
-      {(maintainers.teamApprovers > 0 || maintainers.teamReviewers > 0) && (
+      {(maintainers.totalApprovers > 0 || maintainers.totalReviewers > 0) && (
         <div className="mb-6">
-          <div className="grid grid-cols-2 gap-4 mb-3">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Crown className="w-4 h-4 text-green-500" />
-                <span className="text-xs font-medium text-gray-700">Approvers</span>
-              </div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-bold text-green-600">{maintainers.teamApprovers}</span>
-                <span className="text-xs text-gray-500">of {maintainers.totalApprovers}</span>
-              </div>
-              {(maintainers.teamRootApprovers != null && maintainers.teamComponentApprovers != null && maintainers.teamComponentApprovers > 0) && (
-                <div className="mt-2 flex gap-3 text-xs text-gray-500">
-                  <span>Repo-level: {maintainers.teamRootApprovers}</span>
-                  <span>Sub-directory: {maintainers.teamComponentApprovers}</span>
+          <div className={`grid gap-4 mb-3 ${maintainers.totalApprovers > 0 && maintainers.totalReviewers > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {maintainers.totalApprovers > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Crown className="w-4 h-4 text-green-500" />
+                  <span className="text-xs font-medium text-gray-700">Approvers</span>
                 </div>
-              )}
-            </div>
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Users className="w-4 h-4 text-blue-500" />
-                <span className="text-xs font-medium text-gray-700">Reviewers</span>
-              </div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-2xl font-bold text-blue-600">{maintainers.teamReviewers}</span>
-                <span className="text-xs text-gray-500">of {maintainers.totalReviewers}</span>
-              </div>
-              {(maintainers.teamRootReviewers != null && maintainers.teamComponentReviewers != null && maintainers.teamComponentReviewers > 0) && (
-                <div className="mt-2 flex gap-3 text-xs text-gray-500">
-                  <span>Repo-level: {maintainers.teamRootReviewers}</span>
-                  <span>Sub-directory: {maintainers.teamComponentReviewers}</span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-green-600">{maintainers.teamApprovers}</span>
+                  <span className="text-xs text-gray-500">of {maintainers.totalApprovers}</span>
                 </div>
-              )}
-            </div>
+                {(maintainers.teamRootApprovers != null && maintainers.teamComponentApprovers != null && maintainers.teamComponentApprovers > 0) && (
+                  <div className="mt-2 flex gap-3 text-xs text-gray-500">
+                    <span>Repo-level: {maintainers.teamRootApprovers}</span>
+                    <span>Sub-directory: {maintainers.teamComponentApprovers}</span>
+                  </div>
+                )}
+              </div>
+            )}
+            {maintainers.totalReviewers > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Users className="w-4 h-4 text-blue-500" />
+                  <span className="text-xs font-medium text-gray-700">Reviewers</span>
+                </div>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-blue-600">{maintainers.teamReviewers}</span>
+                  <span className="text-xs text-gray-500">of {maintainers.totalReviewers}</span>
+                </div>
+                {(maintainers.teamRootReviewers != null && maintainers.teamComponentReviewers != null && maintainers.teamComponentReviewers > 0) && (
+                  <div className="mt-2 flex gap-3 text-xs text-gray-500">
+                    <span>Repo-level: {maintainers.teamRootReviewers}</span>
+                    <span>Sub-directory: {maintainers.teamComponentReviewers}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
