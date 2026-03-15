@@ -30,6 +30,7 @@ export interface LeadershipRole {
   projectId: string;
   projectName: string;
   roleType: string;
+  roleLabel?: string;
   scope?: string;
   isActive: boolean;
 }

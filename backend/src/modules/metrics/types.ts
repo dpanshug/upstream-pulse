@@ -212,7 +212,7 @@ export interface LeadershipSummaryResponse {
     name: string;
     githubUsername: string | null;
     avatarUrl?: string;
-    roles: Array<{ projectId: string; projectName: string; roleType: string; scope: string; isActive: boolean }>;
+    roles: Array<{ projectId: string; projectName: string; roleType: string; roleLabel: string; scope: string; isActive: boolean }>;
     leadershipRoles: Array<{ positionType: string; groupName: string; roleTitle: string; votingRights: boolean }>;
   }>;
 }

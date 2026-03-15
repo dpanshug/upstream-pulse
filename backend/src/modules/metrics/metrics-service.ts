@@ -994,6 +994,7 @@ export class MetricsService {
         .select({
           id: maintainerStatus.id,
           positionType: maintainerStatus.positionType,
+          positionTitle: maintainerStatus.positionTitle,
           scope: maintainerStatus.scope,
           teamMemberId: maintainerStatus.teamMemberId,
           teamMemberName: teamMembers.name,
@@ -1162,11 +1163,12 @@ export class MetricsService {
       }));
 
       // ── Maintainer counts (real totals from DB, not estimates) ──
-      const teamApprovers = maintainerStatuses.filter(s => s.positionType === 'maintainer').length;
+      const isApproverType = (t: string) => t !== 'reviewer';
+      const teamApprovers = maintainerStatuses.filter(s => isApproverType(s.positionType)).length;
       const teamReviewers = maintainerStatuses.filter(s => s.positionType === 'reviewer').length;
-      const teamRootApprovers = maintainerStatuses.filter(s => s.positionType === 'maintainer' && s.scope === 'root').length;
+      const teamRootApprovers = maintainerStatuses.filter(s => isApproverType(s.positionType) && s.scope === 'root').length;
       const teamRootReviewers = maintainerStatuses.filter(s => s.positionType === 'reviewer' && s.scope === 'root').length;
-      const teamComponentApprovers = maintainerStatuses.filter(s => s.positionType === 'maintainer' && s.scope === 'component').length;
+      const teamComponentApprovers = maintainerStatuses.filter(s => isApproverType(s.positionType) && s.scope === 'component').length;
       const teamComponentReviewers = maintainerStatuses.filter(s => s.positionType === 'reviewer' && s.scope === 'component').length;
 
       const totalMsConditions = [eq(maintainerStatus.isActive, true)];
@@ -1184,15 +1186,17 @@ export class MetricsService {
         .where(and(...totalMsConditions))
         .groupBy(maintainerStatus.positionType, maintainerStatus.scope);
 
-      const sumByType = (type: string) => totalMsCounts.filter(r => r.positionType === type).reduce((s, r) => s + r.count, 0);
-      const countByTypeScope = (type: string, scope: string) => totalMsCounts.find(r => r.positionType === type && r.scope === scope)?.count ?? 0;
+      const sumApproverTypes = (scopeFilter?: string) =>
+        totalMsCounts.filter(r => isApproverType(r.positionType) && (scopeFilter == null || r.scope === scopeFilter)).reduce((s, r) => s + r.count, 0);
+      const sumReviewerTypes = (scopeFilter?: string) =>
+        totalMsCounts.filter(r => r.positionType === 'reviewer' && (scopeFilter == null || r.scope === scopeFilter)).reduce((s, r) => s + r.count, 0);
 
-      const totalApprovers = sumByType('maintainer');
-      const totalReviewers = sumByType('reviewer');
-      const rootApprovers = countByTypeScope('maintainer', 'root');
-      const rootReviewers = countByTypeScope('reviewer', 'root');
-      const componentApprovers = countByTypeScope('maintainer', 'component');
-      const componentReviewers = countByTypeScope('reviewer', 'component');
+      const totalApprovers = sumApproverTypes();
+      const totalReviewers = sumReviewerTypes();
+      const rootApprovers = sumApproverTypes('root');
+      const rootReviewers = sumReviewerTypes('root');
+      const componentApprovers = sumApproverTypes('component');
+      const componentReviewers = sumReviewerTypes('component');
 
       // ── teamLeaders — comprehensive member map ──
       const memberMap = new Map<string, {
@@ -1200,7 +1204,7 @@ export class MetricsService {
         name: string;
         githubUsername: string | null;
         avatarUrl?: string;
-        roles: Array<{ projectId: string; projectName: string; roleType: string; scope: string; isActive: boolean }>;
+        roles: Array<{ projectId: string; projectName: string; roleType: string; roleLabel: string; scope: string; isActive: boolean }>;
         leadershipRoles: Array<{ positionType: string; groupName: string; roleTitle: string; votingRights: boolean }>;
       }>();
 
@@ -1219,7 +1223,8 @@ export class MetricsService {
         if (!s.teamMemberId) continue;
         getMember(s.teamMemberId, s.teamMemberName, s.githubUsername).roles.push({
           projectId: s.projectId!, projectName: s.projectName,
-          roleType: s.positionType === 'maintainer' ? 'approver' : 'reviewer',
+          roleType: s.positionType === 'reviewer' ? 'reviewer' : 'approver',
+          roleLabel: s.positionTitle || (s.positionType === 'reviewer' ? 'Reviewer' : 'Approver'),
           scope: s.scope ?? 'root',
           isActive: s.isActive ?? true,
         });

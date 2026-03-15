@@ -7,6 +7,7 @@ import type { Repository } from '../../shared/types/index.js';
 export interface OwnersEntry {
   username: string;
   role: 'approver' | 'reviewer';
+  roleKey: string; // Original OWNERS key name (e.g., 'approvers', 'project-leads', 'owners')
   path: string; // Directory path where OWNERS file was found
   source: string; // Full path to the OWNERS file
 }
@@ -832,6 +833,7 @@ export class GitHubCollector {
               entries.push({
                 username: username.toLowerCase(),
                 role,
+                roleKey: key,
                 path: directoryPath,
                 source: `https://github.com/${org}/${repo}/blob/main/${filePath}`,
               });
@@ -874,41 +876,53 @@ export class GitHubCollector {
   ): Promise<Array<{
     username: string;
     role: 'approver' | 'reviewer';
+    roleTitle: string;
     paths: string[];
     sources: string[];
   }>> {
     const entries = await this.collectOwnersFiles(org, repo);
 
-    // Aggregate by username
+    // Aggregate by username — keep the highest-authority role key
     const userMap = new Map<string, {
       role: 'approver' | 'reviewer';
+      roleKey: string;
       paths: Set<string>;
       sources: Set<string>;
     }>();
+
+    const roleKeyPriority = (key: string) => {
+      if (key.includes('lead') || key === 'owners') return 0;
+      if (key === 'approvers') return 1;
+      return 2;
+    };
 
     for (const entry of entries) {
       const existing = userMap.get(entry.username);
 
       if (existing) {
-        // Upgrade role if current entry is approver
-        if (entry.role === 'approver') {
-          existing.role = 'approver';
+        if (entry.role === 'approver') existing.role = 'approver';
+        if (roleKeyPriority(entry.roleKey) < roleKeyPriority(existing.roleKey)) {
+          existing.roleKey = entry.roleKey;
         }
         existing.paths.add(entry.path);
         existing.sources.add(entry.source);
       } else {
         userMap.set(entry.username, {
           role: entry.role,
+          roleKey: entry.roleKey,
           paths: new Set([entry.path]),
           sources: new Set([entry.source]),
         });
       }
     }
 
-    // Convert to array
+    const formatTitle = (key: string) =>
+      key.replace(/-/g, ' ').replace(/s$/, '').replace(/\b\w/g, c => c.toUpperCase());
+
     return Array.from(userMap.entries()).map(([username, data]) => ({
       username,
       role: data.role,
+      roleTitle: formatTitle(data.roleKey),
       paths: Array.from(data.paths),
       sources: Array.from(data.sources),
     }));

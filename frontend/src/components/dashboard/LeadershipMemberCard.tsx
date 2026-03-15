@@ -38,12 +38,12 @@ export function LeadershipMemberCard({ member }: LeadershipMemberCardProps) {
           {isApprover && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
               <Crown className="w-3 h-3" />
-              Approver
+              {activeApproverRoles[0]?.roleLabel || 'Approver'}
             </span>
           )}
           {isReviewerOnly && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
-              Reviewer
+              {activeReviewerRoles[0]?.roleLabel || 'Reviewer'}
             </span>
           )}
         </div>
