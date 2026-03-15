@@ -147,15 +147,10 @@ export class LeadershipCollector {
           inActiveSection = false;
           continue;
         }
-        if (/^#{1,3}\s+/.test(trimmed) && !/(emerit|alumni)/i.test(trimmed)) {
-          // Any non-emeritus heading resets to active (e.g. "## Committee members")
-          if (headerIdx !== -1) {
-            // We already parsed a table — a new heading might start another table
-            // so reset header detection
-            columnMap = null;
-            headerIdx = -1;
-          }
-          inActiveSection = true;
+        if (/^#{1,3}\s+/.test(trimmed)) {
+          columnMap = null;
+          headerIdx = -1;
+          inActiveSection = !/(emerit|alumni)/i.test(trimmed);
           continue;
         }
 
