@@ -318,22 +318,15 @@ export class LeadershipCollector {
           }
           if (group.leadership.tech_leads) {
             for (const lead of group.leadership.tech_leads) {
-              const isDuplicate = positions.some(
-                p => p.githubUsername === lead.github &&
-                     p.groupName === `${prefix} ${group.name}` &&
-                     p.positionType === chairType,
-              );
-              if (!isDuplicate) {
-                positions.push({
-                  githubUsername: lead.github,
-                  name: lead.name,
-                  organization: lead.company,
-                  positionType: leadType,
-                  groupName: `${prefix} ${group.name}`,
-                  sourceUrl,
-                  isActive: true,
-                });
-              }
+              positions.push({
+                githubUsername: lead.github,
+                name: lead.name,
+                organization: lead.company,
+                positionType: leadType,
+                groupName: `${prefix} ${group.name}`,
+                sourceUrl,
+                isActive: true,
+              });
             }
           }
         }
