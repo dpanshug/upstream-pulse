@@ -1,4 +1,5 @@
-import { Shield, Crown, Users, ArrowUpRight } from 'lucide-react';
+import { useState } from 'react';
+import { Shield, Crown, Users, ArrowUpRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { LeadershipData, OrgLeadership, OrgPositionGroup } from './types';
 import { LeadershipMemberCard } from './LeadershipMemberCard';
 
@@ -170,6 +171,53 @@ function OrgLeadershipBlock({ orgData, showOrgName }: { orgData: OrgLeadership; 
   );
 }
 
+function ApproversReviewersSection({ teamLeaders }: { teamLeaders: LeadershipData['teamLeaders'] }) {
+  const approversReviewers = teamLeaders
+    .filter(m => m.roles && m.roles.length > 0)
+    .sort((a, b) => {
+      const aHasRoot = a.roles.some(r => r.scope === 'root') ? 0 : 1;
+      const bHasRoot = b.roles.some(r => r.scope === 'root') ? 0 : 1;
+      if (aHasRoot !== bHasRoot) return aHasRoot - bHasRoot;
+      if (b.roles.length !== a.roles.length) return b.roles.length - a.roles.length;
+      return a.name.localeCompare(b.name);
+    });
+  const [expanded, setExpanded] = useState(false);
+  const limit = 6;
+  const hasMore = approversReviewers.length > limit;
+  const visible = expanded ? approversReviewers : approversReviewers.slice(0, limit);
+
+  if (approversReviewers.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+      <h3 className="text-sm font-medium text-gray-600 mb-4">Project Approvers & Reviewers</h3>
+      <div className="grid md:grid-cols-2 gap-3">
+        {visible.map((member) => (
+          <LeadershipMemberCard key={member.id} member={member} />
+        ))}
+      </div>
+      {hasMore && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-1.5 mx-auto mt-4 px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+        >
+          {expanded ? (
+            <>
+              Show Less
+              <ChevronUp className="w-4 h-4" />
+            </>
+          ) : (
+            <>
+              View All ({approversReviewers.length})
+              <ChevronDown className="w-4 h-4" />
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function LeadershipSection({ leadership }: LeadershipSectionProps) {
   const { byOrg, maintainers, teamLeaders } = leadership;
   const hasOrgLeadership = byOrg.some(o => o.positions.length > 0);
@@ -207,10 +255,10 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
                 <span className="text-2xl font-bold text-green-600">{maintainers.teamApprovers}</span>
                 <span className="text-xs text-gray-500">of {maintainers.totalApprovers}</span>
               </div>
-              {(maintainers.rootApprovers != null && maintainers.componentApprovers != null && maintainers.componentApprovers > 0) && (
+              {(maintainers.teamRootApprovers != null && maintainers.teamComponentApprovers != null && maintainers.teamComponentApprovers > 0) && (
                 <div className="mt-2 flex gap-3 text-xs text-gray-500">
-                  <span>Root: {maintainers.rootApprovers}</span>
-                  <span>Component: {maintainers.componentApprovers}</span>
+                  <span>Repo-level: {maintainers.teamRootApprovers}</span>
+                  <span>Sub-directory: {maintainers.teamComponentApprovers}</span>
                 </div>
               )}
             </div>
@@ -223,10 +271,10 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
                 <span className="text-2xl font-bold text-blue-600">{maintainers.teamReviewers}</span>
                 <span className="text-xs text-gray-500">of {maintainers.totalReviewers}</span>
               </div>
-              {(maintainers.rootReviewers != null && maintainers.componentReviewers != null && maintainers.componentReviewers > 0) && (
+              {(maintainers.teamRootReviewers != null && maintainers.teamComponentReviewers != null && maintainers.teamComponentReviewers > 0) && (
                 <div className="mt-2 flex gap-3 text-xs text-gray-500">
-                  <span>Root: {maintainers.rootReviewers}</span>
-                  <span>Component: {maintainers.componentReviewers}</span>
+                  <span>Repo-level: {maintainers.teamRootReviewers}</span>
+                  <span>Sub-directory: {maintainers.teamComponentReviewers}</span>
                 </div>
               )}
             </div>
@@ -286,24 +334,7 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
       )}
 
       {/* Project Approvers/Reviewers */}
-      {(() => {
-        const approversReviewers = teamLeaders.filter(m => m.roles && m.roles.length > 0);
-        return approversReviewers.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <h3 className="text-sm font-medium text-gray-600 mb-4">Project Approvers & Reviewers</h3>
-            <div className="grid md:grid-cols-2 gap-3">
-              {approversReviewers.slice(0, 6).map((member) => (
-                <LeadershipMemberCard key={member.id} member={member} />
-              ))}
-            </div>
-            {approversReviewers.length > 6 && (
-              <p className="text-sm text-gray-500 mt-4 text-center">
-                +{approversReviewers.length - 6} more team members
-              </p>
-            )}
-          </div>
-        );
-      })()}
+      <ApproversReviewersSection teamLeaders={teamLeaders} />
 
       {teamLeaders.length === 0 && !hasOrgLeadership && (
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 text-center">

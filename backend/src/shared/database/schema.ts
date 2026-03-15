@@ -89,7 +89,7 @@ export const maintainerStatus = pgTable('maintainer_status', {
   isActive: boolean('is_active').default(true),
   source: varchar('source', { length: 100 }), // 'MAINTAINERS_file', 'github_permissions', 'manual'
   evidenceUrl: varchar('evidence_url', { length: 500 }),
-  notes: varchar('notes', { length: 1000 }),
+  notes: varchar('notes', { length: 5000 }),
   scope: varchar('scope', { length: 20 }).default('root'), // 'root' = repo root OWNERS, 'component' = subdirectory OWNERS
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),

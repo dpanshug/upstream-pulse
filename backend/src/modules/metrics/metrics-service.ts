@@ -994,6 +994,7 @@ export class MetricsService {
         .select({
           id: maintainerStatus.id,
           positionType: maintainerStatus.positionType,
+          scope: maintainerStatus.scope,
           teamMemberId: maintainerStatus.teamMemberId,
           teamMemberName: teamMembers.name,
           githubUsername: teamMembers.githubUsername,
@@ -1133,6 +1134,10 @@ export class MetricsService {
       // ── Maintainer counts (real totals from DB, not estimates) ──
       const teamApprovers = maintainerStatuses.filter(s => s.positionType === 'maintainer').length;
       const teamReviewers = maintainerStatuses.filter(s => s.positionType === 'reviewer').length;
+      const teamRootApprovers = maintainerStatuses.filter(s => s.positionType === 'maintainer' && s.scope === 'root').length;
+      const teamRootReviewers = maintainerStatuses.filter(s => s.positionType === 'reviewer' && s.scope === 'root').length;
+      const teamComponentApprovers = maintainerStatuses.filter(s => s.positionType === 'maintainer' && s.scope === 'component').length;
+      const teamComponentReviewers = maintainerStatuses.filter(s => s.positionType === 'reviewer' && s.scope === 'component').length;
 
       const totalMsConditions = [eq(maintainerStatus.isActive, true)];
       if (projectId) totalMsConditions.push(eq(maintainerStatus.projectId, projectId));
@@ -1165,7 +1170,7 @@ export class MetricsService {
         name: string;
         githubUsername: string | null;
         avatarUrl?: string;
-        roles: Array<{ projectId: string; projectName: string; roleType: string; isActive: boolean }>;
+        roles: Array<{ projectId: string; projectName: string; roleType: string; scope: string; isActive: boolean }>;
         leadershipRoles: Array<{ positionType: string; groupName: string; roleTitle: string; votingRights: boolean }>;
       }>();
 
@@ -1185,6 +1190,7 @@ export class MetricsService {
         getMember(s.teamMemberId, s.teamMemberName, s.githubUsername).roles.push({
           projectId: s.projectId!, projectName: s.projectName,
           roleType: s.positionType === 'maintainer' ? 'approver' : 'reviewer',
+          scope: s.scope ?? 'root',
           isActive: s.isActive ?? true,
         });
       }
@@ -1204,6 +1210,7 @@ export class MetricsService {
         maintainers: {
           teamApprovers, teamReviewers, totalApprovers, totalReviewers,
           rootApprovers, rootReviewers, componentApprovers, componentReviewers,
+          teamRootApprovers, teamRootReviewers, teamComponentApprovers, teamComponentReviewers,
         },
         teamLeaders: Array.from(memberMap.values()),
       };
@@ -1214,6 +1221,7 @@ export class MetricsService {
         maintainers: {
           teamApprovers: 0, teamReviewers: 0, totalApprovers: 0, totalReviewers: 0,
           rootApprovers: 0, rootReviewers: 0, componentApprovers: 0, componentReviewers: 0,
+          teamRootApprovers: 0, teamRootReviewers: 0, teamComponentApprovers: 0, teamComponentReviewers: 0,
         },
         teamLeaders: [],
       };

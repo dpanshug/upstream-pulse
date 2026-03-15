@@ -114,6 +114,11 @@ export const governanceWorker = new Worker<GovernanceJobData>(
               const positionType = owner.role === 'approver' ? 'maintainer' : 'reviewer';
               const isRoot = owner.paths.some(p => p === '/' || p === '');
               const scope = isRoot ? 'root' : 'component';
+              const pathsNote = (() => {
+                const full = `Paths: ${owner.paths.join(', ')}`;
+                if (full.length <= 4900) return full;
+                return `Paths: ${owner.paths.slice(0, 20).join(', ')} ... and ${owner.paths.length - 20} more`;
+              })();
 
               try {
                 const existing = await db.query.maintainerStatus.findFirst({
@@ -132,7 +137,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                       isActive: true,
                       scope,
                       evidenceUrl: owner.sources[0],
-                      notes: `Paths: ${owner.paths.join(', ')}`,
+                      notes: pathsNote,
                       updatedAt: new Date(),
                     })
                     .where(eq(maintainerStatus.id, existing.id));
@@ -147,7 +152,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                     scope,
                     source: 'OWNERS_file',
                     evidenceUrl: owner.sources[0],
-                    notes: `Paths: ${owner.paths.join(', ')}`,
+                    notes: pathsNote,
                   });
                 }
                 totalOwnersProcessed++;

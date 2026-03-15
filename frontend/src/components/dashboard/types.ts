@@ -30,6 +30,7 @@ export interface LeadershipRole {
   projectId: string;
   projectName: string;
   roleType: string;
+  scope?: string;
   isActive: boolean;
 }
 
@@ -82,6 +83,10 @@ export interface LeadershipData {
     rootReviewers?: number;
     componentApprovers?: number;
     componentReviewers?: number;
+    teamRootApprovers?: number;
+    teamRootReviewers?: number;
+    teamComponentApprovers?: number;
+    teamComponentReviewers?: number;
   };
   teamLeaders: LeadershipMember[];
 }

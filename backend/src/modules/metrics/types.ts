@@ -202,13 +202,17 @@ export interface LeadershipSummaryResponse {
     rootReviewers: number;
     componentApprovers: number;
     componentReviewers: number;
+    teamRootApprovers: number;
+    teamRootReviewers: number;
+    teamComponentApprovers: number;
+    teamComponentReviewers: number;
   };
   teamLeaders: Array<{
     id: string;
     name: string;
     githubUsername: string | null;
     avatarUrl?: string;
-    roles: Array<{ projectId: string; projectName: string; roleType: string; isActive: boolean }>;
+    roles: Array<{ projectId: string; projectName: string; roleType: string; scope: string; isActive: boolean }>;
     leadershipRoles: Array<{ positionType: string; groupName: string; roleTitle: string; votingRights: boolean }>;
   }>;
 }
