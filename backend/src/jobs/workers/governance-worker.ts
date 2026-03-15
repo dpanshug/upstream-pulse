@@ -135,6 +135,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                   await db.update(maintainerStatus)
                     .set({
                       positionType,
+                      positionTitle: owner.roleTitle,
                       teamMemberId: teamMember?.id || null,
                       isActive: true,
                       scope,

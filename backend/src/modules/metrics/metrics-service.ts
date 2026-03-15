@@ -1240,12 +1240,40 @@ export class MetricsService {
         });
       }
 
+      // Per-positionType governance breakdown for data-driven stat cards
+      const govByType = new Map<string, { positionType: string; label: string; team: number; total: number; teamRoot: number; teamComponent: number }>();
+      for (const s of maintainerStatuses) {
+        if (!govByType.has(s.positionType)) {
+          govByType.set(s.positionType, {
+            positionType: s.positionType,
+            label: s.positionTitle || s.positionType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            team: 0, total: 0, teamRoot: 0, teamComponent: 0,
+          });
+        }
+        const g = govByType.get(s.positionType)!;
+        g.team++;
+        if (s.scope === 'root') g.teamRoot++;
+        else if (s.scope === 'component') g.teamComponent++;
+      }
+      for (const r of totalMsCounts) {
+        if (!govByType.has(r.positionType)) {
+          govByType.set(r.positionType, {
+            positionType: r.positionType,
+            label: r.positionType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            team: 0, total: 0, teamRoot: 0, teamComponent: 0,
+          });
+        }
+        govByType.get(r.positionType)!.total += r.count;
+      }
+      const governanceByType = Array.from(govByType.values()).filter(g => g.total > 0);
+
       return {
         byOrg,
         maintainers: {
           teamApprovers, teamReviewers, totalApprovers, totalReviewers,
           rootApprovers, rootReviewers, componentApprovers, componentReviewers,
           teamRootApprovers, teamRootReviewers, teamComponentApprovers, teamComponentReviewers,
+          governanceByType,
         },
         teamLeaders: Array.from(memberMap.values()),
       };

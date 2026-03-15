@@ -237,49 +237,52 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
         <OrgLeadershipBlock key={orgData.org} orgData={orgData} showOrgName={byOrg.length > 1} />
       ))}
 
-      {/* Approvers/Reviewers stats */}
-      {(maintainers.totalApprovers > 0 || maintainers.totalReviewers > 0) && (
-        <div className="mb-6">
-          <div className={`grid gap-4 mb-3 ${maintainers.totalApprovers > 0 && maintainers.totalReviewers > 0 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            {maintainers.totalApprovers > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Crown className="w-4 h-4 text-green-500" />
-                  <span className="text-xs font-medium text-gray-700">Approvers</span>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-green-600">{maintainers.teamApprovers}</span>
-                  <span className="text-xs text-gray-500">of {maintainers.totalApprovers}</span>
-                </div>
-                {(maintainers.teamRootApprovers != null && maintainers.teamComponentApprovers != null && maintainers.teamComponentApprovers > 0) && (
-                  <div className="mt-2 flex gap-3 text-xs text-gray-500">
-                    <span>Repo-level: {maintainers.teamRootApprovers}</span>
-                    <span>Sub-directory: {maintainers.teamComponentApprovers}</span>
+      {/* Governance stats — data-driven per positionType */}
+      {(() => {
+        const govTypes = maintainers.governanceByType?.filter(g => g.total > 0) ?? [];
+        if (govTypes.length === 0 && maintainers.totalApprovers === 0 && maintainers.totalReviewers === 0) return null;
+
+        const cards = govTypes.length > 0
+          ? govTypes.sort((a, b) => positionTypeOrder(a.positionType) - positionTypeOrder(b.positionType))
+          : [
+              ...(maintainers.totalApprovers > 0 ? [{ positionType: 'maintainer', label: 'Approvers', team: maintainers.teamApprovers, total: maintainers.totalApprovers }] : []),
+              ...(maintainers.totalReviewers > 0 ? [{ positionType: 'reviewer', label: 'Reviewers', team: maintainers.teamReviewers, total: maintainers.totalReviewers }] : []),
+            ];
+
+        if (cards.length === 0) return null;
+
+        return (
+          <div className="mb-6">
+            <div className={`grid gap-3 mb-3 ${
+              cards.length >= 4 ? 'grid-cols-2 md:grid-cols-4' :
+              cards.length === 3 ? 'grid-cols-3' :
+              cards.length === 2 ? 'grid-cols-2' : 'grid-cols-1'
+            }`}>
+              {cards.map(g => (
+                <div key={g.positionType} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    {g.positionType === 'reviewer'
+                      ? <Users className="w-4 h-4 text-blue-500" />
+                      : <Crown className="w-4 h-4 text-green-500" />
+                    }
+                    <span className="text-xs font-medium text-gray-700">{g.label}</span>
                   </div>
-                )}
-              </div>
-            )}
-            {maintainers.totalReviewers > 0 && (
-              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Users className="w-4 h-4 text-blue-500" />
-                  <span className="text-xs font-medium text-gray-700">Reviewers</span>
-                </div>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-blue-600">{maintainers.teamReviewers}</span>
-                  <span className="text-xs text-gray-500">of {maintainers.totalReviewers}</span>
-                </div>
-                {(maintainers.teamRootReviewers != null && maintainers.teamComponentReviewers != null && maintainers.teamComponentReviewers > 0) && (
-                  <div className="mt-2 flex gap-3 text-xs text-gray-500">
-                    <span>Repo-level: {maintainers.teamRootReviewers}</span>
-                    <span>Sub-directory: {maintainers.teamComponentReviewers}</span>
+                  <div className="flex items-baseline gap-1">
+                    <span className={`text-2xl font-bold ${g.positionType === 'reviewer' ? 'text-blue-600' : 'text-green-600'}`}>{g.team}</span>
+                    <span className="text-xs text-gray-500">of {g.total}</span>
                   </div>
-                )}
-              </div>
-            )}
+                  {'teamRoot' in g && 'teamComponent' in g && (g.teamComponent ?? 0) > 0 && (
+                    <div className="mt-2 flex gap-3 text-xs text-gray-500">
+                      <span>Repo-level: {g.teamRoot}</span>
+                      <span>Sub-directory: {g.teamComponent}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Org-Level Leaders (WG Chairs/Tech Leads not shown above) */}
       {orgLeaders.length > 0 && !hasOrgLeadership && (
