@@ -123,7 +123,7 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     githubOrg: 'argoproj',
     communityRepo: {
       repo: 'argoproj',
-      defaultBranch: 'master',
+      defaultBranch: 'main',
       leadershipFiles: [
         {
           path: 'MAINTAINERS.md',
