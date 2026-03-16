@@ -867,8 +867,10 @@ export class GitHubCollector {
   }
 
   /**
-   * Get aggregated maintainer info from OWNERS files
-   * Returns unique usernames with their highest role and all paths
+   * Get aggregated maintainer info from OWNERS files.
+   * Returns per-scope entries (root vs component) so that roleKey promotion
+   * only happens within the same scope level. A user who appears in both
+   * root and subdirectory OWNERS files gets two entries with scope-correct roles.
    */
   async getOwnersAsMaintainers(
     org: string,
@@ -877,18 +879,11 @@ export class GitHubCollector {
     username: string;
     role: 'approver' | 'reviewer';
     roleTitle: string;
+    scope: 'root' | 'component';
     paths: string[];
     sources: string[];
   }>> {
     const entries = await this.collectOwnersFiles(org, repo);
-
-    // Aggregate by username — keep the highest-authority role key
-    const userMap = new Map<string, {
-      role: 'approver' | 'reviewer';
-      roleKey: string;
-      paths: Set<string>;
-      sources: Set<string>;
-    }>();
 
     const roleKeyPriority = (key: string) => {
       if (key.includes('lead') || key === 'owners') return 0;
@@ -896,8 +891,22 @@ export class GitHubCollector {
       return 2;
     };
 
+    const formatTitle = (key: string) =>
+      key.replace(/-/g, ' ').replace(/s$/, '').replace(/\b\w/g, c => c.toUpperCase());
+
+    // Aggregate per username+scope so roleKey promotion stays within the same scope
+    const scopeMap = new Map<string, {
+      role: 'approver' | 'reviewer';
+      roleKey: string;
+      paths: Set<string>;
+      sources: Set<string>;
+    }>();
+
     for (const entry of entries) {
-      const existing = userMap.get(entry.username);
+      const isRoot = entry.path === '/' || entry.path === '';
+      const scope = isRoot ? 'root' : 'component';
+      const mapKey = `${entry.username}::${scope}`;
+      const existing = scopeMap.get(mapKey);
 
       if (existing) {
         if (entry.role === 'approver') existing.role = 'approver';
@@ -907,7 +916,7 @@ export class GitHubCollector {
         existing.paths.add(entry.path);
         existing.sources.add(entry.source);
       } else {
-        userMap.set(entry.username, {
+        scopeMap.set(mapKey, {
           role: entry.role,
           roleKey: entry.roleKey,
           paths: new Set([entry.path]),
@@ -916,15 +925,16 @@ export class GitHubCollector {
       }
     }
 
-    const formatTitle = (key: string) =>
-      key.replace(/-/g, ' ').replace(/s$/, '').replace(/\b\w/g, c => c.toUpperCase());
-
-    return Array.from(userMap.entries()).map(([username, data]) => ({
-      username,
-      role: data.role,
-      roleTitle: formatTitle(data.roleKey),
-      paths: Array.from(data.paths),
-      sources: Array.from(data.sources),
-    }));
+    return Array.from(scopeMap.entries()).map(([mapKey, data]) => {
+      const [username, scope] = mapKey.split('::') as [string, 'root' | 'component'];
+      return {
+        username,
+        role: data.role,
+        roleTitle: formatTitle(data.roleKey),
+        scope,
+        paths: Array.from(data.paths),
+        sources: Array.from(data.sources),
+      };
+    });
   }
 }

@@ -114,8 +114,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
               let positionType = 'maintainer';
               if (owner.role === 'reviewer') positionType = 'reviewer';
               else if (owner.roleTitle === 'Project Lead' || owner.roleTitle === 'Owner') positionType = owner.roleTitle.toLowerCase().replace(' ', '_');
-              const isRoot = owner.paths.some(p => p === '/' || p === '');
-              const scope = isRoot ? 'root' : 'component';
+              const scope = owner.scope;
               const pathsNote = (() => {
                 const full = `Paths: ${owner.paths.join(', ')}`;
                 if (full.length <= 4900) return full;
@@ -128,6 +127,7 @@ export const governanceWorker = new Worker<GovernanceJobData>(
                     eq(maintainerStatus.projectId, project.id),
                     eq(maintainerStatus.githubUsername, owner.username.toLowerCase()),
                     eq(maintainerStatus.source, 'OWNERS_file'),
+                    eq(maintainerStatus.scope, scope),
                   ),
                 });
 

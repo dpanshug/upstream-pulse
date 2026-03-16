@@ -6,8 +6,9 @@ interface LeadershipMemberCardProps {
 }
 
 export function LeadershipMemberCard({ member }: LeadershipMemberCardProps) {
-  const activeApproverRoles = member.roles.filter(r => r.roleType === 'approver' && r.isActive);
-  const activeReviewerRoles = member.roles.filter(r => r.roleType === 'reviewer' && r.isActive);
+  const scopeOrder = (s?: string) => s === 'root' ? 0 : 1;
+  const activeApproverRoles = member.roles.filter(r => r.roleType === 'approver' && r.isActive).sort((a, b) => scopeOrder(a.scope) - scopeOrder(b.scope));
+  const activeReviewerRoles = member.roles.filter(r => r.roleType === 'reviewer' && r.isActive).sort((a, b) => scopeOrder(a.scope) - scopeOrder(b.scope));
 
   // Determine primary role
   const isApprover = activeApproverRoles.length > 0;
