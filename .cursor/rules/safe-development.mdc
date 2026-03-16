@@ -1,0 +1,34 @@
+---
+description: Safe development workflow — commit discipline, build checks, and regression prevention
+alwaysApply: true
+---
+
+# Safe Development
+
+## Commits
+
+- **Never commit or push** unless the user explicitly asks.
+- When done with a change, suggest a short (one-line) commit message the user can use.
+- Format: `<type>: <what changed>` — e.g. `fix: handle undefined org slug in leadership card`, `feat: add contributor filter by date range`.
+- Types: `feat`, `fix`, `refactor`, `chore`, `docs`, `style`.
+
+## Before Considering a Change Done
+
+1. **TypeScript** — Run `npx tsc --noEmit` (backend) or `npx tsc` (frontend) to verify no type errors were introduced. Fix any errors before moving on.
+2. **Lint** — Use ReadLints on every edited file. Fix introduced errors; don't fix pre-existing ones unless necessary.
+3. **Imports** — Verify new imports resolve and no unused imports remain (`noUnusedLocals` is strict in this project).
+
+## Regression Prevention
+
+- Before editing a function, read its callers (grep for the function name) to understand the impact.
+- When changing a shared type or interface, check all files that import it and confirm they still compile.
+- When changing an API response shape, check the frontend consumer that fetches it.
+- When modifying a database query, confirm the column names and types match the schema.
+- Don't remove or rename exported symbols without updating all references.
+
+## Safe Defaults
+
+- Prefer adding optional fields (`field?: type`) over changing existing required fields.
+- When a value may be `undefined`, handle it explicitly — don't use `!` non-null assertions.
+- Keep backward-compatible API changes (add fields, don't remove them).
+- If a change is risky or wide-reaching, flag it to the user before proceeding.

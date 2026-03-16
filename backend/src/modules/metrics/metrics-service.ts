@@ -1178,6 +1178,7 @@ export class MetricsService {
       const totalMsCounts = await db
         .select({
           positionType: maintainerStatus.positionType,
+          positionTitle: sql<string>`min(${maintainerStatus.positionTitle})`,
           scope: maintainerStatus.scope,
           count: sql<number>`count(distinct ${maintainerStatus.githubUsername})::int`,
         })
@@ -1259,7 +1260,7 @@ export class MetricsService {
         if (!govByType.has(r.positionType)) {
           govByType.set(r.positionType, {
             positionType: r.positionType,
-            label: r.positionType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+            label: r.positionTitle || r.positionType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
             team: 0, total: 0, teamRoot: 0, teamComponent: 0,
           });
         }
