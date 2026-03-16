@@ -50,7 +50,7 @@ const pipelineSteps = [
   {
     icon: Users,
     title: 'Identify',
-    description: 'Identity resolution maps contributors to your team members via email and GitHub org',
+    description: 'Contributors are matched to your team by GitHub username against org members',
     color: 'text-blue-600',
     bg: 'bg-blue-50',
   },
@@ -71,15 +71,15 @@ const pipelineSteps = [
 ];
 
 const contributionTypes = [
-  { icon: GitCommit, label: 'Commits', description: 'Code changes merged into project repositories', color: 'text-blue-600' },
-  { icon: GitPullRequest, label: 'Pull Requests', description: 'Proposed changes submitted for review', color: 'text-purple-600' },
-  { icon: MessageSquare, label: 'Code Reviews', description: 'Feedback and approvals on others\' pull requests', color: 'text-green-600' },
-  { icon: AlertCircle, label: 'Issues', description: 'Bug reports, feature requests, and discussions', color: 'text-orange-600' },
+  { icon: GitCommit, label: 'Commits', description: 'All commits on the default branch, excluding merge commits', color: 'text-blue-600' },
+  { icon: GitPullRequest, label: 'Pull Requests', description: 'All PRs created — open, merged, and closed', color: 'text-purple-600' },
+  { icon: MessageSquare, label: 'Code Reviews', description: 'Count of reviews submitted on pull requests', color: 'text-green-600' },
+  { icon: AlertCircle, label: 'Issues', description: 'All issues created across tracked repositories', color: 'text-orange-600' },
 ];
 
 const resources = [
   { label: 'Source Code', href: 'https://github.com/dpanshug/upstream-pulse', icon: Github },
-  { label: 'Governance Models', href: 'https://github.com/dpanshug/upstream-pulse/blob/main/docs/governance-models.md', icon: BookOpen },
+  { label: 'Architecture', href: 'https://github.com/dpanshug/upstream-pulse/blob/main/docs/ARCHITECTURE.md', icon: BookOpen },
   { label: 'Contributing Guide', href: 'https://github.com/dpanshug/upstream-pulse/blob/main/CONTRIBUTING.md', icon: BookOpen },
 ];
 
@@ -147,33 +147,6 @@ export default function About() {
           </div>
         </section>
 
-        {/* How it works — Pipeline */}
-        <section className="mb-10">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">How it works</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {pipelineSteps.map((step, i) => (
-              <div
-                key={step.title}
-                className="relative bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col"
-              >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className={`w-8 h-8 rounded-lg ${step.bg} flex items-center justify-center`}>
-                    <step.icon className={`w-4 h-4 ${step.color}`} />
-                  </div>
-                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                    Step {i + 1}
-                  </span>
-                </div>
-                <h3 className="text-[15px] font-semibold text-gray-900 mb-1.5">{step.title}</h3>
-                <p className="text-[13px] text-gray-500 leading-relaxed">{step.description}</p>
-                {i < pipelineSteps.length - 1 && (
-                  <ArrowRight className="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300 z-10" />
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-
         {/* Key Concepts */}
         <section className="mb-10">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">What we track</h2>
@@ -216,11 +189,39 @@ export default function About() {
                 Team identification
               </h3>
               <p className="text-[13px] text-gray-500 leading-relaxed">
-                Contributors are matched to your team using email domain
-                {hasOrg ? ` and ${orgName}'s GitHub organization membership` : ' and GitHub organization membership'}.
-                This enables accurate team-vs-community contribution comparisons.
+                Team members are synced from
+                {hasOrg ? ` ${orgName}'s` : ' your'} GitHub organization. When contributions are
+                collected, each author's GitHub username is matched against this list - matched
+                contributions count as "Team", everything else counts as "External".
               </p>
             </div>
+          </div>
+        </section>
+
+        {/* How it works — Pipeline */}
+        <section className="mb-10">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">How it works</h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {pipelineSteps.map((step, i) => (
+              <div
+                key={step.title}
+                className="relative bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col"
+              >
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`w-8 h-8 rounded-lg ${step.bg} flex items-center justify-center`}>
+                    <step.icon className={`w-4 h-4 ${step.color}`} />
+                  </div>
+                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    Step {i + 1}
+                  </span>
+                </div>
+                <h3 className="text-[15px] font-semibold text-gray-900 mb-1.5">{step.title}</h3>
+                <p className="text-[13px] text-gray-500 leading-relaxed">{step.description}</p>
+                {i < pipelineSteps.length - 1 && (
+                  <ArrowRight className="hidden lg:block absolute -right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-300 z-10" />
+                )}
+              </div>
+            ))}
           </div>
         </section>
 
