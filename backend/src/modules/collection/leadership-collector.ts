@@ -143,10 +143,6 @@ export class LeadershipCollector {
         const trimmed = line.trim();
 
         // Track active vs emeritus/alumni sections
-        if (/^#{1,3}\s+(emerit|alumni)/i.test(trimmed)) {
-          inActiveSection = false;
-          continue;
-        }
         if (/^#{1,3}\s+/.test(trimmed)) {
           columnMap = null;
           headerIdx = -1;
