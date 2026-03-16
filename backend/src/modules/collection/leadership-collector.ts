@@ -172,8 +172,8 @@ export class LeadershipCollector {
           const cells = this.splitTableRow(trimmed);
           if (cells.length < 2) continue;
 
-          const pos = this.extractPosition(cells, columnMap, fileCfg, sourceUrl, inActiveSection);
-          if (pos) positions.push(pos);
+          const extracted = this.extractPositions(cells, columnMap, fileCfg, sourceUrl, inActiveSection);
+          positions.push(...extracted);
         }
       }
 
@@ -201,14 +201,15 @@ export class LeadershipCollector {
     return line.split('|').slice(1, -1).map(c => c.trim());
   }
 
-  /** Extract a LeadershipPosition from a parsed table row. */
-  private extractPosition(
+  /** Extract LeadershipPositions from a parsed table row.
+   *  Returns multiple entries when a role cell contains <br/> separators. */
+  private extractPositions(
     cells: string[],
     columns: Map<string, number>,
     fileCfg: LeadershipFileConfig,
     sourceUrl: string,
     isActive: boolean,
-  ): LeadershipPosition | null {
+  ): LeadershipPosition[] {
     // Find GitHub username — look in any cell for [username](url) pattern
     let githubUsername: string | null = null;
     for (const cell of cells) {
@@ -227,7 +228,7 @@ export class LeadershipCollector {
       }
     }
 
-    if (!githubUsername) return null;
+    if (!githubUsername) return [];
 
     // Name
     const nameIdx = columns.get('name') ?? columns.get('maintainer') ?? columns.get('member');
@@ -241,34 +242,44 @@ export class LeadershipCollector {
       ? cells[orgIdx].replace(/\[([^\]]+)\].*/, '$1').trim() || undefined
       : undefined;
 
-    // Position type
-    let positionType = fileCfg.positionType;
-    if (!positionType) {
-      const roleIdx = columns.get('project roles') ?? columns.get('role') ?? columns.get('roles');
-      if (roleIdx !== undefined && roleIdx < cells.length) {
-        positionType = cells[roleIdx].trim().toLowerCase().replace(/\s+/g, '_') || 'member';
-      } else {
-        positionType = 'member';
-      }
-    }
-
     // Term dates (optional)
     const startIdx = columns.get('term start') ?? columns.get('start');
     const endIdx = columns.get('term end') ?? columns.get('end');
     const termStart = startIdx !== undefined && startIdx < cells.length ? cells[startIdx].trim() : undefined;
     const termEnd = endIdx !== undefined && endIdx < cells.length ? cells[endIdx].trim() : undefined;
 
-    return {
+    const base = {
       githubUsername,
       name,
       organization,
-      positionType,
       groupName: fileCfg.groupName,
       termStart: termStart && termStart !== '-' ? termStart : undefined,
       termEnd: termEnd && termEnd !== '-' ? termEnd : undefined,
       sourceUrl,
       isActive,
     };
+
+    // Position type — split on <br/> variants when role cell has multiple roles
+    if (fileCfg.positionType) {
+      return [{ ...base, positionType: fileCfg.positionType }];
+    }
+
+    const roleIdx = columns.get('project roles') ?? columns.get('role') ?? columns.get('roles');
+    if (roleIdx === undefined || roleIdx >= cells.length) {
+      return [{ ...base, positionType: 'member' }];
+    }
+
+    const rawRole = cells[roleIdx].trim();
+    const roleParts = rawRole.split(/<br\s*\/?>/i).map(r => r.trim()).filter(Boolean);
+
+    if (roleParts.length === 0) {
+      return [{ ...base, positionType: 'member' }];
+    }
+
+    return roleParts.map(part => ({
+      ...base,
+      positionType: part.toLowerCase().replace(/\s+/g, '_'),
+    }));
   }
 
   // ── WG/SIG YAML parser ─────────────────────────────────────────
