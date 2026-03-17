@@ -35,3 +35,9 @@ resources:
 
 commonLabels:
   app.kubernetes.io/managed-by: kustomize
+
+images:
+  - name: quay.io/org-pulse/upstream-pulse-backend
+    newTag: latest
+  - name: quay.io/org-pulse/upstream-pulse-frontend
+    newTag: latest

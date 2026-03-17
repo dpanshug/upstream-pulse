@@ -1,0 +1,59 @@
+name: Build and Push Images
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: quay.io
+  REGISTRY_ORG: org-pulse
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        run: echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Log in to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_ROBOT_USERNAME }}
+          password: ${{ secrets.QUAY_ROBOT_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-backend:${{ env.IMAGE_TAG }}
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-backend:latest
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-frontend:${{ env.IMAGE_TAG }}
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-frontend:latest
+
+      - name: Update image tags in manifests
+        run: |
+          sed -i "s/newTag: .*/newTag: ${{ env.IMAGE_TAG }}/" deploy/openshift/kustomization.yaml
+
+      - name: Commit updated image tags
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add deploy/openshift/kustomization.yaml
+          git diff --cached --quiet || git commit -m "chore: update image tags to ${{ env.IMAGE_TAG }}"
+          git push

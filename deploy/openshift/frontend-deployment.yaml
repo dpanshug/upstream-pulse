@@ -28,7 +28,7 @@ spec:
       containers:
         # --- React SPA served by nginx ---
         - name: frontend
-          image: DEPLOY_REGISTRY/upstream-pulse/frontend:latest  # Overridden by deploy.sh set_runtime_images
+          image: quay.io/org-pulse/upstream-pulse-frontend:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -74,8 +74,6 @@ spec:
             - --cookie-secure=true
             - --email-domain=*
             - --pass-access-token=false
-            # Uncomment to restrict access to users with namespace-level permissions:
-            # - --openshift-sar={"namespace":"upstream-pulse","resource":"services","verb":"get"}
           ports:
             - containerPort: 4180
               name: proxy
