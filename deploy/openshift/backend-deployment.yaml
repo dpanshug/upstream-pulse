@@ -93,11 +93,6 @@ spec:
                 secretKeyRef:
                   name: upstream-pulse-secrets
                   key: GOOGLE_AI_API_KEY
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: upstream-pulse-secrets
-                  key: JWT_SECRET
             - name: GITHUB_TEAM_TOKEN
               valueFrom:
                 secretKeyRef:

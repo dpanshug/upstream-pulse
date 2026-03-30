@@ -30,9 +30,9 @@ export const config = {
   // Insight generation (Google Gemini)
   googleAIApiKey: process.env.GOOGLE_AI_API_KEY || '',
 
-  // Auth
-  jwtSecret: process.env.JWT_SECRET || 'change-me-in-production',
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  // Auth — admin users/groups (comma-separated)
+  adminUsers: process.env.ADMIN_USERS || '',
+  adminGroups: process.env.ADMIN_GROUPS || '',
 
   // Organization
   orgName: process.env.ORG_NAME || 'My Organization',

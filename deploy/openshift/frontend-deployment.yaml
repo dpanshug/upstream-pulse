@@ -74,6 +74,7 @@ spec:
             - --cookie-secure=true
             - --email-domain=*
             - --pass-access-token=false
+            - --pass-user-headers=true
           ports:
             - containerPort: 4180
               name: proxy

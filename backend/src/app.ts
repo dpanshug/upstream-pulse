@@ -12,6 +12,8 @@ import { logger } from './shared/utils/logger.js';
 import { db } from './shared/database/client.js';
 import { teamMembers, projects } from './shared/database/schema.js';
 import { eq, sql, count, and } from 'drizzle-orm';
+import { registerIdentityMiddleware } from './shared/middleware/identity.js';
+import { requireAdmin } from './shared/middleware/admin-guard.js';
 
 // Validate configuration on startup
 try {
@@ -37,6 +39,9 @@ await app.register(cors, {
 });
 
 await app.register(websocket);
+
+// Identity middleware — extracts user from gateway headers on every request
+registerIdentityMiddleware(app);
 
 // Health check endpoint
 app.get('/health', async (request, reply) => {
@@ -77,6 +82,14 @@ app.get('/api/config', async () => ({
   adminContactName: config.adminContactName || undefined,
   adminContactUrl: config.adminContactUrl || undefined,
   version: pkg.version,
+}));
+
+// Current user identity (read from gateway headers)
+app.get('/api/auth/me', async (request) => ({
+  username: request.identity.username,
+  email: request.identity.email,
+  groups: request.identity.groups,
+  isAdmin: request.identity.isAdmin,
 }));
 
 // Register API routes
@@ -122,7 +135,7 @@ app.post<{
     startCollection?: boolean;  // Start collecting immediately
     fullHistory?: boolean;      // Collect from day 0
   };
-}>('/api/projects', async (request, reply) => {
+}>('/api/projects', { preHandler: [requireAdmin] }, async (request, reply) => {
   try {
     const { name, githubOrg, githubRepo, ecosystem, primaryLanguage, startCollection, fullHistory } = request.body;
 
@@ -249,7 +262,7 @@ app.post<{
     department?: string;
     role?: string;
   };
-}>('/api/team-members', async (request, reply) => {
+}>('/api/team-members', { preHandler: [requireAdmin] }, async (request, reply) => {
   try {
     const { name, primaryEmail, githubUsername, department, role } = request.body;
 
@@ -321,7 +334,7 @@ app.post<{
     fullHistory?: boolean; // Fetch from repo creation date (day 0)
     phases?: ('commits' | 'pull_requests' | 'reviews' | 'issues')[];
   };
-}>('/api/admin/collect', async (request, reply) => {
+}>('/api/admin/collect', { preHandler: [requireAdmin] }, async (request, reply) => {
   try {
     const { projectId, since, fullHistory, phases } = request.body;
 
@@ -388,7 +401,7 @@ app.post<{
 // Trigger governance refresh (OWNERS files collection)
 app.post<{
   Params: { projectId?: string };
-}>('/api/governance/refresh/:projectId?', async (request, reply) => {
+}>('/api/governance/refresh/:projectId?', { preHandler: [requireAdmin] }, async (request, reply) => {
   try {
     const { projectId } = request.params;
 
@@ -435,7 +448,7 @@ app.post<{
 });
 
 // Manual team sync from GitHub org
-app.post('/api/admin/team-sync', async (request, reply) => {
+app.post('/api/admin/team-sync', { preHandler: [requireAdmin] }, async (request, reply) => {
   try {
     const { CollectionScheduler } = await import('./jobs/scheduler.js');
     const scheduler = new CollectionScheduler();
@@ -657,7 +670,7 @@ app.get('/api/system/status', async (request, reply) => {
 // Manual leadership refresh endpoint
 app.post<{
   Body: { githubOrg?: string };
-}>('/api/leadership/refresh', async (request, reply) => {
+}>('/api/leadership/refresh', { preHandler: [requireAdmin] }, async (request, reply) => {
   try {
     const { githubOrg } = (request.body as { githubOrg?: string }) || {};
 

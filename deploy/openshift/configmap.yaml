@@ -11,3 +11,5 @@ data:
   LOG_LEVEL: "info"
   PROMETHEUS_ENABLED: "true"
   GITHUB_TEAM_ORG: "opendatahub-io"
+  ADMIN_USERS: "admin"
+  ADMIN_GROUPS: ""

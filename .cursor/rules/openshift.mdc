@@ -60,8 +60,8 @@ No `securityContext` in manifests — enforced at image level. Both backend and 
 
 - **Secrets** (`oc create secret`, not in git):
   - `postgres-credentials`: `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
-  - `upstream-pulse-secrets`: `GITHUB_TOKEN`, `GOOGLE_AI_API_KEY`, `JWT_SECRET`, `GITHUB_TEAM_TOKEN`
-- **ConfigMap** (`upstream-pulse-config`): `NODE_ENV`, `PORT`, `LOG_LEVEL`, `PROMETHEUS_ENABLED`, `GITHUB_TEAM_ORG`
+  - `upstream-pulse-secrets`: `GITHUB_TOKEN`, `GOOGLE_AI_API_KEY`, `GITHUB_TEAM_TOKEN`
+- **ConfigMap** (`upstream-pulse-config`): `NODE_ENV`, `PORT`, `LOG_LEVEL`, `PROMETHEUS_ENABLED`, `GITHUB_TEAM_ORG`, `ADMIN_USERS`, `ADMIN_GROUPS`
 - **Derived**: `DATABASE_URL` built from secret vars in the manifest.
 
 ## Volumes

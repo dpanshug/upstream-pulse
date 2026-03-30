@@ -12,7 +12,9 @@ import {
   X,
   Info,
   LogOut,
+  User,
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -92,6 +94,7 @@ const navItems = [
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
   const [signOutOpen, setSignOutOpen] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
 
   useEffect(() => {
     onMobileClose();
@@ -239,6 +242,28 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
           {/* Footer */}
           <div className={`flex-shrink-0 pb-3 pt-1 ${collapsed ? 'px-1.5' : 'px-2.5'}`}>
             <div className="h-px bg-gray-100 mb-2" />
+            {user && (
+              <div
+                data-tooltip={collapsed ? user.username : undefined}
+                className={`
+                  sidebar-nav-item group flex items-center rounded-xl mb-1
+                  ${collapsed ? 'justify-center aspect-square p-0' : 'px-3 py-2'}
+                `}
+              >
+                <div className="w-[18px] h-[18px] rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0">
+                  <User className="w-3 h-3 text-gray-500" strokeWidth={2} />
+                </div>
+                <span
+                  className={`
+                    text-[13px] font-medium text-gray-600 whitespace-nowrap overflow-hidden text-ellipsis
+                    transition-[opacity,max-width,margin] duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
+                    ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[160px] opacity-100 ml-3'}
+                  `}
+                >
+                  {user.username}
+                </span>
+              </div>
+            )}
             <NavLink
               to="/about"
               data-tooltip="About"
