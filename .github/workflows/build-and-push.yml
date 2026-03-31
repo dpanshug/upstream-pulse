@@ -46,9 +46,14 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-frontend:${{ env.IMAGE_TAG }}
             ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-frontend:latest
 
+      - name: Install kustomize
+        uses: imranismail/setup-kustomize@v2
+
       - name: Update image tags in manifests
+        working-directory: deploy/openshift
         run: |
-          sed -i "s/newTag: .*/newTag: ${{ env.IMAGE_TAG }}/" deploy/openshift/kustomization.yaml
+          kustomize edit set image ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-backend:${{ env.IMAGE_TAG }}
+          kustomize edit set image ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-frontend:${{ env.IMAGE_TAG }}
 
       - name: Commit updated image tags
         run: |
