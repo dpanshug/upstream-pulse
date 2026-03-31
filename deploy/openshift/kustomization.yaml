@@ -41,12 +41,6 @@ commonLabels:
 
 images:
   - name: quay.io/org-pulse/upstream-pulse-backend
-<<<<<<< Updated upstream
-    newTag: 9586357
+    newTag: "9586357"
   - name: quay.io/org-pulse/upstream-pulse-frontend
-    newTag: 9586357
-=======
-    newTag: "63f3651"
-  - name: quay.io/org-pulse/upstream-pulse-frontend
-    newTag: "63f3651"
->>>>>>> Stashed changes
+    newTag: "9586357"
