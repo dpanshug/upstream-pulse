@@ -1,0 +1,12 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cross-namespace-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  ingress:
+    - ports:
+        - port: 3000
+          protocol: TCP

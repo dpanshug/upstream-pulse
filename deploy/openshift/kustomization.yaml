@@ -28,6 +28,9 @@ resources:
   - frontend-service.yaml
   - frontend-route.yaml
 
+  # Allow sibling services within the same tenant to reach the API
+  - networkpolicy-tenant-internal.yaml
+
   # Backups (uncomment after creating aws-s3-credentials secret — see secrets.example.yaml)
   # - postgres-backup-cronjob.yaml
   # - postgres-backup-monitor-cronjob.yaml
