@@ -3,33 +3,33 @@ kind: Kustomization
 
 namespace: upstream-pulse
 
-resources:
   # Namespace (already created via 'oc new-project upstream-pulse')
   # - namespace.yaml
 
   # Configuration
-  - configmap.yaml
   # Secrets are created via 'oc create secret' (see secrets.example.yaml)
 
   # Data stores
-  - postgres.yaml
-  - redis.yaml
 
   # Backend API
-  - backend-deployment.yaml
-  - backend-service.yaml
 
   # Worker (BullMQ consumer)
-  - worker-deployment.yaml
 
   # Frontend (nginx + React SPA) with OAuth Proxy
-  - oauth-proxy.yaml
-  - frontend-deployment.yaml
-  - frontend-service.yaml
-  - frontend-route.yaml
 
   # Allow sibling services within the same tenant to reach the API
-  - networkpolicy-tenant-internal.yaml
+resources:
+- configmap.yaml
+- postgres.yaml
+- redis.yaml
+- backend-deployment.yaml
+- backend-service.yaml
+- worker-deployment.yaml
+- oauth-proxy.yaml
+- frontend-deployment.yaml
+- frontend-service.yaml
+- frontend-route.yaml
+- networkpolicy-tenant-internal.yaml
 
   # Backups (uncomment after creating aws-s3-credentials secret — see secrets.example.yaml)
   # - postgres-backup-cronjob.yaml
@@ -40,7 +40,7 @@ commonLabels:
   app.kubernetes.io/managed-by: kustomize
 
 images:
-  - name: quay.io/org-pulse/upstream-pulse-backend
-    newTag: "9586357"
-  - name: quay.io/org-pulse/upstream-pulse-frontend
-    newTag: "9586357"
+- name: quay.io/org-pulse/upstream-pulse-backend
+  newTag: a6da013
+- name: quay.io/org-pulse/upstream-pulse-frontend
+  newTag: a6da013
