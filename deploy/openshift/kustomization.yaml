@@ -41,6 +41,6 @@ commonLabels:
 
 images:
 - name: quay.io/org-pulse/upstream-pulse-backend
-  newTag: 998a59f
+  newTag: 3dddf01
 - name: quay.io/org-pulse/upstream-pulse-frontend
-  newTag: 998a59f
+  newTag: 3dddf01
