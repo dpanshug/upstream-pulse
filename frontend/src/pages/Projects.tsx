@@ -18,7 +18,7 @@ import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
 import { PeriodSelector } from '../components/dashboard/PeriodSelector';
 import { ProjectCard } from '../components/dashboard/ProjectCards';
-import { DashboardData } from '../components/dashboard/types';
+import { DashboardData, DEFAULT_PERIOD_DAYS } from '../components/dashboard/types';
 import { useAuth } from '../context/AuthContext';
 import AddProjectModal from '../components/admin/AddProjectModal';
 
@@ -167,7 +167,7 @@ export default function Projects() {
   const navigate = useNavigate();
   const { isAdmin } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>('table');
-  const [selectedDays, setSelectedDays] = useState(0);
+  const [selectedDays, setSelectedDays] = useState(DEFAULT_PERIOD_DAYS);
   const [addModalOpen, setAddModalOpen] = useState(false);
 
   const { data, isLoading, error, refetch } = useQuery({

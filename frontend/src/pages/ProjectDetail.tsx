@@ -14,6 +14,7 @@ import {
 
 import {
   DashboardData,
+  DEFAULT_PERIOD_DAYS,
   StatCard,
   ContributionTypeCard,
   PeriodSelector,
@@ -47,7 +48,7 @@ export default function ProjectDetail() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const daysParam = searchParams.get('days');
-  const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : 0;
+  const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : DEFAULT_PERIOD_DAYS;
 
   const { data: projectInfo } = useQuery({
     queryKey: ['project-info', projectId],

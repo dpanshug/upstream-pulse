@@ -15,6 +15,7 @@ import {
 
 import {
   DashboardData,
+  DEFAULT_PERIOD_DAYS,
   StatCard,
   ContributionTypeCard,
   PeriodSelector,
@@ -53,7 +54,7 @@ export default function OrganizationDetail() {
   const [addModalOpen, setAddModalOpen] = useState(false);
 
   const daysParam = searchParams.get('days');
-  const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : 0;
+  const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : DEFAULT_PERIOD_DAYS;
 
   const { data: orgName } = useQuery({
     queryKey: ['org-name', org],

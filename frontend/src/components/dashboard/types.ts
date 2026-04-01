@@ -160,6 +160,8 @@ export interface DashboardData {
   orgActivity?: OrgActivity[];
 }
 
+export const DEFAULT_PERIOD_DAYS = 30;
+
 // Period options for the selector
 export const PERIOD_OPTIONS = [
   { label: '7d', value: 7, description: 'Last 7 days' },

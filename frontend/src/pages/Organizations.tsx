@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Building2 } from 'lucide-react';
-import { PeriodSelector, OrgActivityCard } from '../components/dashboard';
+import { PeriodSelector, OrgActivityCard, DEFAULT_PERIOD_DAYS } from '../components/dashboard';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
 
@@ -33,7 +33,7 @@ async function fetchOrgs(days: number): Promise<{ orgs: OrgSummary[] }> {
 export default function Organizations() {
   const [searchParams, setSearchParams] = useSearchParams();
   const daysParam = searchParams.get('days');
-  const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : 0;
+  const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : DEFAULT_PERIOD_DAYS;
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ['orgs', selectedDays],

@@ -12,6 +12,7 @@ import {
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
 import { PeriodSelector } from '../components/dashboard/PeriodSelector';
+import { DEFAULT_PERIOD_DAYS } from '../components/dashboard/types';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -97,7 +98,7 @@ function getPageRange(current: number, total: number): (number | 'ellipsis')[] {
 }
 
 export default function Contributors() {
-  const [selectedDays, setSelectedDays] = useState(0);
+  const [selectedDays, setSelectedDays] = useState(DEFAULT_PERIOD_DAYS);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['team-members'],
