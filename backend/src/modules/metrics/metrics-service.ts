@@ -65,6 +65,12 @@ export class MetricsService {
     return date.toISOString().split('T')[0];
   }
 
+  // postgres-js may return date columns as Date objects despite Drizzle typing them as string
+  private normalizeDateValue(value: string | unknown): string {
+    if (value instanceof Date) return this.formatDate(value);
+    return String(value);
+  }
+
   /**
    * Build contribution counts from query result
    */
@@ -260,7 +266,7 @@ export class MetricsService {
 
     // Fill in all contributions
     for (const row of allDaily) {
-      const dateStr = row.date as string;
+      const dateStr = this.normalizeDateValue(row.date);
       const daily = dailyMap.get(dateStr);
       if (daily) {
         switch (row.type) {
@@ -275,7 +281,7 @@ export class MetricsService {
 
     // Fill in team contributions
     for (const row of teamDaily) {
-      const dateStr = row.date as string;
+      const dateStr = this.normalizeDateValue(row.date);
       const daily = dailyMap.get(dateStr);
       if (daily) {
         switch (row.type) {
