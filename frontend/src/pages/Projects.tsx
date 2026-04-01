@@ -12,12 +12,15 @@ import {
   ChevronRight,
   LayoutGrid,
   Table2,
+  Plus,
 } from 'lucide-react';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
 import { PeriodSelector } from '../components/dashboard/PeriodSelector';
 import { ProjectCard } from '../components/dashboard/ProjectCards';
 import { DashboardData } from '../components/dashboard/types';
+import { useAuth } from '../context/AuthContext';
+import AddProjectModal from '../components/admin/AddProjectModal';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -162,8 +165,10 @@ function Pagination({ startIdx, pageSize, totalItems, currentPage, totalPages, o
 
 export default function Projects() {
   const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [selectedDays, setSelectedDays] = useState(0);
+  const [addModalOpen, setAddModalOpen] = useState(false);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['projects'],
@@ -283,9 +288,20 @@ export default function Projects() {
   return (
     <div className="bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Tracked upstream repositories</p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Projects</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Tracked upstream repositories</p>
+          </div>
+          {isAdmin && (
+            <button
+              onClick={() => setAddModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Add Project
+            </button>
+          )}
         </div>
 
         {isLoading ? (
@@ -501,6 +517,13 @@ export default function Projects() {
           </>
         )}
       </div>
+
+      {isAdmin && (
+        <AddProjectModal
+          open={addModalOpen}
+          onClose={() => setAddModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

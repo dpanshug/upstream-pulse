@@ -118,16 +118,27 @@ interface GitHubRepo {
   id: number;
   name: string;
   full_name: string;
+  description: string | null;
+  language: string | null;
+  stargazers_count: number;
   created_at: string;
   pushed_at: string;
 }
 
+export interface RepoInfo {
+  name: string;
+  fullName: string;
+  description: string | null;
+  language: string | null;
+  stars: number;
+  createdAt: string;
+}
+
 /**
- * Fetch GitHub repository creation date
- * Returns the date the repo was created (day 0)
- * Does not throw - returns null on failure
+ * Fetch GitHub repository metadata.
+ * Returns structured repo info or null on failure.
  */
-export async function fetchGitHubRepoCreatedAt(owner: string, repo: string): Promise<Date | null> {
+export async function fetchGitHubRepoInfo(owner: string, repo: string): Promise<RepoInfo | null> {
   try {
     const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
       headers: {
@@ -150,10 +161,26 @@ export async function fetchGitHubRepoCreatedAt(owner: string, repo: string): Pro
       return null;
     }
 
-    const repoData = await response.json() as GitHubRepo;
-    return new Date(repoData.created_at);
+    const data = await response.json() as GitHubRepo;
+    return {
+      name: data.name,
+      fullName: data.full_name,
+      description: data.description,
+      language: data.language,
+      stars: data.stargazers_count,
+      createdAt: data.created_at,
+    };
   } catch (error) {
     logger.error(`Error fetching repo info for ${owner}/${repo}:`, { error });
     return null;
   }
+}
+
+/**
+ * Fetch GitHub repository creation date.
+ * Thin wrapper around fetchGitHubRepoInfo for backward compatibility.
+ */
+export async function fetchGitHubRepoCreatedAt(owner: string, repo: string): Promise<Date | null> {
+  const info = await fetchGitHubRepoInfo(owner, repo);
+  return info ? new Date(info.createdAt) : null;
 }

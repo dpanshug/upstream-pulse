@@ -96,6 +96,26 @@ app.get('/api/auth/me', async (request) => ({
 import { metricsRoutes } from './modules/api/routes/metrics.js';
 await app.register(metricsRoutes);
 
+// GitHub repo info (for the Add Project form)
+app.get<{
+  Querystring: { org: string; repo: string };
+}>('/api/github/repo-info', { preHandler: [requireAdmin] }, async (request, reply) => {
+  const { org, repo } = request.query;
+  if (!org || !repo) {
+    reply.status(400);
+    return { error: 'org and repo query params are required' };
+  }
+
+  const { fetchGitHubRepoInfo } = await import('./shared/utils/github.js');
+  const info = await fetchGitHubRepoInfo(org, repo);
+  if (!info) {
+    reply.status(404);
+    return { error: `Repository ${org}/${repo} not found on GitHub` };
+  }
+
+  return info;
+});
+
 // Projects API
 app.get<{
   Querystring: { githubOrg?: string };
@@ -132,104 +152,112 @@ app.post<{
     githubRepo: string;
     ecosystem?: string;
     primaryLanguage?: string;
-    startCollection?: boolean;  // Start collecting immediately
-    fullHistory?: boolean;      // Collect from day 0
+    startCollection?: boolean;
+    fullHistory?: boolean;
   };
 }>('/api/projects', { preHandler: [requireAdmin] }, async (request, reply) => {
+  const { name, githubOrg, githubRepo, ecosystem, primaryLanguage, startCollection, fullHistory } = request.body;
+
+  if (!name || !githubOrg || !githubRepo) {
+    reply.status(400);
+    return { error: 'name, githubOrg, and githubRepo are required' };
+  }
+
+  // Validate repo exists on GitHub and get creation date
+  const { fetchGitHubRepoInfo } = await import('./shared/utils/github.js');
+  const repoInfo = await fetchGitHubRepoInfo(githubOrg, githubRepo);
+
+  if (!repoInfo) {
+    reply.status(404);
+    return { error: `Repository ${githubOrg}/${githubRepo} not found on GitHub` };
+  }
+
+  const repoCreatedAt = new Date(repoInfo.createdAt);
+
+  // ── Step 1: Insert project (must succeed) ──────────────────────
+  let newProject;
   try {
-    const { name, githubOrg, githubRepo, ecosystem, primaryLanguage, startCollection, fullHistory } = request.body;
-
-    if (!name || !githubOrg || !githubRepo) {
-      reply.status(400);
-      return { error: 'name, githubOrg, and githubRepo are required' };
-    }
-
-    // Validate repo exists on GitHub
-    const { fetchGitHubRepoCreatedAt } = await import('./shared/utils/github.js');
-    const repoCreatedAt = await fetchGitHubRepoCreatedAt(githubOrg, githubRepo);
-
-    if (!repoCreatedAt) {
-      reply.status(404);
-      return { error: `Repository ${githubOrg}/${githubRepo} not found on GitHub` };
-    }
-
-    // Insert project
-    const [newProject] = await db.insert(projects).values({
+    [newProject] = await db.insert(projects).values({
       name,
       githubOrg,
       githubRepo,
       ecosystem: ecosystem || 'unknown',
-      primaryLanguage,
+      primaryLanguage: primaryLanguage || repoInfo.language || undefined,
       trackingEnabled: true,
     }).returning();
-
-    logger.info(`Created project: ${name} (${githubOrg}/${githubRepo})`);
-
-    let collectionJob = null;
-    let governanceJob = null;
-    let leadershipJob = null;
-
-    // Import scheduler
-    const { CollectionScheduler } = await import('./jobs/scheduler.js');
-    const scheduler = new CollectionScheduler();
-
-    // Always trigger governance collection for new projects (OWNERS files)
-    governanceJob = await scheduler.triggerProjectGovernance(newProject.id, 'new_project');
-    logger.info(`Started governance collection for ${name}`);
-
-    // Auto-trigger leadership refresh if org has a communityRepo and no leadership data yet
-    const { getOrgConfig } = await import('./shared/config/org-registry.js');
-    const orgCfg = getOrgConfig(githubOrg);
-    if (orgCfg?.communityRepo) {
-      const { leadershipPositions: lpTable } = await import('./shared/database/schema.js');
-      const existingLeadership = await db.query.leadershipPositions.findFirst({
-        where: eq(lpTable.communityOrg, githubOrg),
-      });
-      if (!existingLeadership) {
-        leadershipJob = await scheduler.triggerManualLeadershipRefresh(githubOrg);
-        logger.info(`Auto-triggered leadership refresh for org ${githubOrg}`);
-      }
-    }
-
-    // Optionally start contribution collection
-    if (startCollection) {
-      // For new projects, always collect from repo creation date (sensible default)
-      // There's no existing data, so full history makes sense
-      collectionJob = await scheduler.triggerProjectCollection(newProject.id, repoCreatedAt);
-
-      logger.info(`Started contribution collection for ${name}`, {
-        since: repoCreatedAt.toISOString(),
-      });
-    }
-
-    return {
-      success: true,
-      project: newProject,
-      repoCreatedAt: repoCreatedAt.toISOString(),
-      collection: collectionJob ? {
-        jobId: collectionJob.id,
-        since: fullHistory ? repoCreatedAt.toISOString() : undefined,
-      } : null,
-      governance: {
-        jobId: governanceJob.id,
-      },
-      leadership: leadershipJob ? { jobId: leadershipJob.id } : null,
-    };
   } catch (error) {
-    logger.error('Error creating project', { error });
-
-    // Handle duplicate repo
     if ((error as any).code === '23505') {
       reply.status(409);
       return { error: 'This repository is already being tracked' };
     }
-
+    logger.error('Error inserting project', { error });
     reply.status(500);
-    return {
-      error: 'Failed to create project',
-      message: (error as Error).message,
-    };
+    return { error: 'Failed to create project', message: (error as Error).message };
   }
+
+  logger.info(`Created project: ${name} (${githubOrg}/${githubRepo})`, { id: newProject.id });
+
+  // ── Step 2: Queue background jobs (best-effort) ────────────────
+  const jobs: { governance?: string; leadership?: string; collection?: string } = {};
+  const jobErrors: string[] = [];
+
+  try {
+    const { CollectionScheduler } = await import('./jobs/scheduler.js');
+    const scheduler = new CollectionScheduler();
+
+    // Governance (OWNERS/CODEOWNERS) — always for new projects
+    try {
+      const govJob = await scheduler.triggerProjectGovernance(newProject.id, 'new_project');
+      jobs.governance = govJob.id;
+    } catch (e) {
+      logger.error('Failed to queue governance job', { error: e, projectId: newProject.id });
+      jobErrors.push('governance');
+    }
+
+    // Leadership — if org has a communityRepo and no data yet
+    try {
+      const { getOrgConfig } = await import('./shared/config/org-registry.js');
+      const orgCfg = getOrgConfig(githubOrg);
+      if (orgCfg?.communityRepo) {
+        const { leadershipPositions: lpTable } = await import('./shared/database/schema.js');
+        const existing = await db.query.leadershipPositions.findFirst({
+          where: eq(lpTable.communityOrg, githubOrg),
+        });
+        if (!existing) {
+          const ldJob = await scheduler.triggerManualLeadershipRefresh(githubOrg);
+          jobs.leadership = ldJob.id;
+        }
+      }
+    } catch (e) {
+      logger.error('Failed to queue leadership job', { error: e, githubOrg });
+      jobErrors.push('leadership');
+    }
+
+    // Contribution collection — optional
+    if (startCollection) {
+      try {
+        const colJob = await scheduler.triggerProjectCollection(newProject.id, repoCreatedAt);
+        jobs.collection = colJob.id;
+        logger.info(`Queued contribution collection for ${name}`, { since: repoCreatedAt.toISOString() });
+      } catch (e) {
+        logger.error('Failed to queue collection job', { error: e, projectId: newProject.id });
+        jobErrors.push('collection');
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to initialize scheduler (Redis may be unavailable)', { error });
+    jobErrors.push('scheduler');
+  }
+
+  return {
+    success: true,
+    project: newProject,
+    repoCreatedAt: repoCreatedAt.toISOString(),
+    collection: jobs.collection ? { jobId: jobs.collection, since: fullHistory ? repoCreatedAt.toISOString() : undefined } : null,
+    governance: jobs.governance ? { jobId: jobs.governance } : null,
+    leadership: jobs.leadership ? { jobId: jobs.leadership } : null,
+    jobErrors: jobErrors.length > 0 ? jobErrors : undefined,
+  };
 });
 
 // Team members API

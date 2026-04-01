@@ -7,14 +7,14 @@
     "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
 
     "dev": "npm run dev:kill-pf && npm run dev:infra && concurrently -k -n db,api,ui -c blue,green,magenta \"npm run dev:infra:logs\" \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:cluster": "npm run dev:stop-docker-db && concurrently -k -n pf,api,ui -c blue,green,magenta \"npm run db:port-forward\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:cluster": "npm run dev:stop-docker-db && npm run dev:kill-pf && concurrently -k -n pf-db,pf-redis,api,ui -c blue,cyan,green,magenta \"npm run db:port-forward\" \"npm run redis:port-forward\" \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:infra": "docker compose up -d postgres redis && npm run dev:infra:wait",
     "dev:infra:wait": "until docker compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; do sleep 1; done && echo 'Postgres ready'",
     "dev:infra:logs": "docker compose logs -f postgres redis",
     "dev:stop": "npm run dev:kill-pf; docker compose down",
-    "dev:kill-pf": "pkill -f 'port-forward.*5433' 2>/dev/null; true",
+    "dev:kill-pf": "pkill -f 'port-forward.*5433' 2>/dev/null; pkill -f 'port-forward.*6379' 2>/dev/null; true",
     "dev:stop-docker-db": "docker compose stop postgres 2>/dev/null; true",
 
     "build": "npm run build:backend && npm run build:frontend",
@@ -25,6 +25,7 @@
     "db:studio": "cd backend && npm run db:studio",
     "db:pgadmin": "docker start pgadmin 2>/dev/null || docker run -d --name pgadmin -p 5050:80 -e PGADMIN_DEFAULT_EMAIL=admin@admin.com -e PGADMIN_DEFAULT_PASSWORD=admin dpage/pgadmin4",
     "db:port-forward": "oc -n upstream-pulse port-forward svc/postgres 5433:5432",
+    "redis:port-forward": "oc -n upstream-pulse port-forward svc/redis 6379:6379",
     "db:backup": "mkdir -p backups && docker compose exec -T postgres pg_dump -U postgres upstream_pulse --no-owner --no-privileges | gzip > backups/upstream-pulse-$(date +%Y%m%d-%H%M%S).sql.gz && echo 'Backup saved to backups/'",
     "db:restore": "test -n \"$1\" && gunzip -c $1 | docker compose exec -T postgres psql -U postgres upstream_pulse || echo 'Usage: npm run db:restore -- backups/<file>.sql.gz'",
 

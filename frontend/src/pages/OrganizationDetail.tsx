@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
@@ -9,6 +10,7 @@ import {
   TrendingUp,
   Activity,
   Calendar,
+  Plus,
 } from 'lucide-react';
 
 import {
@@ -23,6 +25,8 @@ import {
 import { Breadcrumb } from '../components/ui/Breadcrumb';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
+import { useAuth } from '../context/AuthContext';
+import AddProjectModal from '../components/admin/AddProjectModal';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -44,7 +48,9 @@ async function fetchOrgName(githubOrg: string): Promise<string> {
 
 export default function OrganizationDetail() {
   const { org } = useParams<{ org: string }>();
+  const { isAdmin } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [addModalOpen, setAddModalOpen] = useState(false);
 
   const daysParam = searchParams.get('days');
   const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : 0;
@@ -113,6 +119,15 @@ export default function OrganizationDetail() {
                   : `${data.summary.periodStart} – ${data.summary.periodEnd}`}
               </span>
             </div>
+            {isAdmin && (
+              <button
+                onClick={() => setAddModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Add Project</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -207,6 +222,14 @@ export default function OrganizationDetail() {
           </div>
         </section>
       </div>
+
+      {isAdmin && (
+        <AddProjectModal
+          open={addModalOpen}
+          onClose={() => setAddModalOpen(false)}
+          prefilledOrg={org}
+        />
+      )}
     </div>
   );
 }
