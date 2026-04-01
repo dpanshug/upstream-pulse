@@ -83,6 +83,9 @@ export class LeadershipCollector {
         } else if (format === 'bullet_list') {
           const positions = await this.parseBulletListFile(fileCfg);
           results.push(...positions);
+        } else if (format === 'rst_sections') {
+          const positions = await this.parseRstSectionsFile(fileCfg);
+          results.push(...positions);
         } else {
           const positions = await this.parseLeadershipMarkdown(fileCfg);
           results.push(...positions);
@@ -476,6 +479,107 @@ export class LeadershipCollector {
     }
 
     return result;
+  }
+
+  // ── RST sections parser ────────────────────────────────────────
+
+  /**
+   * Parse an RST file with hierarchical sections containing bullet-list entries.
+   * Handles PyTorch-style persons_of_interest.rst:
+   *   - RST headings detected via text + underline (=, -, ~)
+   *   - Entries: `-  Name (\`username <https://github.com/user>\`__)`
+   *   - `(emeritus)` prefix marks inactive members
+   *   - Major sections (= or -) determine positionType
+   *   - Sub-sections (~) provide module-level groupName
+   */
+  private async parseRstSectionsFile(fileCfg: LeadershipFileConfig): Promise<LeadershipPosition[]> {
+    const positions: LeadershipPosition[] = [];
+    const sourceUrl = `https://github.com/${this.githubOrg}/${this.communityRepo.repo}/blob/${this.communityRepo.defaultBranch}/${fileCfg.path}`;
+
+    try {
+      const { data } = await this.octokit.rest.repos.getContent({
+        owner: this.githubOrg,
+        repo: this.communityRepo.repo,
+        path: fileCfg.path,
+        ref: this.communityRepo.defaultBranch,
+      });
+
+      if (!('content' in data) || !data.content) return positions;
+
+      const content = Buffer.from(data.content, 'base64').toString('utf-8');
+      const lines = content.split('\n');
+
+      // RST underline chars → heading level (order of first appearance)
+      const underlineCharToLevel = new Map<string, number>();
+      let nextLevel = 1;
+
+      let majorSection = '';   // e.g. "Core Maintainers", "Core Module maintainers"
+      let subSection = '';     // e.g. "NN APIs (torch.nn)", "TorchVision"
+
+      const rstEntryPattern = /^[-*]\s+(.+?)\s+\(`[^<]+<https?:\/\/github\.com\/([^/>]+)\/?\s*>`__\)/;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+
+        // Detect RST heading: current line is text, next line is underline
+        if (i + 1 < lines.length && trimmed.length > 0) {
+          const nextLine = lines[i + 1].trim();
+          const underlineMatch = nextLine.match(/^([=\-~^+]{2,})\s*$/);
+          if (underlineMatch && underlineMatch[1].length >= trimmed.length) {
+            const underChar = underlineMatch[1][0];
+            if (!underlineCharToLevel.has(underChar)) {
+              underlineCharToLevel.set(underChar, nextLevel++);
+            }
+            const level = underlineCharToLevel.get(underChar)!;
+
+            if (level <= 2) {
+              majorSection = trimmed;
+              subSection = '';
+            } else {
+              subSection = trimmed;
+            }
+            i++; // skip the underline row
+            continue;
+          }
+        }
+
+        // Parse bullet entries with RST link syntax
+        const match = trimmed.match(rstEntryPattern);
+        if (!match) continue;
+
+        const rawName = match[1];
+        const githubUsername = match[2];
+        const isEmeritus = rawName.startsWith('(emeritus)');
+        const name = rawName.replace(/^\(emeritus\)\s*/, '').trim();
+
+        const groupName = subSection || majorSection || fileCfg.groupName;
+        const positionType = fileCfg.positionType || this.deriveRstPositionType(majorSection);
+
+        positions.push({
+          githubUsername,
+          name,
+          positionType,
+          groupName,
+          sourceUrl,
+          isActive: !isEmeritus,
+        });
+      }
+
+      logger.info(`Parsed ${positions.length} RST leadership positions from ${fileCfg.path}`);
+    } catch (error) {
+      logger.error(`Failed to parse RST file ${fileCfg.path}`, { error });
+    }
+
+    return positions;
+  }
+
+  /** Derive a positionType from an RST section heading. */
+  private deriveRstPositionType(sectionHeading: string): string {
+    const lower = sectionHeading.toLowerCase();
+    if (lower.includes('lead core maintainer') || lower.includes('bdfl')) return 'lead_core_maintainer';
+    if (lower.includes('core maintainer') && !lower.includes('module')) return 'core_maintainer';
+    return 'module_maintainer';
   }
 
   // ── Convenience: unique leaders map ─────────────────────────────

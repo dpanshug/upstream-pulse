@@ -23,8 +23,9 @@ export interface LeadershipFileConfig {
    * - 'table': standard markdown table (Name, GitHub ID, Role columns)
    * - 'sig_sections': markdown with ### SIG {Name} sections and > Leadership: [Name](url) blockquotes
    * - 'bullet_list': markdown bullet list with `- [Name](https://github.com/username)` entries
+   * - 'rst_sections': RST file with underline headings and `-  Name (\`user <github_url>\`__)` entries
    */
-  format?: 'table' | 'sig_sections' | 'bullet_list';
+  format?: 'table' | 'sig_sections' | 'bullet_list' | 'rst_sections';
   /**
    * Optional heading to scope parsing to a specific section.
    * Only content under this heading (until the next heading of equal or higher level) is parsed.
@@ -287,6 +288,24 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     name: 'Seldon',
     githubOrg: 'SeldonIO',
     governanceModel: 'none',
+  },
+
+  // ─── PyTorch ──────────────────────────────────
+  {
+    name: 'PyTorch',
+    githubOrg: 'pytorch',
+    communityRepo: {
+      repo: 'pytorch',
+      defaultBranch: 'main',
+      leadershipFiles: [
+        {
+          path: 'docs/source/community/persons_of_interest.rst',
+          groupName: 'PyTorch',
+          format: 'rst_sections',
+        },
+      ],
+    },
+    governanceModel: 'codeowners',
   },
 ];
 

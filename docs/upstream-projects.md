@@ -2,7 +2,7 @@
 
 Upstream Pulse provides contribution tracking and governance insights for the following upstream open-source organizations and projects. This document lists what is currently supported and what is planned next, organized by upstream organization.
 
-**Last updated**: 2026-03-12
+**Last updated**: 2026-04-01
 
 ---
 
@@ -209,6 +209,18 @@ Container tooling ecosystem — Podman, RamaLama, AI Lab Recipes, OLOT. Mixed go
 
 ---
 
+### PyTorch (`pytorch/*`)
+
+Meta's open-source deep learning framework. Tracking for emerging team contributions.
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| `pytorch/pytorch` | Tensors and dynamic neural networks with GPU acceleration | **Tracked** |
+
+**Governance**: Uses GitHub CODEOWNERS (~150 owner entries). Leadership data sourced from `pytorch/pytorch` `persons_of_interest.rst` (BDFL, core maintainers, module maintainers across 25+ modules). Meta-led open-source project.
+
+---
+
 ## Planned Additions
 
 ### OpenVINO (`openvinotoolkit/*`)
@@ -272,10 +284,11 @@ Additional upstream projects across various organizations.
 | **Argo** | 2 | 2 tracked |
 | **NVIDIA** | 4 | 4 tracked |
 | **Containers** | 5 | 5 tracked |
+| **PyTorch** | 1 | 1 tracked |
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
 | **Individual repos** | 6 | Planned |
-| **Total** | **71** | 56 tracked, 15 planned |
+| **Total** | **72** | 57 tracked, 15 planned |
 
 ---
 
