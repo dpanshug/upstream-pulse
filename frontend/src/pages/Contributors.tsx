@@ -13,8 +13,7 @@ import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
 import { PeriodSelector } from '../components/dashboard/PeriodSelector';
 import { DEFAULT_PERIOD_DAYS } from '../components/dashboard/types';
-
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+import { apiFetch } from '../lib/api';
 
 interface TeamMember {
   id: string;
@@ -47,7 +46,7 @@ const COLUMNS: { label: string; field: SortField }[] = [
 ];
 
 async function fetchTeamMembers() {
-  const res = await fetch(`${API_URL}/api/team-members`);
+  const res = await apiFetch('/api/team-members');
   if (!res.ok) throw new Error('Failed to fetch team members');
   return res.json();
 }
@@ -66,7 +65,7 @@ interface ContributorMetric {
 }
 
 async function fetchContributors(days: number) {
-  const res = await fetch(`${API_URL}/api/metrics/contributors?days=${days}&limit=1000`);
+  const res = await apiFetch(`/api/metrics/contributors?days=${days}&limit=1000`);
   if (!res.ok) throw new Error('Failed to fetch contribution data');
   return res.json() as Promise<{ contributors: ContributorMetric[]; count: number; days: number }>;
 }

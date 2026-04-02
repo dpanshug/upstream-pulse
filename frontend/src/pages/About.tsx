@@ -21,8 +21,7 @@ import {
   UserCog,
 } from 'lucide-react';
 import { PageLoading } from '../components/common/PageLoading';
-
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+import { apiFetch } from '../lib/api';
 
 interface AppConfig {
   orgName: string;
@@ -34,7 +33,7 @@ interface AppConfig {
 }
 
 async function fetchConfig(): Promise<AppConfig> {
-  const res = await fetch(`${API_URL}/api/config`);
+  const res = await apiFetch('/api/config');
   if (!res.ok) throw new Error('Failed to fetch config');
   return res.json();
 }

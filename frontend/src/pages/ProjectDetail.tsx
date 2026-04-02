@@ -25,19 +25,18 @@ import {
 import { Breadcrumb } from '../components/ui/Breadcrumb';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
-
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+import { apiFetch } from '../lib/api';
 
 async function fetchProjectDashboard(projectId: string, days: number): Promise<DashboardData> {
-  const res = await fetch(
-    `${API_URL}/api/metrics/dashboard?days=${days}&projectId=${projectId}`
+  const res = await apiFetch(
+    `/api/metrics/dashboard?days=${days}&projectId=${projectId}`
   );
   if (!res.ok) throw new Error('Failed to fetch project dashboard');
   return res.json();
 }
 
 async function fetchProjectInfo(projectId: string) {
-  const res = await fetch(`${API_URL}/api/projects`);
+  const res = await apiFetch('/api/projects');
   if (!res.ok) throw new Error('Failed to fetch projects');
   const data = await res.json();
   return data.projects?.find((p: any) => p.id === projectId) ?? null;

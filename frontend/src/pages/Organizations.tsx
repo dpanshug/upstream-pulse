@@ -4,8 +4,7 @@ import { Building2 } from 'lucide-react';
 import { PeriodSelector, OrgActivityCard, DEFAULT_PERIOD_DAYS } from '../components/dashboard';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
-
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+import { apiFetch } from '../lib/api';
 
 interface OrgSummary {
   name: string;
@@ -25,7 +24,7 @@ interface OrgSummary {
 }
 
 async function fetchOrgs(days: number): Promise<{ orgs: OrgSummary[] }> {
-  const res = await fetch(`${API_URL}/api/orgs?days=${days}`);
+  const res = await apiFetch(`/api/orgs?days=${days}`);
   if (!res.ok) throw new Error('Failed to fetch organizations');
   return res.json();
 }

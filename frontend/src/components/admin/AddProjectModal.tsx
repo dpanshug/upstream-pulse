@@ -19,7 +19,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+import { apiFetch } from '../../lib/api';
 
 interface Org {
   name: string;
@@ -60,7 +60,7 @@ type RepoLookup =
   | { status: 'error' };
 
 async function fetchOrgs(): Promise<Org[]> {
-  const res = await fetch(`${API_URL}/api/orgs?days=0`);
+  const res = await apiFetch('/api/orgs?days=0');
   if (!res.ok) throw new Error('Failed to fetch organizations');
   const data = await res.json();
   return data.orgs ?? [];
@@ -375,7 +375,7 @@ export default function AddProjectModal({ open, onClose, prefilledOrg }: AddProj
 
     lookupTimer.current = setTimeout(async () => {
       try {
-        const res = await fetch(`${API_URL}/api/github/repo-info?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}`);
+        const res = await apiFetch(`/api/github/repo-info?org=${encodeURIComponent(org)}&repo=${encodeURIComponent(repo)}`);
         if (res.ok) {
           const info: RepoInfo = await res.json();
           setRepoLookup({ status: 'found', info });
@@ -425,7 +425,7 @@ export default function AddProjectModal({ open, onClose, prefilledOrg }: AddProj
     setSubmitState({ status: 'submitting' });
 
     try {
-      const res = await fetch(`${API_URL}/api/projects`, {
+      const res = await apiFetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

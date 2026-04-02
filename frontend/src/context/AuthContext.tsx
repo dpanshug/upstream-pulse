@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { apiFetch } from '../lib/api';
 
 interface UserIdentity {
   username: string;
@@ -19,14 +20,12 @@ const AuthContext = createContext<AuthState>({
   isAdmin: false,
 });
 
-const API_URL = import.meta.env.VITE_API_URL ?? '';
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserIdentity | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${API_URL}/api/auth/me`)
+    apiFetch('/api/auth/me')
       .then(res => (res.ok ? res.json() : null))
       .then((data: UserIdentity | null) => setUser(data))
       .catch(() => setUser(null))

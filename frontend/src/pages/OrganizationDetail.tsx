@@ -28,19 +28,18 @@ import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
 import { useAuth } from '../context/AuthContext';
 import AddProjectModal from '../components/admin/AddProjectModal';
-
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+import { apiFetch } from '../lib/api';
 
 async function fetchOrgDashboard(githubOrg: string, days: number): Promise<DashboardData> {
-  const res = await fetch(
-    `${API_URL}/api/metrics/dashboard?days=${days}&githubOrg=${githubOrg}`
+  const res = await apiFetch(
+    `/api/metrics/dashboard?days=${days}&githubOrg=${githubOrg}`
   );
   if (!res.ok) throw new Error('Failed to fetch organization data');
   return res.json();
 }
 
 async function fetchOrgName(githubOrg: string): Promise<string> {
-  const res = await fetch(`${API_URL}/api/orgs`);
+  const res = await apiFetch('/api/orgs');
   if (!res.ok) return githubOrg;
   const data = await res.json();
   const match = data.orgs?.find((o: any) => o.githubOrg === githubOrg);

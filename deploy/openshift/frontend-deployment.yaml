@@ -72,6 +72,8 @@ spec:
             - --tls-key=/etc/tls/private/tls.key
             - --cookie-secret-file=/etc/proxy/secrets/session_secret
             - --cookie-secure=true
+            - --cookie-expire=24h
+            - --cookie-refresh=4h
             - --email-domain=*
             - --pass-access-token=false
             - --pass-user-headers=true

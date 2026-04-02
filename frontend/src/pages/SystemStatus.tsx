@@ -21,8 +21,7 @@ import {
 } from 'lucide-react';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
-
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+import { apiFetch } from '../lib/api';
 
 interface QueueStats {
   waiting: number;
@@ -81,7 +80,7 @@ interface SystemStatusData {
 }
 
 async function fetchSystemStatus(): Promise<SystemStatusData> {
-  const res = await fetch(`${API_URL}/api/system/status`);
+  const res = await apiFetch('/api/system/status');
   if (!res.ok) throw new Error('Failed to fetch system status');
   return res.json();
 }

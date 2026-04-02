@@ -21,8 +21,7 @@ import { ProjectCard } from '../components/dashboard/ProjectCards';
 import { DashboardData, DEFAULT_PERIOD_DAYS } from '../components/dashboard/types';
 import { useAuth } from '../context/AuthContext';
 import AddProjectModal from '../components/admin/AddProjectModal';
-
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+import { apiFetch } from '../lib/api';
 
 interface Project {
   id: string;
@@ -52,13 +51,13 @@ const COLUMNS: { label: string; field: SortField }[] = [
 ];
 
 async function fetchProjects() {
-  const res = await fetch(`${API_URL}/api/projects`);
+  const res = await apiFetch('/api/projects');
   if (!res.ok) throw new Error('Failed to fetch projects');
   return res.json();
 }
 
 async function fetchDashboard(days: number): Promise<DashboardData> {
-  const res = await fetch(`${API_URL}/api/metrics/dashboard?days=${days}`);
+  const res = await apiFetch(`/api/metrics/dashboard?days=${days}`);
   if (!res.ok) throw new Error('Failed to fetch project metrics');
   return res.json();
 }

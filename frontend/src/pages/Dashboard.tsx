@@ -23,11 +23,10 @@ import {
 } from '../components/dashboard';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
-
-const API_URL = import.meta.env.VITE_API_URL ?? '';
+import { apiFetch } from '../lib/api';
 
 async function fetchDashboard(days: number): Promise<DashboardData> {
-  const res = await fetch(`${API_URL}/api/metrics/dashboard?days=${days}`);
+  const res = await apiFetch(`/api/metrics/dashboard?days=${days}`);
   if (!res.ok) throw new Error('Failed to fetch dashboard');
   return res.json();
 }
@@ -58,7 +57,7 @@ export default function Dashboard() {
       <PageError
         title="Error Loading Dashboard"
         message={(error as Error).message}
-        hint={`Make sure the backend server is running on ${API_URL || 'the configured host'}`}
+        hint="Make sure the backend server is running on the configured host"
         onRetry={() => refetch()}
       />
     );
