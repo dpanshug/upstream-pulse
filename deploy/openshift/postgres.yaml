@@ -45,7 +45,8 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/postgres:16-alpine
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5432
               protocol: TCP

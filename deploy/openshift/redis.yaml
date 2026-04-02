@@ -45,7 +45,8 @@ spec:
     spec:
       containers:
         - name: redis
-          image: redis:7-alpine
+          image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/redis:7-alpine
+          imagePullPolicy: IfNotPresent
           args:
             - redis-server
             - --appendonly
