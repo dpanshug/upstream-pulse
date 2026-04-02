@@ -24,8 +24,8 @@
     "db:migrate": "cd backend && npm run db:migrate",
     "db:studio": "cd backend && npm run db:studio",
     "db:pgadmin": "docker start pgadmin 2>/dev/null || docker run -d --name pgadmin -p 5050:80 -e PGADMIN_DEFAULT_EMAIL=admin@admin.com -e PGADMIN_DEFAULT_PASSWORD=admin dpage/pgadmin4",
-    "db:port-forward": "oc -n upstream-pulse port-forward svc/postgres 5433:5432",
-    "redis:port-forward": "oc -n upstream-pulse port-forward svc/redis 6379:6379",
+    "db:port-forward": "set -a; [ -f .env ] && . .env; set +a; oc -n ${OC_NAMESPACE:-upstream-pulse} port-forward svc/postgres 5433:5432",
+    "redis:port-forward": "set -a; [ -f .env ] && . .env; set +a; oc -n ${OC_NAMESPACE:-upstream-pulse} port-forward svc/redis 6379:6379",
     "db:backup": "mkdir -p backups && docker compose exec -T postgres pg_dump -U postgres upstream_pulse --no-owner --no-privileges | gzip > backups/upstream-pulse-$(date +%Y%m%d-%H%M%S).sql.gz && echo 'Backup saved to backups/'",
     "db:restore": "test -n \"$1\" && gunzip -c $1 | docker compose exec -T postgres psql -U postgres upstream_pulse || echo 'Usage: npm run db:restore -- backups/<file>.sql.gz'",
 
