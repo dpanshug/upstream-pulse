@@ -206,6 +206,7 @@ export interface LeadershipSummaryResponse {
     teamRootReviewers: number;
     teamComponentApprovers: number;
     teamComponentReviewers: number;
+    governanceByType?: Array<{ positionType: string; label: string; team: number; total: number; teamRoot: number; teamComponent: number }>;
   };
   teamLeaders: Array<{
     id: string;
