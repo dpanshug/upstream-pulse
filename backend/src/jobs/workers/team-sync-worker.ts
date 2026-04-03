@@ -2,8 +2,8 @@
  * Team Sync Worker
  *
  * Syncs team members from a GitHub organization into the local database.
- * Handles: adding new members, deactivating departed members, updating
- * renamed usernames, and reactivating returning members.
+ * Supports multiple orgs — each member is tagged with a `sourceOrg` so
+ * deactivation is scoped per-org and syncing org B won't deactivate org A's members.
  *
  * Only manages records with source='github_org_sync' -- manually-added
  * members are never touched by the deactivation logic.
@@ -95,6 +95,8 @@ export const teamSyncWorker = new Worker<TeamSyncJobData>(
         }
       }
 
+      logger.info(`Syncing ${orgMembers.length} members from org ${org} against ${existingMembers.length} existing records`);
+
       // --- Phase 1: Upsert org members ---
       for (const orgMember of orgMembers) {
         try {
@@ -127,6 +129,13 @@ export const teamSyncWorker = new Worker<TeamSyncJobData>(
               updates.source = 'github_org_sync';
             }
 
+            // Set sourceOrg for records that don't have one yet (backfill).
+            // Don't overwrite if already set — the original org "owns" the member
+            // for deactivation purposes; other orgs still keep them active.
+            if (!existing.sourceOrg) {
+              updates.sourceOrg = org;
+            }
+
             if (Object.keys(updates).length > 0) {
               updates.updatedAt = new Date();
               await db.update(teamMembers).set(updates).where(eq(teamMembers.id, existing.id));
@@ -147,6 +156,7 @@ export const teamSyncWorker = new Worker<TeamSyncJobData>(
               role: null,
               isActive: true,
               source: 'github_org_sync',
+              sourceOrg: org,
             });
 
             stats.added++;
@@ -161,9 +171,9 @@ export const teamSyncWorker = new Worker<TeamSyncJobData>(
         }
       }
 
-      // --- Phase 2: Deactivate departed members (only github_org_sync sourced) ---
+      // --- Phase 2: Deactivate departed members (scoped to this org only) ---
       const syncedMembers = existingMembers.filter(
-        m => m.source === 'github_org_sync' && m.isActive && m.githubUserId
+        m => m.source === 'github_org_sync' && m.sourceOrg === org && m.isActive && m.githubUserId
       );
 
       for (const member of syncedMembers) {

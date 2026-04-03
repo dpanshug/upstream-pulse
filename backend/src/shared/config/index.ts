@@ -25,7 +25,11 @@ export const config = {
 
   // GitHub org team sync (personal PAT with read:org)
   githubTeamToken: process.env.GITHUB_TEAM_TOKEN || process.env.GITHUB_TOKEN || '',
-  githubTeamOrg: process.env.GITHUB_TEAM_ORG || 'opendatahub-io',
+  // Comma-separated list of GitHub orgs to sync team members from
+  githubTeamOrgs: (process.env.GITHUB_TEAM_ORG || 'opendatahub-io')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean),
 
   // Insight generation (Google Gemini)
   googleAIApiKey: process.env.GOOGLE_AI_API_KEY || '',

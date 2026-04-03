@@ -149,11 +149,12 @@ One job is dispatched per org that has a `communityRepo` configured.
 **File:** `workers/team-sync-worker.ts`
 
 **What it does:**
-1. Lists members of the GitHub organization (configured via `GITHUB_TEAM_ORG`)
+1. Lists members of each GitHub organization (configured via `GITHUB_TEAM_ORG`, comma-separated)
 2. Creates or updates team member records with GitHub username and user ID
-3. Marks source as `'github_org_sync'` to distinguish from manually added members
+3. Marks source as `'github_org_sync'` and tags each member with `source_org` to scope deactivation per-org
+4. Deactivation only affects members from the org being synced — other orgs' members are untouched
 
-Uses `GITHUB_TEAM_TOKEN` (separate PAT with `read:org` scope) to access org membership.
+Uses `GITHUB_TEAM_TOKEN` (separate PAT with `read:org` scope) to access org membership. One job is queued per configured org.
 
 ### Startup Cleanup
 
@@ -322,5 +323,5 @@ The collector tracks rate limits from response headers. When remaining calls dro
 | `REDIS_URL` | Yes | Redis connection URL |
 | `GITHUB_TOKEN` | Yes | GitHub PAT for collection, governance, and leadership |
 | `GITHUB_TEAM_TOKEN` | For team sync | Separate PAT with `read:org` scope (falls back to `GITHUB_TOKEN`) |
-| `GITHUB_TEAM_ORG` | For team sync | GitHub org to sync members from |
+| `GITHUB_TEAM_ORG` | For team sync | Comma-separated GitHub org(s) to sync members from |
 | `DATABASE_URL` | Yes | PostgreSQL connection URL |

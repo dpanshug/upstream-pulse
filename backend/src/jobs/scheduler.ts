@@ -451,26 +451,35 @@ export class CollectionScheduler {
   }
 
   /**
-   * Trigger team member sync from GitHub org
+   * Trigger team member sync from all configured GitHub orgs.
+   * Queues one job per org so deactivation logic stays scoped correctly.
+   * When `orgFilter` is provided, only that single org is synced.
    */
-  async triggerTeamSync(trigger: 'scheduled' | 'manual' = 'scheduled') {
-    logger.info('Triggering team sync from GitHub org');
+  async triggerTeamSync(trigger: 'scheduled' | 'manual' = 'scheduled', orgFilter?: string) {
+    const orgs = orgFilter
+      ? [orgFilter]
+      : config.githubTeamOrgs;
 
-    const job = await teamSyncQueue.add(
-      `team-sync-${trigger}`,
-      {
-        trigger,
-        org: config.githubTeamOrg,
-      },
-      {
-        priority: trigger === 'manual' ? 0 : 1,
-        jobId: `team-sync-${Date.now()}`,
-      }
-    );
+    logger.info(`Triggering team sync for ${orgs.length} org(s)`, { orgs, trigger });
 
-    logger.info('Team sync job queued', { jobId: job.id });
+    const jobs = [];
+    for (const org of orgs) {
+      const job = await teamSyncQueue.add(
+        `team-sync-${trigger}-${org}`,
+        {
+          trigger,
+          org,
+        },
+        {
+          priority: trigger === 'manual' ? 0 : 1,
+          jobId: `team-sync-${org}-${Date.now()}`,
+        }
+      );
+      jobs.push(job);
+      logger.info('Team sync job queued', { jobId: job.id, org });
+    }
 
-    return job;
+    return jobs;
   }
 
   /**

@@ -475,20 +475,33 @@ app.post<{
   }
 });
 
-// Manual team sync from GitHub org
-app.post('/api/admin/team-sync', { preHandler: [requireAdmin] }, async (request, reply) => {
+// Manual team sync from GitHub org(s)
+app.post<{
+  Querystring: { org?: string };
+}>('/api/admin/team-sync', { preHandler: [requireAdmin] }, async (request, reply) => {
   try {
     const { CollectionScheduler } = await import('./jobs/scheduler.js');
     const scheduler = new CollectionScheduler();
 
-    const job = await scheduler.triggerTeamSync('manual');
-    const message = `Team sync queued for GitHub org: ${config.githubTeamOrg}`;
+    const orgFilter = (request.query as { org?: string }).org;
+
+    if (orgFilter && !config.githubTeamOrgs.includes(orgFilter)) {
+      reply.status(400);
+      return {
+        error: `Org "${orgFilter}" is not in the configured GITHUB_TEAM_ORG list`,
+        configuredOrgs: config.githubTeamOrgs,
+      };
+    }
+
+    const jobs = await scheduler.triggerTeamSync('manual', orgFilter);
+    const orgs = orgFilter ? [orgFilter] : config.githubTeamOrgs;
+    const message = `Team sync queued for ${orgs.length} org(s): ${orgs.join(', ')}`;
     logger.info(message);
 
     return {
       success: true,
-      jobId: job.id,
-      org: config.githubTeamOrg,
+      jobs: jobs.map(j => ({ jobId: j.id, org: j.data.org })),
+      orgs,
       message,
     };
   } catch (error) {
@@ -600,7 +613,7 @@ app.get('/api/system/status', async (request, reply) => {
       {
         id: 'team-sync',
         name: 'Team Synchronizer',
-        description: 'Syncs team members from the GitHub organization',
+        description: `Syncs team members from GitHub org(s): ${config.githubTeamOrgs.join(', ')}`,
         schedule: { cron: '0 1 * * 1', human: 'Weekly on Mondays at 1:00 AM UTC', nextRun: nextCronRun('0 1 * * 1') },
         queue: teamSyncStats,
         lastSuccess: lastSuccessful['team_sync']?.completedAt || null,

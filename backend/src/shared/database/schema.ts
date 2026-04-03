@@ -32,6 +32,7 @@ export const teamMembers = pgTable('team_members', {
   endDate: date('end_date'),
   isActive: boolean('is_active').default(true),
   source: varchar('source', { length: 50 }).default('manual'), // 'manual' | 'github_org_sync'
+  sourceOrg: varchar('source_org', { length: 255 }), // GitHub org slug when source='github_org_sync'
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
