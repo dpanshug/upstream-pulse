@@ -17,6 +17,9 @@
     "dev:kill-pf": "pkill -f 'port-forward.*5433' 2>/dev/null; pkill -f 'port-forward.*6379' 2>/dev/null; true",
     "dev:stop-docker-db": "docker compose stop postgres 2>/dev/null; true",
 
+    "test": "cd backend && npm test",
+    "test:watch": "cd backend && npm run test:watch",
+
     "build": "npm run build:backend && npm run build:frontend",
     "build:backend": "cd backend && npm run build",
     "build:frontend": "cd frontend && npm run build",
