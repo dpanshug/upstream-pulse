@@ -839,8 +839,39 @@ export class MetricsService {
 
     logger.info('Building dashboard', { days, projectId, githubOrg, start: startStr, end: endStr });
 
-    const breakdown = await this.getContributionBreakdown(queryOptions);
-    
+    const projectCountConditions = [eq(projects.trackingEnabled, true)];
+    if (githubOrg) {
+      projectCountConditions.push(eq(projects.githubOrg, githubOrg));
+    }
+
+    let projectRepoPromise: Promise<string | undefined> = Promise.resolve(undefined);
+    if (projectId) {
+      projectRepoPromise = db.query.projects.findFirst({
+        columns: { githubRepo: true },
+        where: eq(projects.id, projectId),
+      }).then(p => p?.githubRepo);
+    }
+
+    const [
+      breakdown,
+      contributionsTrend,
+      contributorsTrend,
+      projectCountResult,
+      activeContributors,
+      topContributorsRaw,
+      dailyRaw,
+      projectRepo,
+    ] = await Promise.all([
+      this.getContributionBreakdown(queryOptions),
+      this.getContributionTrend(queryOptions),
+      this.getActiveContributorTrend(queryOptions),
+      db.select({ count: count() }).from(projects).where(and(...projectCountConditions)),
+      this.getActiveContributorCount(queryOptions),
+      this.getTopContributors({ ...queryOptions, topN: 50 }),
+      this.getDailyTrend(queryOptions),
+      projectRepoPromise,
+    ]);
+
     const contributionsByType: ContributionsByType = {
       commits: this.buildTypeMetric(breakdown.all.commits, breakdown.team.commits),
       pullRequests: this.buildTypeMetric(breakdown.all.prs, breakdown.team.prs),
@@ -849,21 +880,6 @@ export class MetricsService {
       all: this.buildTypeMetric(breakdown.all.total, breakdown.team.total),
     };
 
-    const [contributionsTrend, contributorsTrend] = await Promise.all([
-      this.getContributionTrend(queryOptions),
-      this.getActiveContributorTrend(queryOptions),
-    ]);
-
-    const projectCountConditions = [eq(projects.trackingEnabled, true)];
-    if (githubOrg) {
-      projectCountConditions.push(eq(projects.githubOrg, githubOrg));
-    }
-    const [projectCountResult, activeContributors] = await Promise.all([
-      db.select({ count: count() }).from(projects).where(and(...projectCountConditions)),
-      this.getActiveContributorCount(queryOptions),
-    ]);
-
-    const topContributorsRaw = await this.getTopContributors({ ...queryOptions, topN: 50 });
     const topContributors: ContributorRanking[] = topContributorsRaw.map((c, idx) => ({
       rank: idx + 1,
       id: c.id,
@@ -879,7 +895,6 @@ export class MetricsService {
       total: c.contributions.total,
     }));
 
-    // Only fetch per-project breakdown when viewing all projects
     let topProjects: ProjectMetric[] = [];
     if (!projectId) {
       const topProjectsConditions = [eq(projects.trackingEnabled, true)];
@@ -896,38 +911,38 @@ export class MetricsService {
         .from(projects)
         .where(and(...topProjectsConditions));
 
-      topProjects = await Promise.all(
-        topProjectsRaw.map(async (p) => {
-          const projBreakdown = await this.getContributionBreakdown({ 
-            projectId: p.id, 
-            days,
-          });
-          const projActiveContributors = await this.getActiveContributorCount({
-            projectId: p.id,
-            days,
-          });
+      const BATCH_SIZE = 5;
+      const projectResults: ProjectMetric[] = [];
+      for (let i = 0; i < topProjectsRaw.length; i += BATCH_SIZE) {
+        const batch = topProjectsRaw.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(
+          batch.map(async (p) => {
+            const [projBreakdown, projActiveContributors] = await Promise.all([
+              this.getContributionBreakdown({ projectId: p.id, days }),
+              this.getActiveContributorCount({ projectId: p.id, days }),
+            ]);
+            return {
+              id: p.id,
+              name: p.name,
+              githubOrg: p.githubOrg,
+              githubRepo: p.githubRepo,
+              contributions: {
+                commits: this.buildTypeMetric(projBreakdown.all.commits, projBreakdown.team.commits),
+                pullRequests: this.buildTypeMetric(projBreakdown.all.prs, projBreakdown.team.prs),
+                reviews: this.buildTypeMetric(projBreakdown.all.reviews, projBreakdown.team.reviews),
+                issues: this.buildTypeMetric(projBreakdown.all.issues, projBreakdown.team.issues),
+                all: this.buildTypeMetric(projBreakdown.all.total, projBreakdown.team.total),
+              },
+              activeContributors: projActiveContributors,
+            };
+          })
+        );
+        projectResults.push(...batchResults);
+      }
 
-          return {
-            id: p.id,
-            name: p.name,
-            githubOrg: p.githubOrg,
-            githubRepo: p.githubRepo,
-            contributions: {
-              commits: this.buildTypeMetric(projBreakdown.all.commits, projBreakdown.team.commits),
-              pullRequests: this.buildTypeMetric(projBreakdown.all.prs, projBreakdown.team.prs),
-              reviews: this.buildTypeMetric(projBreakdown.all.reviews, projBreakdown.team.reviews),
-              issues: this.buildTypeMetric(projBreakdown.all.issues, projBreakdown.team.issues),
-              all: this.buildTypeMetric(projBreakdown.all.total, projBreakdown.team.total),
-            },
-            activeContributors: projActiveContributors,
-          };
-        })
-      );
-
-      topProjects.sort((a, b) => b.contributions.all.team - a.contributions.all.team);
+      topProjects = projectResults.sort((a, b) => b.contributions.all.team - a.contributions.all.team);
     }
 
-    const dailyRaw = await this.getDailyTrend(queryOptions);
     const dailyBreakdown: DailyDataPoint[] = dailyRaw.map(d => ({
       date: d.date,
       commits: { total: d.all.commits, team: d.team.commits },
@@ -936,14 +951,6 @@ export class MetricsService {
       issues: { total: d.all.issues, team: d.team.issues },
     }));
 
-    let projectRepo: string | undefined;
-    if (projectId) {
-      const proj = await db.query.projects.findFirst({
-        columns: { githubRepo: true },
-        where: eq(projects.id, projectId),
-      });
-      projectRepo = proj?.githubRepo;
-    }
     const [leadershipData, orgActivity] = await Promise.all([
       this.getLeadershipSummary(projectId, projectRepo, githubOrg),
       !projectId && !githubOrg

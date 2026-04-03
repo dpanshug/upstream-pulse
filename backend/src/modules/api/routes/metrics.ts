@@ -5,12 +5,20 @@ import { db } from '../../../shared/database/client.js';
 import { maintainerStatus, teamMembers, projects } from '../../../shared/database/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 
+const DASHBOARD_CACHE_TTL = 5 * 60 * 1000;
+const dashboardCache = new Map<string, { data: unknown; ts: number }>();
+
+function dashboardCacheKey(days: number, projectId?: string, githubOrg?: string): string {
+  return `dashboard:${days}:${projectId || ''}:${githubOrg || ''}`;
+}
+
 export async function metricsRoutes(app: FastifyInstance) {
 
   /**
    * GET /api/metrics/dashboard
    * 
    * Main dashboard endpoint - returns all metrics in a clear, organized structure.
+   * Responses are cached in Redis for 5 minutes.
    * Query params:
    *   - days: number of days to analyze (default: 30)
    *   - projectId: filter by project (optional)
@@ -21,7 +29,23 @@ export async function metricsRoutes(app: FastifyInstance) {
     try {
       const days = parseInt(request.query.days || '30', 10);
       const { projectId, githubOrg } = request.query;
+      const cacheKey = dashboardCacheKey(days, projectId, githubOrg);
+
+      const cached = dashboardCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < DASHBOARD_CACHE_TTL) {
+        reply.header('x-cache', 'hit');
+        return cached.data;
+      }
+
       const dashboard = await metricsService.getDashboard({ days, projectId, githubOrg });
+
+      dashboardCache.set(cacheKey, { data: dashboard, ts: Date.now() });
+      if (dashboardCache.size > 50) {
+        const oldest = [...dashboardCache.entries()].sort((a, b) => a[1].ts - b[1].ts);
+        for (let i = 0; i < 10; i++) dashboardCache.delete(oldest[i][0]);
+      }
+
+      reply.header('x-cache', 'miss');
       return dashboard;
     } catch (error) {
       logger.error('Error fetching dashboard', { error });
