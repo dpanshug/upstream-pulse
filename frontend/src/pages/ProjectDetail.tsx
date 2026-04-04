@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
   GitCommit,
@@ -23,8 +23,13 @@ import {
   PeriodSummary,
 } from '../components/dashboard';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
-import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
+import {
+  StatCardSkeleton,
+  ContributionCardSkeleton,
+  ContributorRowSkeleton,
+  Skeleton,
+} from '../components/common/Skeleton';
 import { apiFetch } from '../lib/api';
 
 async function fetchProjectDashboard(projectId: string, days: number): Promise<DashboardData> {
@@ -35,15 +40,9 @@ async function fetchProjectDashboard(projectId: string, days: number): Promise<D
   return res.json();
 }
 
-async function fetchProjectInfo(projectId: string) {
-  const res = await apiFetch('/api/projects');
-  if (!res.ok) throw new Error('Failed to fetch projects');
-  const data = await res.json();
-  return data.projects?.find((p: any) => p.id === projectId) ?? null;
-}
-
 export default function ProjectDetail() {
   const { projectId, org } = useParams<{ projectId: string; org?: string }>();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const daysParam = searchParams.get('days');
@@ -51,8 +50,16 @@ export default function ProjectDetail() {
 
   const { data: projectInfo } = useQuery({
     queryKey: ['project-info', projectId],
-    queryFn: () => fetchProjectInfo(projectId!),
+    queryFn: () => {
+      const cached: any = queryClient.getQueryData(['projects']);
+      const match = cached?.projects?.find((p: any) => p.id === projectId);
+      if (match) return match;
+      return apiFetch('/api/projects')
+        .then(r => { if (!r.ok) throw new Error('Failed to fetch projects'); return r.json(); })
+        .then(d => d.projects?.find((p: any) => p.id === projectId) ?? null);
+    },
     enabled: !!projectId,
+    staleTime: Infinity,
   });
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
@@ -67,10 +74,6 @@ export default function ProjectDetail() {
     setSearchParams({ days: days.toString() });
   };
 
-  if (isLoading) {
-    return <PageLoading message="Loading project data…" />;
-  }
-
   if (error) {
     return (
       <PageError
@@ -81,11 +84,10 @@ export default function ProjectDetail() {
     );
   }
 
-  if (!data) return null;
-
   const projectName = projectInfo?.name ?? 'Project';
   const githubOrg = projectInfo?.githubOrg;
   const githubRepo = projectInfo?.githubRepo;
+  const isRefetching = isFetching && !isLoading;
 
   return (
     <div className="bg-gray-50">
@@ -126,42 +128,57 @@ export default function ProjectDetail() {
             <PeriodSelector
               selectedDays={selectedDays}
               onSelect={handlePeriodChange}
-              isLoading={isFetching && !isLoading}
+              isLoading={isRefetching}
             />
-            <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg">
-              <Calendar className="w-3.5 h-3.5" />
-              <span>
-                {data.summary.periodStart === 'All time'
-                  ? 'All time'
-                  : `${data.summary.periodStart} – ${data.summary.periodEnd}`}
-              </span>
-            </div>
+            {data && (
+              <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>
+                  {data.summary.periodStart === 'All time'
+                    ? 'All time'
+                    : `${data.summary.periodStart} – ${data.summary.periodEnd}`}
+                </span>
+              </div>
+            )}
           </div>
         </div>
+
+        <div className={`transition-opacity duration-300 ${isRefetching ? 'opacity-40' : ''}`}>
         {/* Summary Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard
-            label="Team Contributions"
-            value={data.contributions.all.team.toLocaleString()}
-            trend={data.trends.contributions}
-            icon={GitCommit}
-          />
-          <StatCard
-            label="Team's Share"
-            value={`${data.contributions.all.teamPercent.toFixed(1)}%`}
-            icon={TrendingUp}
-          />
-          <StatCard
-            label="Active Contributors"
-            value={data.summary.activeContributors}
-            trend={data.trends.activeContributors}
-            icon={Users}
-          />
-          <StatCard
-            label="Total Activity"
-            value={data.contributions.all.total.toLocaleString()}
-            icon={Activity}
-          />
+          {isLoading ? (
+            <>
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+            </>
+          ) : data && (
+            <>
+              <StatCard
+                label="Team Contributions"
+                value={data.contributions.all.team.toLocaleString()}
+                trend={data.trends.contributions}
+                icon={GitCommit}
+              />
+              <StatCard
+                label="Team's Share"
+                value={`${data.contributions.all.teamPercent.toFixed(1)}%`}
+                icon={TrendingUp}
+              />
+              <StatCard
+                label="Active Contributors"
+                value={data.summary.activeContributors}
+                trend={data.trends.activeContributors}
+                icon={Users}
+              />
+              <StatCard
+                label="Total Activity"
+                value={data.contributions.all.total.toLocaleString()}
+                icon={Activity}
+              />
+            </>
+          )}
         </div>
 
         {/* Contribution Breakdown Section */}
@@ -176,43 +193,54 @@ export default function ProjectDetail() {
           </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <ContributionTypeCard
-              title="Commits"
-              metric={data.contributions.commits}
-              icon={GitCommit}
-              color="text-blue-600"
-              bgColor="bg-blue-50"
-              barColor="bg-blue-600"
-            />
-            <ContributionTypeCard
-              title="Pull Requests"
-              metric={data.contributions.pullRequests}
-              icon={GitPullRequest}
-              color="text-purple-600"
-              bgColor="bg-purple-50"
-              barColor="bg-purple-600"
-            />
-            <ContributionTypeCard
-              title="Code Reviews"
-              metric={data.contributions.reviews}
-              icon={MessageSquare}
-              color="text-green-600"
-              bgColor="bg-green-50"
-              barColor="bg-green-600"
-            />
-            <ContributionTypeCard
-              title="Issues"
-              metric={data.contributions.issues}
-              icon={AlertCircle}
-              color="text-orange-600"
-              bgColor="bg-orange-50"
-              barColor="bg-orange-600"
-            />
+            {isLoading ? (
+              <>
+                <ContributionCardSkeleton />
+                <ContributionCardSkeleton />
+                <ContributionCardSkeleton />
+                <ContributionCardSkeleton />
+              </>
+            ) : data && (
+              <>
+                <ContributionTypeCard
+                  title="Commits"
+                  metric={data.contributions.commits}
+                  icon={GitCommit}
+                  color="text-blue-600"
+                  bgColor="bg-blue-50"
+                  barColor="bg-blue-600"
+                />
+                <ContributionTypeCard
+                  title="Pull Requests"
+                  metric={data.contributions.pullRequests}
+                  icon={GitPullRequest}
+                  color="text-purple-600"
+                  bgColor="bg-purple-50"
+                  barColor="bg-purple-600"
+                />
+                <ContributionTypeCard
+                  title="Code Reviews"
+                  metric={data.contributions.reviews}
+                  icon={MessageSquare}
+                  color="text-green-600"
+                  bgColor="bg-green-50"
+                  barColor="bg-green-600"
+                />
+                <ContributionTypeCard
+                  title="Issues"
+                  metric={data.contributions.issues}
+                  icon={AlertCircle}
+                  color="text-orange-600"
+                  bgColor="bg-orange-50"
+                  barColor="bg-orange-600"
+                />
+              </>
+            )}
           </div>
         </section>
 
         {/* Leadership Section */}
-        {data.leadership && (
+        {data?.leadership && (
           <LeadershipSection leadership={data.leadership} />
         )}
 
@@ -224,50 +252,71 @@ export default function ProjectDetail() {
               <h2 className="text-lg font-semibold text-gray-900 mb-4">
                 Top Contributors
               </h2>
-              <ContributorList contributors={data.topContributors} limit={10} />
+              {isLoading ? (
+                <div className="divide-y divide-gray-100">
+                  {Array.from({ length: 5 }, (_, i) => (
+                    <ContributorRowSkeleton key={i} />
+                  ))}
+                </div>
+              ) : data && (
+                <ContributorList contributors={data.topContributors} limit={10} />
+              )}
             </div>
           </section>
 
           {/* Quick Stats */}
           <section>
-            <PeriodSummary data={data} />
+            {isLoading ? (
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-2/3" />
+              </div>
+            ) : data && (
+              <PeriodSummary data={data} />
+            )}
           </section>
         </div>
 
         {/* Summary Banner */}
-        <section className="mt-8">
-          <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 text-white">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-blue-100 text-sm">{projectName} - Team Impact</p>
-                <p className="text-3xl font-bold">
-                  {data.contributions.all.team.toLocaleString()} contributions
-                </p>
-                <p className="text-blue-200 mt-1">
-                  {data.contributions.all.teamPercent.toFixed(1)}% of all project activity
-                </p>
-              </div>
-              <div className="flex gap-6">
-                <div className="text-center">
-                  <p className="text-2xl font-bold">{data.contributions.commits.team}</p>
-                  <p className="text-blue-200 text-sm">Commits</p>
+        {data && (
+          <section className="mt-8">
+            <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-xl p-6 text-white">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p className="text-blue-100 text-sm">{projectName} - Team Impact</p>
+                  <p className="text-3xl font-bold">
+                    {data.contributions.all.team.toLocaleString()} contributions
+                  </p>
+                  <p className="text-blue-200 mt-1">
+                    {data.contributions.all.teamPercent.toFixed(1)}% of all project activity
+                  </p>
                 </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold">{data.contributions.pullRequests.team}</p>
-                  <p className="text-blue-200 text-sm">PRs</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold">{data.contributions.reviews.team}</p>
-                  <p className="text-blue-200 text-sm">Reviews</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold">{data.contributions.issues.team}</p>
-                  <p className="text-blue-200 text-sm">Issues</p>
+                <div className="flex gap-6">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">{data.contributions.commits.team}</p>
+                    <p className="text-blue-200 text-sm">Commits</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">{data.contributions.pullRequests.team}</p>
+                    <p className="text-blue-200 text-sm">PRs</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">{data.contributions.reviews.team}</p>
+                    <p className="text-blue-200 text-sm">Reviews</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-2xl font-bold">{data.contributions.issues.team}</p>
+                    <p className="text-blue-200 text-sm">Issues</p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
+        </div>
       </div>
     </div>
   );

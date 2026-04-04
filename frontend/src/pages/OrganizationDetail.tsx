@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, lazy, Suspense } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
   GitCommit,
@@ -24,11 +24,17 @@ import {
   LeadershipSection,
 } from '../components/dashboard';
 import { Breadcrumb } from '../components/ui/Breadcrumb';
-import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
+import {
+  StatCardSkeleton,
+  ContributionCardSkeleton,
+  ProjectCardSkeleton,
+  ContributorRowSkeleton,
+} from '../components/common/Skeleton';
 import { useAuth } from '../context/AuthContext';
-import AddProjectModal from '../components/admin/AddProjectModal';
 import { apiFetch } from '../lib/api';
+
+const AddProjectModal = lazy(() => import('../components/admin/AddProjectModal'));
 
 async function fetchOrgDashboard(githubOrg: string, days: number): Promise<DashboardData> {
   const res = await apiFetch(
@@ -38,17 +44,10 @@ async function fetchOrgDashboard(githubOrg: string, days: number): Promise<Dashb
   return res.json();
 }
 
-async function fetchOrgName(githubOrg: string): Promise<string> {
-  const res = await apiFetch('/api/orgs');
-  if (!res.ok) return githubOrg;
-  const data = await res.json();
-  const match = data.orgs?.find((o: any) => o.githubOrg === githubOrg);
-  return match?.name ?? githubOrg;
-}
-
 export default function OrganizationDetail() {
   const { org } = useParams<{ org: string }>();
   const { isAdmin } = useAuth();
+  const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [addModalOpen, setAddModalOpen] = useState(false);
 
@@ -57,7 +56,15 @@ export default function OrganizationDetail() {
 
   const { data: orgName } = useQuery({
     queryKey: ['org-name', org],
-    queryFn: () => fetchOrgName(org!),
+    queryFn: () => {
+      const cached: any = queryClient.getQueriesData({ queryKey: ['orgs'] })
+        .flatMap(([, d]: any) => d?.orgs ?? [])
+        .find((o: any) => o.githubOrg === org);
+      if (cached?.name) return cached.name;
+      return apiFetch('/api/orgs')
+        .then(r => r.ok ? r.json() : null)
+        .then(d => d?.orgs?.find((o: any) => o.githubOrg === org)?.name ?? org!);
+    },
     enabled: !!org,
     staleTime: Infinity,
   });
@@ -74,7 +81,6 @@ export default function OrganizationDetail() {
     setSearchParams({ days: days.toString() });
   };
 
-  if (isLoading) return <PageLoading message="Loading organization data…" />;
   if (error) {
     return (
       <PageError
@@ -84,9 +90,9 @@ export default function OrganizationDetail() {
       />
     );
   }
-  if (!data) return null;
 
   const displayName = orgName ?? org ?? 'Organization';
+  const isRefetching = isFetching && !isLoading;
 
   return (
     <div className="bg-gray-50">
@@ -109,16 +115,18 @@ export default function OrganizationDetail() {
             <PeriodSelector
               selectedDays={selectedDays}
               onSelect={handlePeriodChange}
-              isLoading={isFetching && !isLoading}
+              isLoading={isRefetching}
             />
-            <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg">
-              <Calendar className="w-3.5 h-3.5" />
-              <span>
-                {data.summary.periodStart === 'All time'
-                  ? 'All time'
-                  : `${data.summary.periodStart} – ${data.summary.periodEnd}`}
-              </span>
-            </div>
+            {data && (
+              <div className="hidden sm:flex items-center gap-2 text-sm text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>
+                  {data.summary.periodStart === 'All time'
+                    ? 'All time'
+                    : `${data.summary.periodStart} – ${data.summary.periodEnd}`}
+                </span>
+              </div>
+            )}
             {isAdmin && (
               <button
                 onClick={() => setAddModalOpen(true)}
@@ -131,30 +139,42 @@ export default function OrganizationDetail() {
           </div>
         </div>
 
+        <div className={`transition-opacity duration-300 ${isRefetching ? 'opacity-40' : ''}`}>
         {/* Summary Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard
-            label="Team Contributions"
-            value={data.contributions.all.team.toLocaleString()}
-            trend={data.trends.contributions}
-            icon={GitCommit}
-          />
-          <StatCard
-            label="Team's Share"
-            value={`${data.contributions.all.teamPercent.toFixed(1)}%`}
-            icon={TrendingUp}
-          />
-          <StatCard
-            label="Active Contributors"
-            value={data.summary.activeContributors}
-            trend={data.trends.activeContributors}
-            icon={Users}
-          />
-          <StatCard
-            label="Tracked Projects"
-            value={data.summary.trackedProjects}
-            icon={Activity}
-          />
+          {isLoading ? (
+            <>
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+            </>
+          ) : data && (
+            <>
+              <StatCard
+                label="Team Contributions"
+                value={data.contributions.all.team.toLocaleString()}
+                trend={data.trends.contributions}
+                icon={GitCommit}
+              />
+              <StatCard
+                label="Team's Share"
+                value={`${data.contributions.all.teamPercent.toFixed(1)}%`}
+                icon={TrendingUp}
+              />
+              <StatCard
+                label="Active Contributors"
+                value={data.summary.activeContributors}
+                trend={data.trends.activeContributors}
+                icon={Users}
+              />
+              <StatCard
+                label="Tracked Projects"
+                value={data.summary.trackedProjects}
+                icon={Activity}
+              />
+            </>
+          )}
         </div>
 
         {/* Contribution Breakdown */}
@@ -165,48 +185,68 @@ export default function OrganizationDetail() {
             </h2>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <ContributionTypeCard
-              title="Commits"
-              metric={data.contributions.commits}
-              icon={GitCommit}
-              color="text-blue-600"
-              bgColor="bg-blue-50"
-              barColor="bg-blue-600"
-            />
-            <ContributionTypeCard
-              title="Pull Requests"
-              metric={data.contributions.pullRequests}
-              icon={GitPullRequest}
-              color="text-purple-600"
-              bgColor="bg-purple-50"
-              barColor="bg-purple-600"
-            />
-            <ContributionTypeCard
-              title="Code Reviews"
-              metric={data.contributions.reviews}
-              icon={MessageSquare}
-              color="text-green-600"
-              bgColor="bg-green-50"
-              barColor="bg-green-600"
-            />
-            <ContributionTypeCard
-              title="Issues"
-              metric={data.contributions.issues}
-              icon={AlertCircle}
-              color="text-orange-600"
-              bgColor="bg-orange-50"
-              barColor="bg-orange-600"
-            />
+            {isLoading ? (
+              <>
+                <ContributionCardSkeleton />
+                <ContributionCardSkeleton />
+                <ContributionCardSkeleton />
+                <ContributionCardSkeleton />
+              </>
+            ) : data && (
+              <>
+                <ContributionTypeCard
+                  title="Commits"
+                  metric={data.contributions.commits}
+                  icon={GitCommit}
+                  color="text-blue-600"
+                  bgColor="bg-blue-50"
+                  barColor="bg-blue-600"
+                />
+                <ContributionTypeCard
+                  title="Pull Requests"
+                  metric={data.contributions.pullRequests}
+                  icon={GitPullRequest}
+                  color="text-purple-600"
+                  bgColor="bg-purple-50"
+                  barColor="bg-purple-600"
+                />
+                <ContributionTypeCard
+                  title="Code Reviews"
+                  metric={data.contributions.reviews}
+                  icon={MessageSquare}
+                  color="text-green-600"
+                  bgColor="bg-green-50"
+                  barColor="bg-green-600"
+                />
+                <ContributionTypeCard
+                  title="Issues"
+                  metric={data.contributions.issues}
+                  icon={AlertCircle}
+                  color="text-orange-600"
+                  bgColor="bg-orange-50"
+                  barColor="bg-orange-600"
+                />
+              </>
+            )}
           </div>
         </section>
 
         {/* Leadership */}
-        {data.leadership && (
+        {data?.leadership && (
           <LeadershipSection leadership={data.leadership} />
         )}
 
         {/* Projects */}
-        {data.topProjects?.length > 0 && (
+        {isLoading ? (
+          <div className="mb-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Projects</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <ProjectCardSkeleton />
+              <ProjectCardSkeleton />
+              <ProjectCardSkeleton />
+            </div>
+          </div>
+        ) : (data?.topProjects?.length ?? 0) > 0 && data && (
           <div className="mb-8">
             <ProjectCards projects={data.topProjects} selectedDays={selectedDays} orgSlug={org} />
           </div>
@@ -218,17 +258,28 @@ export default function OrganizationDetail() {
             <h2 className="text-lg font-semibold text-gray-900 mb-4">
               Top Contributors
             </h2>
-            <ContributorList contributors={data.topContributors.slice(0, 10)} limit={5} />
+            {isLoading ? (
+              <div className="divide-y divide-gray-100">
+                {Array.from({ length: 5 }, (_, i) => (
+                  <ContributorRowSkeleton key={i} />
+                ))}
+              </div>
+            ) : data && (
+              <ContributorList contributors={data.topContributors.slice(0, 10)} limit={5} />
+            )}
           </div>
         </section>
+        </div>
       </div>
 
-      {isAdmin && (
-        <AddProjectModal
-          open={addModalOpen}
-          onClose={() => setAddModalOpen(false)}
-          prefilledOrg={org}
-        />
+      {isAdmin && addModalOpen && (
+        <Suspense fallback={null}>
+          <AddProjectModal
+            open={addModalOpen}
+            onClose={() => setAddModalOpen(false)}
+            prefilledOrg={org}
+          />
+        </Suspense>
       )}
     </div>
   );

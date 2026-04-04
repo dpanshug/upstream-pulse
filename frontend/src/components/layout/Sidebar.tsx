@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState, useRef } from 'react';
+import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -15,6 +15,8 @@ import {
   User,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { PrefetchNavLink } from '../common/PrefetchLink';
+import { DEFAULT_PERIOD_DAYS } from '../dashboard/types';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -119,6 +121,13 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
     /^\/organizations\/[^/]+\/projects\//.test(location.pathname);
   const isOrgPage = location.pathname.startsWith('/organizations/') && !isProjectDetail;
 
+  const prefetchMap: Record<string, { queryKey: string[]; url: string } | undefined> = useMemo(() => ({
+    '/': { queryKey: ['dashboard', String(DEFAULT_PERIOD_DAYS)], url: `/api/metrics/dashboard?days=${DEFAULT_PERIOD_DAYS}` },
+    '/organizations': { queryKey: ['orgs', String(DEFAULT_PERIOD_DAYS)], url: `/api/orgs?days=${DEFAULT_PERIOD_DAYS}` },
+    '/projects': { queryKey: ['projects'], url: '/api/projects' },
+    '/contributors': { queryKey: ['team-members'], url: '/api/team-members' },
+  }), []);
+
   return (
     <>
       <SignOutDialog open={signOutOpen} onClose={() => setSignOutOpen(false)} />
@@ -204,11 +213,14 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                   : (item.path === '/projects' && isProjectDetail)
                     || (item.path === '/organizations' && isOrgPage);
 
+                const prefetchConfig = prefetchMap[item.path];
+
                 return (
-                  <NavLink
+                  <PrefetchNavLink
                     key={item.path}
                     to={item.path}
                     data-tooltip={item.label}
+                    prefetch={prefetchConfig}
                     className={`
                       sidebar-nav-item group relative flex items-center rounded-xl
                       transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
@@ -233,7 +245,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                     >
                       {item.label}
                     </span>
-                  </NavLink>
+                  </PrefetchNavLink>
                 );
               })}
             </div>

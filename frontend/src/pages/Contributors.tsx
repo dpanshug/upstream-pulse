@@ -9,8 +9,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
-import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
+import { TableRowSkeleton } from '../components/common/Skeleton';
 import { PeriodSelector } from '../components/dashboard/PeriodSelector';
 import { DEFAULT_PERIOD_DAYS } from '../components/dashboard/types';
 import { apiFetch } from '../lib/api';
@@ -208,7 +208,24 @@ export default function Contributors() {
         </div>
 
         {isLoading ? (
-          <PageLoading message="Loading contributors…" />
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200 table-fixed">
+              <thead className="bg-gray-50">
+                <tr>
+                  {COLUMNS.map(({ label, field }) => (
+                    <th key={field} className={`px-6 py-3 text-xs font-medium text-gray-500 uppercase ${field === 'total' ? 'text-right' : 'text-left'}`}>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {Array.from({ length: 8 }, (_, i) => (
+                  <TableRowSkeleton key={i} cols={4} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : error ? (
           <PageError
             title="Error Loading Contributors"
