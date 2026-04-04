@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, Link } from 'react-router-dom';
 import {
@@ -14,14 +14,15 @@ import {
   Table2,
   Plus,
 } from 'lucide-react';
-import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
+import { TableRowSkeleton } from '../components/common/Skeleton';
 import { PeriodSelector } from '../components/dashboard/PeriodSelector';
 import { ProjectCard } from '../components/dashboard/ProjectCards';
 import { DashboardData, DEFAULT_PERIOD_DAYS } from '../components/dashboard/types';
 import { useAuth } from '../context/AuthContext';
-import AddProjectModal from '../components/admin/AddProjectModal';
 import { apiFetch } from '../lib/api';
+
+const AddProjectModal = lazy(() => import('../components/admin/AddProjectModal'));
 
 interface Project {
   id: string;
@@ -304,7 +305,24 @@ export default function Projects() {
         </div>
 
         {isLoading ? (
-          <PageLoading message="Loading projects…" />
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  {COLUMNS.map(({ label, field }) => (
+                    <th key={field} className={`px-6 py-3 text-xs font-medium text-gray-500 uppercase ${field === 'teamContributions' ? 'text-right' : 'text-left'}`}>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {Array.from({ length: 8 }, (_, i) => (
+                  <TableRowSkeleton key={i} cols={4} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : error ? (
           <PageError
             title="Error Loading Projects"
@@ -475,7 +493,22 @@ export default function Projects() {
             {/* Grid view */}
             {viewMode === 'grid' && (
               dashboardLoading ? (
-                <PageLoading message="Loading project metrics…" />
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {Array.from({ length: 6 }, (_, i) => (
+                    <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                      <div className="animate-pulse space-y-3">
+                        <div className="h-5 bg-gray-200 rounded w-3/4" />
+                        <div className="h-3 bg-gray-200 rounded w-1/2" />
+                        <div className="h-7 bg-gray-200 rounded w-1/3" />
+                        <div className="h-1.5 bg-gray-200 rounded-full w-full" />
+                        <div className="flex gap-3">
+                          <div className="h-3 bg-gray-200 rounded w-14" />
+                          <div className="h-3 bg-gray-200 rounded w-14" />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               ) : (
                 <>
                   {paginatedGridProjects.length > 0 ? (
@@ -517,11 +550,13 @@ export default function Projects() {
         )}
       </div>
 
-      {isAdmin && (
-        <AddProjectModal
-          open={addModalOpen}
-          onClose={() => setAddModalOpen(false)}
-        />
+      {isAdmin && addModalOpen && (
+        <Suspense fallback={null}>
+          <AddProjectModal
+            open={addModalOpen}
+            onClose={() => setAddModalOpen(false)}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -2,8 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { Building2 } from 'lucide-react';
 import { PeriodSelector, OrgActivityCard, DEFAULT_PERIOD_DAYS } from '../components/dashboard';
-import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
+import { OrgCardSkeleton } from '../components/common/Skeleton';
 import { apiFetch } from '../lib/api';
 
 interface OrgSummary {
@@ -44,7 +44,6 @@ export default function Organizations() {
     setSearchParams({ days: days.toString() });
   };
 
-  if (isLoading) return <PageLoading message="Loading organizations…" />;
   if (error) {
     return (
       <PageError
@@ -57,6 +56,7 @@ export default function Organizations() {
 
   const orgs = data?.orgs ?? [];
   const sorted = [...orgs].sort((a, b) => b.contributionCount - a.contributionCount);
+  const isRefetching = isFetching && !isLoading;
 
   return (
     <div className="bg-gray-50">
@@ -72,12 +72,20 @@ export default function Organizations() {
             <PeriodSelector
               selectedDays={selectedDays}
               onSelect={handlePeriodChange}
-              isLoading={isFetching && !isLoading}
+              isLoading={isRefetching}
             />
           </div>
         </div>
 
-        {sorted.length === 0 ? (
+        <div className={`transition-opacity duration-300 ${isRefetching ? 'opacity-40' : ''}`}>
+        {isLoading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <OrgCardSkeleton />
+            <OrgCardSkeleton />
+            <OrgCardSkeleton />
+            <OrgCardSkeleton />
+          </div>
+        ) : sorted.length === 0 ? (
           <div className="text-center py-16">
             <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500">No organizations configured yet</p>
@@ -110,6 +118,7 @@ export default function Organizations() {
             ))}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

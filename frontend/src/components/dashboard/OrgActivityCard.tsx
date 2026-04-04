@@ -1,6 +1,7 @@
-import { Link } from 'react-router-dom';
 import { AreaChart, Area, ResponsiveContainer, Tooltip } from 'recharts';
 import { TrendingUp, TrendingDown, Minus, Crown, Shield, Users } from 'lucide-react';
+import { PrefetchLink } from '../common/PrefetchLink';
+import { DEFAULT_PERIOD_DAYS } from './types';
 import type { OrgActivity } from './types';
 
 interface OrgActivityCardProps {
@@ -67,9 +68,15 @@ export function OrgActivityCard({ activity, projectCount, selectedDays }: OrgAct
     );
   }
 
+  const days = selectedDays ?? DEFAULT_PERIOD_DAYS;
+
   return (
-    <Link
+    <PrefetchLink
       to={`/organizations/${org}${selectedDays !== undefined ? `?days=${selectedDays}` : ''}`}
+      prefetch={{
+        queryKey: ['org-dashboard', org, days],
+        url: `/api/metrics/dashboard?days=${days}&githubOrg=${org}`,
+      }}
       className="group block bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover:border-gray-300 hover:shadow-md transition-all duration-200"
     >
       {/* Row 1: Org name + status badge */}
@@ -209,6 +216,6 @@ export function OrgActivityCard({ activity, projectCount, selectedDays }: OrgAct
           </span>
         )}
       </div>
-    </Link>
+    </PrefetchLink>
   );
 }
