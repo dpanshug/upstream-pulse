@@ -7,6 +7,6 @@ resources:
 - overlays/dev
 images:
 - name: quay.io/org-pulse/upstream-pulse-backend
-  newTag: 6a63478
+  newTag: c0cab22
 - name: quay.io/org-pulse/upstream-pulse-frontend
-  newTag: 6a63478
+  newTag: c0cab22
