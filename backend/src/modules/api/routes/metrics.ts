@@ -4,6 +4,17 @@ import { logger } from '../../../shared/utils/logger.js';
 import { db } from '../../../shared/database/client.js';
 import { maintainerStatus, teamMembers, projects } from '../../../shared/database/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
+import { resolveTeamMember } from '../../../shared/middleware/resolve-team-member.js';
+import {
+  getMyContributionBreakdown,
+  getMyContributionTrend,
+  getMyDailyActivity,
+  getMyProjects,
+  getMyTeamRank,
+  getMyRoles,
+  getTeamTotalContributions,
+} from '../../metrics/my-contributions.js';
+import { getDateRange, formatDate, calculatePercentage } from '../../metrics/helpers.js';
 
 const DASHBOARD_CACHE_TTL = 5 * 60 * 1000;
 const dashboardCache = new Map<string, { data: unknown; ts: number }>();
@@ -337,6 +348,89 @@ export async function metricsRoutes(app: FastifyInstance) {
       reply.status(500);
       return {
         error: 'Failed to fetch leadership metrics',
+        message: (error as Error).message,
+      };
+    }
+  });
+
+  /**
+   * GET /api/metrics/me
+   *
+   * Personal contribution metrics for the logged-in user.
+   * Resolves identity from request headers -- no user ID parameter accepted.
+   * Query params:
+   *   - days: number of days (default: 30)
+   */
+  app.get<{
+    Querystring: { days?: string };
+  }>('/api/metrics/me', async (request, reply) => {
+    try {
+      const resolved = await resolveTeamMember(
+        request.identity.email || undefined,
+        request.identity.username || undefined,
+      );
+
+      if (!resolved) {
+        return {
+          resolved: false as const,
+          username: request.identity.username,
+          email: request.identity.email,
+        };
+      }
+
+      const days = parseInt(request.query.days || '30', 10);
+      const options = { days };
+      const dateRange = getDateRange(options);
+
+      const periodStart = dateRange ? formatDate(dateRange.start) : 'All time';
+      const periodEnd = dateRange ? formatDate(dateRange.end) : formatDate(new Date());
+
+      const [breakdown, trend, daily, myProjects, rank, roles, teamTotal] = await Promise.all([
+        getMyContributionBreakdown(resolved.id, options),
+        getMyContributionTrend(resolved.id, options),
+        getMyDailyActivity(resolved.id, options),
+        getMyProjects(resolved.id, options),
+        getMyTeamRank(resolved.id, options),
+        getMyRoles(resolved.id),
+        getTeamTotalContributions(options),
+      ]);
+
+      return {
+        resolved: true as const,
+        profile: {
+          id: resolved.id,
+          name: resolved.name,
+          githubUsername: resolved.githubUsername,
+          avatarUrl: resolved.avatarUrl,
+          memberSince: resolved.memberSince,
+        },
+        summary: {
+          periodDays: days,
+          periodStart,
+          periodEnd,
+          totalContributions: breakdown.total,
+          activeProjects: myProjects.length,
+          teamSharePercent: calculatePercentage(breakdown.total, teamTotal),
+          teamRank: rank.rank,
+          teamSize: rank.teamSize,
+        },
+        contributions: {
+          commits: breakdown.commits,
+          pullRequests: breakdown.prs,
+          reviews: breakdown.reviews,
+          issues: breakdown.issues,
+          total: breakdown.total,
+        },
+        trend,
+        dailyActivity: daily,
+        projects: myProjects,
+        roles,
+      };
+    } catch (error) {
+      logger.error('Error fetching personal metrics', { error });
+      reply.status(500);
+      return {
+        error: 'Failed to fetch personal metrics',
         message: (error as Error).message,
       };
     }

@@ -85,12 +85,15 @@ function SignOutDialog({ open, onClose }: { open: boolean; onClose: () => void }
   );
 }
 
-const navItems = [
+const personalItems = [
+  { label: 'My Contributions', path: '/me', icon: User, end: true },
+];
+
+const teamItems = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard, end: true },
   { label: 'Organizations', path: '/organizations', icon: Building2 },
   { label: 'Projects', path: '/projects', icon: FolderGit2 },
   { label: 'Contributors', path: '/contributors', icon: Users },
-  { label: 'System', path: '/system', icon: Cpu, end: true },
 ];
 
 export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose }: SidebarProps) {
@@ -122,6 +125,7 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
   const isOrgPage = location.pathname.startsWith('/organizations/') && !isProjectDetail;
 
   const prefetchMap: Record<string, { queryKey: string[]; url: string } | undefined> = useMemo(() => ({
+    '/me': { queryKey: ['my-contributions', String(DEFAULT_PERIOD_DAYS)], url: `/api/metrics/me?days=${DEFAULT_PERIOD_DAYS}` },
     '/': { queryKey: ['dashboard', String(DEFAULT_PERIOD_DAYS)], url: `/api/metrics/dashboard?days=${DEFAULT_PERIOD_DAYS}` },
     '/organizations': { queryKey: ['orgs', String(DEFAULT_PERIOD_DAYS)], url: `/api/orgs?days=${DEFAULT_PERIOD_DAYS}` },
     '/projects': { queryKey: ['projects'], url: '/api/projects' },
@@ -203,8 +207,69 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
 
           {/* Navigation */}
           <nav className={`flex-1 overflow-y-auto overflow-x-hidden sidebar-scrollbar pt-1 pb-2 ${collapsed ? 'px-1.5' : 'px-2.5'}`}>
+            {/* PERSONAL section -- dev only */}
+            {import.meta.env.DEV && (
+              <>
+                {!collapsed && (
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 px-3 pt-2 pb-1.5">
+                    Personal
+                  </p>
+                )}
+                <div className="space-y-0.5">
+                  {personalItems.map((item) => {
+                    const active = item.end
+                      ? location.pathname === item.path
+                      : location.pathname.startsWith(item.path);
+
+                    return (
+                      <PrefetchNavLink
+                        key={item.path}
+                        to={item.path}
+                        data-tooltip={item.label}
+                        prefetch={prefetchMap[item.path]}
+                        className={`
+                          sidebar-nav-item group relative flex items-center rounded-xl
+                          transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
+                          ${collapsed ? 'justify-center aspect-square p-0' : 'px-3 py-2.5'}
+                          ${active
+                            ? 'bg-gray-900 text-white shadow-sm'
+                            : 'text-gray-500 hover:bg-gray-100/80 hover:text-gray-700'
+                          }
+                        `}
+                      >
+                        <item.icon
+                          className={`w-[18px] h-[18px] flex-shrink-0 ${active ? 'text-white' : ''}`}
+                          strokeWidth={active ? 2 : 1.7}
+                        />
+                        <span
+                          className={`
+                            text-[13px] font-medium whitespace-nowrap overflow-hidden
+                            transition-[opacity,max-width,margin] duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
+                            ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[160px] opacity-100 ml-3'}
+                            ${active ? 'text-white' : ''}
+                          `}
+                        >
+                          {item.label}
+                        </span>
+                      </PrefetchNavLink>
+                    );
+                  })}
+                </div>
+
+                {/* Divider between sections */}
+                {collapsed ? (
+                  <div className="h-px bg-gray-100 my-2" />
+                ) : (
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 px-3 pt-4 pb-1.5">
+                    Team
+                  </p>
+                )}
+              </>
+            )}
+
+            {/* TEAM section */}
             <div className="space-y-0.5">
-              {navItems.map((item) => {
+              {teamItems.map((item) => {
                 const isActive = item.end
                   ? location.pathname === item.path
                   : location.pathname.startsWith(item.path);
@@ -213,14 +278,12 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                   : (item.path === '/projects' && isProjectDetail)
                     || (item.path === '/organizations' && isOrgPage);
 
-                const prefetchConfig = prefetchMap[item.path];
-
                 return (
                   <PrefetchNavLink
                     key={item.path}
                     to={item.path}
                     data-tooltip={item.label}
-                    prefetch={prefetchConfig}
+                    prefetch={prefetchMap[item.path]}
                     className={`
                       sidebar-nav-item group relative flex items-center rounded-xl
                       transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
@@ -276,6 +339,30 @@ export default function Sidebar({ collapsed, onToggle, mobileOpen, onMobileClose
                 </span>
               </div>
             )}
+            <NavLink
+              to="/system"
+              data-tooltip="System"
+              className={({ isActive }) => `
+                sidebar-nav-item group flex items-center rounded-xl
+                transition-all duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
+                ${collapsed ? 'justify-center aspect-square p-0' : 'px-3 py-2'}
+                ${isActive
+                  ? 'bg-gray-900 text-white shadow-sm'
+                  : 'text-gray-400 hover:bg-gray-100/80 hover:text-gray-600'
+                }
+              `}
+            >
+              <Cpu className="w-[17px] h-[17px] flex-shrink-0" strokeWidth={1.7} />
+              <span
+                className={`
+                  text-[13px] font-medium whitespace-nowrap overflow-hidden
+                  transition-[opacity,max-width,margin] duration-300 ease-[cubic-bezier(0.25,0.1,0.25,1)]
+                  ${collapsed ? 'max-w-0 opacity-0 ml-0' : 'max-w-[160px] opacity-100 ml-3'}
+                `}
+              >
+                System
+              </span>
+            </NavLink>
             <NavLink
               to="/about"
               data-tooltip="About"
