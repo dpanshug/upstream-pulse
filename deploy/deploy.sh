@@ -31,7 +31,7 @@ fi
 
 DEPLOY_BACKEND_IMAGE="${DEPLOY_REGISTRY}/${NAMESPACE}/backend:${IMAGE_TAG}"
 DEPLOY_FRONTEND_IMAGE="${DEPLOY_REGISTRY}/${NAMESPACE}/frontend:${IMAGE_TAG}"
-DEPLOY_BACKUP_IMAGE="${DEPLOY_REGISTRY}/${NAMESPACE}/pg-backup:16-alpine"
+DEPLOY_BACKUP_IMAGE="quay.io/${REGISTRY_ORG}/pg-backup:16-alpine"
 
 # Colors
 RED='\033[0;31m'
@@ -62,13 +62,6 @@ build_images() {
         -f "${PROJECT_ROOT}/frontend/Dockerfile" \
         "${PROJECT_ROOT}/frontend"
 
-    log "Building backup image: ${PUSH_BACKUP_IMAGE}"
-    docker build \
-        --platform linux/amd64 \
-        -t "${PUSH_BACKUP_IMAGE}" \
-        -f "${PROJECT_ROOT}/deploy/openshift/base/backup.Dockerfile" \
-        "${PROJECT_ROOT}/deploy/openshift/base"
-
     log "Images built successfully"
 }
 
@@ -92,9 +85,6 @@ push_images() {
 
     log "Pushing frontend image: ${PUSH_FRONTEND_IMAGE}"
     docker push "${PUSH_FRONTEND_IMAGE}"
-
-    log "Pushing backup image: ${PUSH_BACKUP_IMAGE}"
-    docker push "${PUSH_BACKUP_IMAGE}"
 
     log "Images pushed successfully"
 }
@@ -284,7 +274,7 @@ ensure_push_registry() {
 
     PUSH_BACKEND_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/backend:${IMAGE_TAG}"
     PUSH_FRONTEND_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/frontend:${IMAGE_TAG}"
-    PUSH_BACKUP_IMAGE="${PUSH_REGISTRY}/${REGISTRY_ORG}/pg-backup:16-alpine"
+    PUSH_BACKUP_IMAGE="quay.io/${REGISTRY_ORG}/pg-backup:16-alpine"
 }
 
 pre_deploy_backup() {
