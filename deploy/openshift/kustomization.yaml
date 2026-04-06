@@ -7,6 +7,6 @@ resources:
 - overlays/dev
 images:
 - name: quay.io/org-pulse/upstream-pulse-backend
-  newTag: 695a772
+  newTag: edc0aa7
 - name: quay.io/org-pulse/upstream-pulse-frontend
-  newTag: 695a772
+  newTag: edc0aa7
