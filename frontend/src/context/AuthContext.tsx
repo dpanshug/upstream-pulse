@@ -6,6 +6,10 @@ interface UserIdentity {
   email: string;
   groups: string[];
   isAdmin: boolean;
+  teamMemberId: string | null;
+  teamMemberName: string | null;
+  githubUsername: string | null;
+  avatarUrl: string | null;
 }
 
 interface AuthState {

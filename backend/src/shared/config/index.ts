@@ -48,6 +48,10 @@ export const config = {
   adminContactName: process.env.ADMIN_CONTACT_NAME || '',
   adminContactUrl: process.env.ADMIN_CONTACT_URL || '',
 
+  // Dev identity (used in development mode when no OAuth headers are present)
+  devUserEmail: process.env.DEV_USER_EMAIL || '',
+  devUserName: process.env.DEV_USER_NAME || '',
+
   // Monitoring
   prometheusEnabled: process.env.PROMETHEUS_ENABLED === 'true',
 } as const;

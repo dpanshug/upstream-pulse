@@ -15,12 +15,16 @@ declare module 'fastify' {
   }
 }
 
-const DEV_IDENTITY: UserIdentity = {
-  username: 'dev-user',
-  email: 'dev@localhost',
-  groups: [],
-  isAdmin: true,
-};
+function getDevIdentity(): UserIdentity {
+  const username = config.devUserName || 'dev-user';
+  const email = config.devUserEmail || 'dev@localhost';
+  return {
+    username,
+    email,
+    groups: [],
+    isAdmin: true,
+  };
+}
 
 function parseCommaSeparated(value: string): string[] {
   return value
@@ -71,7 +75,7 @@ export function registerIdentityMiddleware(app: FastifyInstance): void {
     }
 
     if (config.nodeEnv === 'development') {
-      request.identity = DEV_IDENTITY;
+      request.identity = getDevIdentity();
       return;
     }
 

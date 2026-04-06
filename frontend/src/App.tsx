@@ -7,6 +7,7 @@ import { RouteLoadingFallback } from './components/common/RouteLoadingFallback';
 import './App.css';
 
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const MyContributions = lazy(() => import('./pages/MyContributions'));
 const Projects = lazy(() => import('./pages/Projects'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const Organizations = lazy(() => import('./pages/Organizations'));
@@ -36,6 +37,7 @@ function App() {
             <Routes>
               <Route element={<AppLayout />}>
                 <Route path="/" element={<Dashboard />} />
+                {import.meta.env.DEV && <Route path="/me" element={<MyContributions />} />}
                 <Route path="/organizations" element={<Organizations />} />
                 <Route path="/organizations/:org" element={<OrganizationDetail />} />
                 <Route path="/organizations/:org/projects/:projectId" element={<ProjectDetail />} />

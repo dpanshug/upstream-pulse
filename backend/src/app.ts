@@ -84,13 +84,26 @@ app.get('/api/config', async () => ({
   version: pkg.version,
 }));
 
-// Current user identity (read from gateway headers)
-app.get('/api/auth/me', async (request) => ({
-  username: request.identity.username,
-  email: request.identity.email,
-  groups: request.identity.groups,
-  isAdmin: request.identity.isAdmin,
-}));
+// Current user identity (read from gateway headers + resolved team member)
+import { resolveTeamMember } from './shared/middleware/resolve-team-member.js';
+
+app.get('/api/auth/me', async (request) => {
+  const resolved = await resolveTeamMember(
+    request.identity.email || undefined,
+    request.identity.username || undefined,
+  );
+
+  return {
+    username: request.identity.username,
+    email: request.identity.email,
+    groups: request.identity.groups,
+    isAdmin: request.identity.isAdmin,
+    teamMemberId: resolved?.id ?? null,
+    teamMemberName: resolved?.name ?? null,
+    githubUsername: resolved?.githubUsername ?? null,
+    avatarUrl: resolved?.avatarUrl ?? null,
+  };
+});
 
 // Register API routes
 import { metricsRoutes } from './modules/api/routes/metrics.js';
