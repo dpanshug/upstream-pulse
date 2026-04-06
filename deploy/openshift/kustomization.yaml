@@ -1,46 +1,7 @@
+# Backward-compatible redirect — can be removed once all Argo CD Applications
+# point to deploy/openshift/overlays/<env> instead of deploy/openshift.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: upstream-pulse
-
-  # Namespace (already created via 'oc new-project upstream-pulse')
-  # - namespace.yaml
-
-  # Configuration
-  # Secrets are created via 'oc create secret' (see secrets.example.yaml)
-
-  # Data stores
-
-  # Backend API
-
-  # Worker (BullMQ consumer)
-
-  # Frontend (nginx + React SPA) with OAuth Proxy
-
-  # Allow sibling services within the same tenant to reach the API
 resources:
-- configmap.yaml
-- postgres.yaml
-- redis.yaml
-- backend-deployment.yaml
-- backend-service.yaml
-- worker-deployment.yaml
-- oauth-proxy.yaml
-- frontend-deployment.yaml
-- frontend-service.yaml
-- frontend-route.yaml
-- networkpolicy-tenant-internal.yaml
-
-  # Backups (uncomment after creating aws-s3-credentials secret — see secrets.example.yaml)
-  # - postgres-backup-cronjob.yaml
-  # - postgres-backup-monitor-cronjob.yaml
-  # - postgres-restore-test-cronjob.yaml
-
-commonLabels:
-  app.kubernetes.io/managed-by: kustomize
-
-images:
-- name: quay.io/org-pulse/upstream-pulse-backend
-  newTag: 3256f8a
-- name: quay.io/org-pulse/upstream-pulse-frontend
-  newTag: 3256f8a
+  - overlays/dev

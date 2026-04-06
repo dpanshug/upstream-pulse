@@ -5,7 +5,7 @@
 #   1. S3 bucket created with SSE-S3 default encryption enabled
 #   2. IAM service account with s3:PutObject, s3:GetObject, s3:DeleteObject,
 #      s3:ListBucket, s3:HeadObject scoped to the bucket
-#   3. aws-s3-credentials secret created on cluster (see secrets.example.yaml)
+#   3. aws-s3-credentials secret created on cluster (see base/secrets.example.yaml)
 #   4. pg-backup image built and pushed (see backup.Dockerfile)
 #   5. This file uncommented in kustomization.yaml
 #

@@ -1,0 +1,37 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: upstream-pulse
+
+resources:
+  # Data stores
+  - postgres.yaml
+  - redis.yaml
+
+  # Backend API
+  - backend-deployment.yaml
+  - backend-service.yaml
+
+  # Worker (BullMQ consumer)
+  - worker-deployment.yaml
+
+  # Frontend (nginx + React SPA) with OAuth Proxy
+  - oauth-proxy.yaml
+  - frontend-deployment.yaml
+  - frontend-service.yaml
+  - frontend-route.yaml
+
+  # Configuration
+  - configmap.yaml
+
+  # Network
+  - networkpolicy-tenant-internal.yaml
+
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+
+images:
+  - name: quay.io/org-pulse/upstream-pulse-backend
+    newTag: c25d37b
+  - name: quay.io/org-pulse/upstream-pulse-frontend
+    newTag: c25d37b

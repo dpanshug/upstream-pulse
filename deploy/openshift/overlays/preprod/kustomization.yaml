@@ -1,0 +1,11 @@
+# Preprod overlay — same as dev (core app only, no backups).
+# Data is reproducible from GitHub APIs.
+#
+# Usage:
+#   oc apply -k deploy/openshift/overlays/preprod/
+#   DEPLOY_ENV=preprod ./deploy/deploy.sh apply
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
