@@ -4,4 +4,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - overlays/dev
+- overlays/dev
+images:
+- name: quay.io/org-pulse/upstream-pulse-backend
+  newTag: 695a772
+- name: quay.io/org-pulse/upstream-pulse-frontend
+  newTag: 695a772
