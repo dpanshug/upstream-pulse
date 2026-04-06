@@ -409,7 +409,7 @@ npm run dev        # Starts Postgres (:5433), Redis (:6379), API (:4321), Fronte
 
 ### Production (OpenShift / Kubernetes)
 
-Four deployments orchestrated via Kustomize manifests in `deploy/openshift/`:
+Four deployments orchestrated via Kustomize manifests in `deploy/openshift/` (base + environment overlays in `overlays/dev/` and `overlays/prod/`):
 
 | Deployment | Replicas | Image | Entrypoint |
 |-----------|---------|-------|------------|

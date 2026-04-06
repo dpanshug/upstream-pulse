@@ -1,5 +1,9 @@
 # Database Backups
 
+> **Production only.** Automated S3 backups run only on the production cluster.
+> Dev and preprod clusters do not need backups — the data is reproducible
+> from GitHub APIs by re-running the collectors.
+
 ## Backup Overview
 
 | Setting | Value |
@@ -72,14 +76,14 @@ oc -n upstream-pulse get pods -l 'app.kubernetes.io/name in (backend, worker)'
 
 ### Step 3: Run the restore Job
 
-Edit the `BACKUP_FILE` value in `deploy/openshift/postgres-restore-job.yaml` to the filename from step 1, then:
+Edit the `BACKUP_FILE` value in `deploy/openshift/overlays/prod/postgres-restore-job.yaml` to the filename from step 1, then:
 
 ```bash
 # Delete any previous restore Job (Job names are immutable)
 oc -n upstream-pulse delete job/postgres-restore --ignore-not-found
 
 # Apply and monitor
-oc -n upstream-pulse apply -f deploy/openshift/postgres-restore-job.yaml
+oc -n upstream-pulse apply -f deploy/openshift/overlays/prod/postgres-restore-job.yaml
 oc -n upstream-pulse logs -f job/postgres-restore
 ```
 
@@ -117,7 +121,7 @@ If the original cluster is lost and you need to restore to a new environment:
    oc new-project upstream-pulse
    ```
 
-2. **Create secrets** (see `deploy/openshift/secrets.example.yaml`):
+2. **Create secrets** (see `deploy/openshift/base/secrets.example.yaml`):
    ```bash
    oc create secret generic postgres-credentials --from-literal=... -n upstream-pulse
    oc create secret generic aws-s3-credentials --from-literal=... -n upstream-pulse
@@ -133,7 +137,8 @@ If the original cluster is lost and you need to restore to a new environment:
 
 4. **Apply manifests** (this creates PVCs, deployments, etc.):
    ```bash
-   oc apply -k deploy/openshift/
+   DEPLOY_ENV=prod ./deploy/deploy.sh apply
+   # or: oc apply -k deploy/openshift/overlays/prod/
    ```
 
 5. **Scale down backend/worker** (they'll crash-loop without data):
@@ -152,7 +157,7 @@ If the original cluster is lost and you need to restore to a new environment:
 1. The Postgres pod will crash-loop
 2. Scale down backend and worker
 3. Delete the corrupted PVC: `oc -n upstream-pulse delete pvc/postgres-data` (this destroys all data)
-4. Reapply manifests to recreate the PVC: `oc apply -k deploy/openshift/`
+4. Reapply manifests to recreate the PVC: `oc apply -k deploy/openshift/overlays/prod/`
 5. Wait for Postgres to start with a fresh, empty database
 6. Run the restore Job with the latest backup
 7. Scale backend and worker back up
@@ -205,7 +210,7 @@ docker compose exec postgres psql -U postgres upstream_pulse -c '\dt'
 ## Architecture Reference
 
 ```
-OpenShift Cluster (upstream-pulse namespace)
+Production Cluster (upstream-pulse namespace)
 ├── PostgreSQL Pod ←→ PVC (5Gi, postgres-data)
 ├── Daily Backup CronJob (2:00 AM UTC)
 │   └── pg_dump → gzip → aws s3 cp --sse AES256
@@ -218,7 +223,25 @@ OpenShift Cluster (upstream-pulse namespace)
 └── Pre-Deploy Backup (in deploy.sh)
     └── oc create job --from=cronjob/postgres-backup
 
+Dev / Preprod Clusters
+└── No backup CronJobs deployed (data is re-collectable from GitHub)
+
 AWS S3 (upstream-pulse-db-backups, SSE-S3)
 ├── backups/upstream-pulse-YYYYMMDD-HHMMSS.sql.gz (daily, 14-day retention)
 └── backups/pre-deploy/... (pre-deployment, 30-day retention)
+```
+
+## Deployment
+
+Backups are managed via Kustomize overlays. The prod overlay includes backup CronJobs;
+the dev overlay does not.
+
+```bash
+# Dev / Preprod — no backups:
+DEPLOY_ENV=dev ./deploy/deploy.sh apply
+# or: oc apply -k deploy/openshift/overlays/dev/
+
+# Production — includes backup CronJobs:
+DEPLOY_ENV=prod ./deploy/deploy.sh apply
+# or: oc apply -k deploy/openshift/overlays/prod/
 ```

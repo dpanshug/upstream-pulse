@@ -66,8 +66,8 @@ build_images() {
     docker build \
         --platform linux/amd64 \
         -t "${PUSH_BACKUP_IMAGE}" \
-        -f "${PROJECT_ROOT}/deploy/openshift/backup.Dockerfile" \
-        "${PROJECT_ROOT}/deploy/openshift"
+        -f "${PROJECT_ROOT}/deploy/openshift/base/backup.Dockerfile" \
+        "${PROJECT_ROOT}/deploy/openshift/base"
 
     log "Images built successfully"
 }
@@ -320,8 +320,16 @@ pre_deploy_backup() {
 }
 
 apply_manifests() {
-    log "Applying OpenShift manifests..."
-    oc apply -k "${SCRIPT_DIR}/openshift"
+    local overlay="${DEPLOY_ENV:-dev}"
+    local overlay_dir="${SCRIPT_DIR}/openshift/overlays/${overlay}"
+
+    if [ ! -d "${overlay_dir}" ]; then
+        err "Unknown DEPLOY_ENV '${overlay}'. Available: $(ls "${SCRIPT_DIR}/openshift/overlays/" | tr '\n' ', ')"
+        exit 1
+    fi
+
+    log "Applying OpenShift manifests (overlay: ${overlay})..."
+    oc apply -k "${overlay_dir}"
 
     # Patch configmap with org-specific values from environment
     if [ -n "${ORG_NAME:-}" ] || [ -n "${ORG_DESCRIPTION:-}" ] || [ -n "${ADMIN_CONTACT_NAME:-}" ]; then
@@ -438,12 +446,12 @@ case "${1:-deploy}" in
         ensure_cluster_context
         ensure_push_registry
 
-        warn "=== Full Deployment ==="
+        warn "=== Full Deployment (${DEPLOY_ENV:-dev}) ==="
         echo ""
         warn "This will:"
         warn "  1. Build Docker images"
         warn "  2. Push to ${PUSH_REGISTRY}/${REGISTRY_ORG}"
-        warn "  3. Apply manifests and set runtime images at ${DEPLOY_REGISTRY}/${NAMESPACE}"
+        warn "  3. Apply ${DEPLOY_ENV:-dev} overlay and set runtime images at ${DEPLOY_REGISTRY}/${NAMESPACE}"
         echo ""
         read -r -p "Continue? [y/N] " confirm
         if [[ "${confirm}" =~ ^[Yy]$ ]]; then
@@ -473,6 +481,7 @@ case "${1:-deploy}" in
         echo "  NAMESPACE             OpenShift namespace (default: upstream-pulse)"
         echo "  EXPECTED_CLUSTER      Expected oc server URL; fail if different"
         echo "  SKIP_CLUSTER_CONFIRM  Skip interactive cluster prompt (default: false)"
+        echo "  DEPLOY_ENV            Kustomize overlay to use: dev|prod (default: dev)"
         echo "  ORG_NAME              Organization name (patched into configmap)"
         echo "  ORG_DESCRIPTION       Organization description (patched into configmap)"
         echo "  ADMIN_CONTACT_NAME    Admin name shown on About page (patched into configmap)"
