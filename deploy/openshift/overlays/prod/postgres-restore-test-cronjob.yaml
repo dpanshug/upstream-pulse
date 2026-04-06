@@ -38,7 +38,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: restore-test
-              image: image-registry.openshift-image-registry.svc:5000/upstream-pulse/pg-backup:16-alpine
+              image: quay.io/org-pulse/pg-backup:16-alpine
               command:
                 - /bin/sh
                 - -c
