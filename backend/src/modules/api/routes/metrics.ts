@@ -247,11 +247,23 @@ export async function metricsRoutes(app: FastifyInstance) {
    * GET /api/metrics/leadership
    * 
    * Get team leadership positions (approvers/reviewers from OWNERS files).
-   * Returns aggregated data across all tracked projects.
+   * Optional `projectId` scopes to a single project; optional `githubOrg`
+   * scopes to a single org; omit both for the global (all-orgs) view.
    */
   app.get('/api/metrics/leadership', async (request, reply) => {
     try {
-      // Get all active maintainer statuses with team member and project info
+      const { githubOrg, projectId } = request.query as { githubOrg?: string; projectId?: string };
+
+      const needsProjectJoin = !!(githubOrg || projectId);
+      const scopeFilters = [eq(maintainerStatus.isActive, true)];
+      if (projectId) {
+        scopeFilters.push(eq(maintainerStatus.projectId, projectId));
+      } else if (githubOrg) {
+        scopeFilters.push(eq(projects.githubOrg, githubOrg));
+      }
+      const baseConditions = scopeFilters.length > 1 ? and(...scopeFilters) : scopeFilters[0];
+
+      // Team-side: active maintainer_status rows joined to team members
       const statuses = await db
         .select({
           id: maintainerStatus.id,
@@ -272,26 +284,43 @@ export async function metricsRoutes(app: FastifyInstance) {
         .from(maintainerStatus)
         .innerJoin(teamMembers, eq(maintainerStatus.teamMemberId, teamMembers.id))
         .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
-        .where(eq(maintainerStatus.isActive, true));
+        .where(baseConditions);
 
-      const teamApprovers = statuses.filter(s => s.positionType === 'maintainer');
-      const teamReviewers = statuses.filter(s => s.positionType === 'reviewer');
+      const isScoped = !!(githubOrg || projectId);
+      const teamApproverRows = statuses.filter(s => s.positionType === 'maintainer');
+      const teamReviewerRows = statuses.filter(s => s.positionType === 'reviewer');
+
+      // Scoped views use distinct users so numerator matches denominator;
+      // global view preserves the original row-count behavior.
+      const teamApproversCount = isScoped
+        ? new Set(teamApproverRows.map(s => s.githubUsername)).size
+        : teamApproverRows.length;
+      const teamReviewersCount = isScoped
+        ? new Set(teamReviewerRows.map(s => s.githubUsername)).size
+        : teamReviewerRows.length;
 
       const projectsWithMaintainers = [...new Set(statuses.map(s => s.projectId))];
 
-      const totalMsCounts = await db
+      // Total-side: distinct usernames across ALL maintainer_status rows (same scope)
+      const totalQuery = db
         .select({
           positionType: maintainerStatus.positionType,
           count: sql<number>`count(distinct ${maintainerStatus.githubUsername})::int`,
         })
-        .from(maintainerStatus)
-        .where(eq(maintainerStatus.isActive, true))
-        .groupBy(maintainerStatus.positionType);
+        .from(maintainerStatus);
+
+      const totalMsCounts = needsProjectJoin
+        ? await totalQuery
+            .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
+            .where(baseConditions!)
+            .groupBy(maintainerStatus.positionType)
+        : await totalQuery
+            .where(baseConditions)
+            .groupBy(maintainerStatus.positionType);
 
       const totalApproversEstimate = totalMsCounts.find(r => r.positionType === 'maintainer')?.count ?? 0;
       const totalReviewersEstimate = totalMsCounts.find(r => r.positionType === 'reviewer')?.count ?? 0;
 
-      // Group by team member for the response
       const memberMap = new Map<string, {
         id: string;
         name: string;
@@ -328,20 +357,20 @@ export async function metricsRoutes(app: FastifyInstance) {
 
       return {
         summary: {
-          teamApprovers: teamApprovers.length,
-          teamReviewers: teamReviewers.length,
+          teamApprovers: teamApproversCount,
+          teamReviewers: teamReviewersCount,
           totalApprovers: totalApproversEstimate,
           totalReviewers: totalReviewersEstimate,
           approverPercent: totalApproversEstimate > 0 
-            ? (teamApprovers.length / totalApproversEstimate) * 100 
+            ? (teamApproversCount / totalApproversEstimate) * 100 
             : 0,
           reviewerPercent: totalReviewersEstimate > 0 
-            ? (teamReviewers.length / totalReviewersEstimate) * 100 
+            ? (teamReviewersCount / totalReviewersEstimate) * 100 
             : 0,
           projectsWithTeamLeadership: projectsWithMaintainers.length,
         },
         members,
-        raw: statuses, // Include raw data for debugging/advanced use
+        raw: statuses,
       };
     } catch (error) {
       logger.error('Error fetching leadership metrics', { error });
