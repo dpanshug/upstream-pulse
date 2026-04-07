@@ -250,20 +250,18 @@ export async function metricsRoutes(app: FastifyInstance) {
    * Optional `projectId` scopes to a single project; optional `githubOrg`
    * scopes to a single org; omit both for the global (all-orgs) view.
    */
-  app.get('/api/metrics/leadership', async (request, reply) => {
+  app.get<{
+    Querystring: { projectId?: string; githubOrg?: string };
+  }>('/api/metrics/leadership', async (request, reply) => {
     try {
-      const { githubOrg, projectId } = request.query as { githubOrg?: string; projectId?: string };
+      const { projectId, githubOrg } = request.query as { projectId?: string; githubOrg?: string };
 
-      const needsProjectJoin = !!(githubOrg || projectId);
+      const isScoped = !!(projectId || githubOrg);
       const scopeFilters = [eq(maintainerStatus.isActive, true)];
-      if (projectId) {
-        scopeFilters.push(eq(maintainerStatus.projectId, projectId));
-      } else if (githubOrg) {
-        scopeFilters.push(eq(projects.githubOrg, githubOrg));
-      }
+      if (projectId) scopeFilters.push(eq(maintainerStatus.projectId, projectId));
+      else if (githubOrg) scopeFilters.push(eq(projects.githubOrg, githubOrg));
       const baseConditions = scopeFilters.length > 1 ? and(...scopeFilters) : scopeFilters[0];
 
-      // Team-side: active maintainer_status rows joined to team members
       const statuses = await db
         .select({
           id: maintainerStatus.id,
@@ -286,12 +284,10 @@ export async function metricsRoutes(app: FastifyInstance) {
         .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
         .where(baseConditions);
 
-      const isScoped = !!(githubOrg || projectId);
-      const teamApproverRows = statuses.filter(s => s.positionType === 'maintainer');
+      const isApproverType = (t: string) => t !== 'reviewer';
+      const teamApproverRows = statuses.filter(s => isApproverType(s.positionType));
       const teamReviewerRows = statuses.filter(s => s.positionType === 'reviewer');
 
-      // Scoped views use distinct users so numerator matches denominator;
-      // global view preserves the original row-count behavior.
       const teamApproversCount = isScoped
         ? new Set(teamApproverRows.map(s => s.githubUsername)).size
         : teamApproverRows.length;
@@ -301,7 +297,7 @@ export async function metricsRoutes(app: FastifyInstance) {
 
       const projectsWithMaintainers = [...new Set(statuses.map(s => s.projectId))];
 
-      // Total-side: distinct usernames across ALL maintainer_status rows (same scope)
+      const needsProjectJoin = !!(projectId || githubOrg);
       const totalQuery = db
         .select({
           positionType: maintainerStatus.positionType,
@@ -318,8 +314,20 @@ export async function metricsRoutes(app: FastifyInstance) {
             .where(baseConditions)
             .groupBy(maintainerStatus.positionType);
 
-      const totalApproversEstimate = totalMsCounts.find(r => r.positionType === 'maintainer')?.count ?? 0;
+      const totalApproversEstimate = totalMsCounts.filter(r => isApproverType(r.positionType)).reduce((s, r) => s + r.count, 0);
       const totalReviewersEstimate = totalMsCounts.find(r => r.positionType === 'reviewer')?.count ?? 0;
+
+      const governanceByType = totalMsCounts
+        .map(r => ({
+          positionType: r.positionType,
+          label: r.positionType === 'reviewer' ? 'Reviewers'
+            : r.positionType === 'maintainer' ? 'Code Owners'
+            : r.positionType === 'approver' ? 'Approvers'
+            : r.positionType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + 's',
+          team: statuses.filter(s => s.positionType === r.positionType).length,
+          total: r.count,
+        }))
+        .filter(g => g.total > 0);
 
       const memberMap = new Map<string, {
         id: string;
@@ -334,6 +342,13 @@ export async function metricsRoutes(app: FastifyInstance) {
         }>;
       }>();
 
+      const defaultRoleLabel = (pt: string) => {
+        if (pt === 'reviewer') return 'Reviewer';
+        if (pt === 'maintainer') return 'Code Owner';
+        if (pt === 'approver') return 'Approver';
+        return pt.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      };
+
       for (const status of statuses) {
         if (!memberMap.has(status.teamMemberId!)) {
           memberMap.set(status.teamMemberId!, {
@@ -347,7 +362,7 @@ export async function metricsRoutes(app: FastifyInstance) {
         memberMap.get(status.teamMemberId!)!.roles.push({
           projectId: status.projectId!,
           projectName: status.projectName,
-          role: status.positionType === 'maintainer' ? 'Approver' : 'Reviewer',
+          role: status.positionTitle || defaultRoleLabel(status.positionType),
           paths: status.notes?.replace('Paths: ', ''),
           evidenceUrl: status.evidenceUrl,
         });
@@ -368,6 +383,7 @@ export async function metricsRoutes(app: FastifyInstance) {
             ? (teamReviewersCount / totalReviewersEstimate) * 100 
             : 0,
           projectsWithTeamLeadership: projectsWithMaintainers.length,
+          governanceByType,
         },
         members,
         raw: statuses,
