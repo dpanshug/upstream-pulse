@@ -50,8 +50,11 @@ jobs:
         uses: imranismail/setup-kustomize@v2
 
       - name: Update image tags in manifests
-        working-directory: deploy/openshift
         run: |
+          cd deploy/openshift
+          kustomize edit set image ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-backend:${{ env.IMAGE_TAG }}
+          kustomize edit set image ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-frontend:${{ env.IMAGE_TAG }}
+          cd overlays/prod
           kustomize edit set image ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-backend:${{ env.IMAGE_TAG }}
           kustomize edit set image ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-frontend:${{ env.IMAGE_TAG }}
 
@@ -59,6 +62,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add deploy/openshift/kustomization.yaml
+          git add deploy/openshift/kustomization.yaml deploy/openshift/overlays/prod/kustomization.yaml
           git diff --cached --quiet || git commit -m "chore: update image tags to ${{ env.IMAGE_TAG }} [skip ci]"
           git push
