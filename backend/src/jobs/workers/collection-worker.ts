@@ -35,7 +35,7 @@ async function resolveAndStore(
   for (const record of records) {
     try {
       const identity = identities.get(record.author || 'unknown');
-      await db.insert(contributions).values({
+      const inserted = await db.insert(contributions).values({
         projectId,
         teamMemberId: identity?.teamMember?.id,
         contributionType: record.type,
@@ -47,8 +47,8 @@ async function resolveAndStore(
         filesChanged: record.filesChanged,
         isMerged: record.isMerged,
         metadata: record.metadata,
-      }).onConflictDoNothing();
-      processed++;
+      }).onConflictDoNothing().returning({ id: contributions.id });
+      if (inserted.length > 0) processed++;
     } catch (error) {
       errors++;
       logger.warn('Error storing contribution', {
@@ -134,7 +134,7 @@ export const collectionWorker = new Worker<CollectionJobData>(
           const result = await resolveAndStore(records, project.id, resolver);
           recordsProcessed += result.processed;
           errorsCount += result.errors;
-          logger.info(`Phase ${phase} persisted`, {
+          logger.info(`Phase ${phase} batch persisted`, {
             project: project.name,
             phaseRecords: records.length,
             totalProcessed: recordsProcessed,
