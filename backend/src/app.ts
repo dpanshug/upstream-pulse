@@ -346,9 +346,47 @@ app.post<{
 
     logger.info(`Created team member: ${name} (@${githubUsername})`);
 
+    // Re-link orphaned contributions/governance records that were collected
+    // before this team member existed in the database
+    let relinked = { contributions: 0, maintainerStatus: 0, leadershipPositions: 0 };
+    if (githubUsername) {
+      try {
+        const contribResult = await db.execute(sql`
+          UPDATE contributions
+          SET team_member_id = ${newMember.id}
+          WHERE team_member_id IS NULL
+            AND (metadata #>> '{}')::jsonb->>'author' = ${githubUsername}
+        `) as unknown as { count: number; rowCount?: number };
+        relinked.contributions = contribResult.count ?? contribResult.rowCount ?? 0;
+
+        const msResult = await db.execute(sql`
+          UPDATE maintainer_status
+          SET team_member_id = ${newMember.id}
+          WHERE team_member_id IS NULL
+            AND github_username = ${githubUsername}
+        `) as unknown as { count: number; rowCount?: number };
+        relinked.maintainerStatus = msResult.count ?? msResult.rowCount ?? 0;
+
+        const lpResult = await db.execute(sql`
+          UPDATE leadership_positions
+          SET team_member_id = ${newMember.id}
+          WHERE team_member_id IS NULL
+            AND github_username = ${githubUsername}
+        `) as unknown as { count: number; rowCount?: number };
+        relinked.leadershipPositions = lpResult.count ?? lpResult.rowCount ?? 0;
+
+        if (relinked.contributions > 0 || relinked.maintainerStatus > 0 || relinked.leadershipPositions > 0) {
+          logger.info(`Re-linked orphaned records for @${githubUsername}`, relinked);
+        }
+      } catch (relinkError) {
+        logger.warn(`Failed to re-link orphaned records for @${githubUsername}`, { error: relinkError });
+      }
+    }
+
     return {
       success: true,
       member: newMember,
+      relinked,
     };
   } catch (error) {
     logger.error('Error creating team member', { error });
