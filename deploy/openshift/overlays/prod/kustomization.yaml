@@ -11,7 +11,12 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - ../../base
-  - postgres-backup-cronjob.yaml
-  - postgres-backup-monitor-cronjob.yaml
-  - postgres-restore-test-cronjob.yaml
+- ../../base
+- postgres-backup-cronjob.yaml
+- postgres-backup-monitor-cronjob.yaml
+- postgres-restore-test-cronjob.yaml
+images:
+- name: quay.io/org-pulse/upstream-pulse-backend
+  newTag: 26faaa2
+- name: quay.io/org-pulse/upstream-pulse-frontend
+  newTag: 26faaa2
