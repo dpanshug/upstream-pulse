@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   User,
@@ -8,6 +8,8 @@ import {
   ChevronsUpDown,
   ChevronLeft,
   ChevronRight,
+  Building2,
+  Check,
 } from 'lucide-react';
 import { PageError } from '../components/common/PageError';
 import { TableRowSkeleton } from '../components/common/Skeleton';
@@ -32,7 +34,7 @@ interface MergedContributor extends TeamMember {
   issues: number;
 }
 
-type SortField = 'name' | 'githubUsername' | 'isActive' | 'total';
+type SortField = 'name' | 'githubUsername' | 'department' | 'isActive' | 'total';
 
 type SortDirection = 'asc' | 'desc';
 
@@ -41,6 +43,7 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50];
 const COLUMNS: { label: string; field: SortField }[] = [
   { label: 'Name', field: 'name' },
   { label: 'GitHub', field: 'githubUsername' },
+  { label: 'Department', field: 'department' },
   { label: 'Status', field: 'isActive' },
   { label: 'Contributions', field: 'total' },
 ];
@@ -96,6 +99,79 @@ function getPageRange(current: number, total: number): (number | 'ellipsis')[] {
   return pages;
 }
 
+function DepartmentSelect({
+  departments,
+  value,
+  onChange,
+}: {
+  departments: string[];
+  value: string;
+  onChange: (dept: string) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setIsOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const label = value || 'All Departments';
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setIsOpen((o) => !o)}
+        className={`
+          flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-all
+          ${isOpen
+            ? 'border-blue-500 ring-2 ring-blue-500/20 bg-white'
+            : value
+              ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+              : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+          }
+        `}
+      >
+        <Building2 className="w-4 h-4 flex-shrink-0 text-gray-400" />
+        <span className="truncate max-w-[160px]">{label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 z-20 mt-1.5 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-1 animate-in fade-in slide-in-from-top-1 duration-100">
+          <button
+            onClick={() => { onChange(''); setIsOpen(false); }}
+            className={`
+              w-full flex items-center justify-between px-3 py-2 text-sm transition-colors
+              ${!value ? 'bg-gray-50 text-gray-900 font-medium' : 'text-gray-700 hover:bg-gray-50'}
+            `}
+          >
+            <span>All Departments</span>
+            {!value && <Check className="w-4 h-4 text-blue-600" />}
+          </button>
+          <div className="border-t border-gray-100 my-1" />
+          {departments.map((dept) => (
+            <button
+              key={dept}
+              onClick={() => { onChange(dept); setIsOpen(false); }}
+              className={`
+                w-full flex items-center justify-between px-3 py-2 text-sm transition-colors
+                ${value === dept ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}
+              `}
+            >
+              <span className="truncate">{dept}</span>
+              {value === dept && <Check className="w-4 h-4 text-blue-600" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Contributors() {
   const [selectedDays, setSelectedDays] = useState(DEFAULT_PERIOD_DAYS);
 
@@ -114,6 +190,7 @@ export default function Contributors() {
 
   const [inputValue, setInputValue] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
   const [sortField, setSortField] = useState<SortField>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [currentPage, setCurrentPage] = useState(1);
@@ -129,6 +206,14 @@ export default function Contributors() {
 
   const members: TeamMember[] = data?.members ?? [];
   const contributorMetrics = contribData?.contributors ?? [];
+
+  const departments = useMemo(() => {
+    const depts = new Set<string>();
+    for (const m of members) {
+      if (m.department) depts.add(m.department);
+    }
+    return Array.from(depts).sort();
+  }, [members]);
 
   const mergedMembers: MergedContributor[] = useMemo(() => {
     const metricsById = new Map<string, ContributorMetric>();
@@ -149,14 +234,20 @@ export default function Contributors() {
   }, [members, contributorMetrics]);
 
   const filteredMembers = useMemo(() => {
-    if (!searchQuery.trim()) return mergedMembers;
-    const q = searchQuery.toLowerCase();
-    return mergedMembers.filter((m) =>
-      m.name?.toLowerCase().includes(q) ||
-      m.primaryEmail?.toLowerCase().includes(q) ||
-      m.githubUsername?.toLowerCase().includes(q)
-    );
-  }, [mergedMembers, searchQuery]);
+    let result = mergedMembers;
+    if (selectedDepartment) {
+      result = result.filter((m) => m.department === selectedDepartment);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((m) =>
+        m.name?.toLowerCase().includes(q) ||
+        m.primaryEmail?.toLowerCase().includes(q) ||
+        m.githubUsername?.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [mergedMembers, searchQuery, selectedDepartment]);
 
   const sortedMembers = useMemo(() => {
     return [...filteredMembers].sort((a, b) => {
@@ -221,7 +312,7 @@ export default function Contributors() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {Array.from({ length: 8 }, (_, i) => (
-                  <TableRowSkeleton key={i} cols={4} />
+                  <TableRowSkeleton key={i} cols={5} />
                 ))}
               </tbody>
             </table>
@@ -245,11 +336,20 @@ export default function Contributors() {
                   className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
                 />
               </div>
-              <PeriodSelector
-                selectedDays={selectedDays}
-                onSelect={(days) => { setSelectedDays(days); setCurrentPage(1); }}
-                isLoading={contribLoading}
-              />
+              <div className="flex items-center gap-3">
+                {departments.length > 0 && (
+                  <DepartmentSelect
+                    departments={departments}
+                    value={selectedDepartment}
+                    onChange={(dept) => { setSelectedDepartment(dept); setCurrentPage(1); }}
+                  />
+                )}
+                <PeriodSelector
+                  selectedDays={selectedDays}
+                  onSelect={(days) => { setSelectedDays(days); setCurrentPage(1); }}
+                  isLoading={contribLoading}
+                />
+              </div>
             </div>
 
             <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -258,8 +358,9 @@ export default function Contributors() {
                   <tr>
                     {COLUMNS.map(({ label, field }) => {
                       const widthClass =
-                        field === 'name' ? 'w-1/3' :
-                        field === 'githubUsername' ? 'w-1/4' :
+                        field === 'name' ? 'w-1/4' :
+                        field === 'githubUsername' ? 'w-1/6' :
+                        field === 'department' ? 'w-1/6' :
                         field === 'isActive' ? 'w-28' : '';
                       return (
                         <th
@@ -308,6 +409,11 @@ export default function Contributors() {
                         )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="text-sm text-gray-600">
+                          {member.department || <span className="text-gray-400">-</span>}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
                         <span
                           className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
                             member.isActive
@@ -342,8 +448,8 @@ export default function Contributors() {
                 <div className="text-center py-12">
                   <User className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                   <p className="text-gray-500">
-                    {searchQuery.trim()
-                      ? 'No contributors match your search'
+                    {searchQuery.trim() || selectedDepartment
+                      ? 'No contributors match your filters'
                       : 'No team members configured yet'}
                   </p>
                 </div>
