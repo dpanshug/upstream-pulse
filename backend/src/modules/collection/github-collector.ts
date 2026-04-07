@@ -207,7 +207,8 @@ export class GitHubCollector {
   }
 
   /**
-   * Collect all contributions for a repository since a given date
+   * Collect all contributions for a repository since a given date.
+   * Data is flushed to onPhaseComplete in batches to keep memory bounded.
    */
   async collectRepositoryContributions(
     repo: Repository,
@@ -222,9 +223,10 @@ export class GitHubCollector {
     let totalCollected = 0;
     const signal = (phase: string) => onProgress?.({ phase, collected: totalCollected });
 
-    const completePhase = async (phase: string, records: ContributionRecord[]) => {
+    const makeFlush = (phase: string) => async (records: ContributionRecord[]) => {
+      if (records.length === 0) return;
       totalCollected += records.length;
-      logger.info(`Collected ${records.length} ${phase}`);
+      logger.info(`Flushing ${records.length} ${phase} (total: ${totalCollected})`);
       if (onPhaseComplete) await onPhaseComplete(phase, records);
     };
 
@@ -233,26 +235,22 @@ export class GitHubCollector {
 
       if (allPhases.includes('commits')) {
         signal('commits');
-        const commits = await this.collectCommits(repo, since, onProgress);
-        await completePhase('commits', commits);
+        await this.collectCommits(repo, since, onProgress, makeFlush('commits'));
       }
 
       if (allPhases.includes('pull_requests')) {
         signal('pull_requests');
-        const prs = await this.collectPullRequests(repo, since, onProgress);
-        await completePhase('pull_requests', prs);
+        await this.collectPullRequests(repo, since, onProgress, makeFlush('pull_requests'));
       }
 
       if (allPhases.includes('reviews')) {
         signal('reviews');
-        const reviews = await this.collectReviews(repo, since, onProgress);
-        await completePhase('reviews', reviews);
+        await this.collectReviews(repo, since, onProgress, makeFlush('reviews'));
       }
 
       if (allPhases.includes('issues')) {
         signal('issues');
-        const issues = await this.collectIssues(repo, since, onProgress);
-        await completePhase('issues', issues);
+        await this.collectIssues(repo, since, onProgress, makeFlush('issues'));
       }
 
       signal('done');
@@ -265,16 +263,17 @@ export class GitHubCollector {
     }
   }
 
-  /**
-   * Collect commits since a given date
-   */
+  private static readonly FLUSH_EVERY_PAGES = 10;
+
   private async collectCommits(
     repo: Repository,
     since: Date,
     onProgress?: (detail: { phase: string; collected: number }) => void,
+    onFlush?: (records: ContributionRecord[]) => Promise<void>,
   ): Promise<ContributionRecord[]> {
-    const contributions: ContributionRecord[] = [];
+    let buffer: ContributionRecord[] = [];
     let page = 0;
+    let totalCollected = 0;
 
     try {
       for await (const response of this.octokit.paginate.iterator(
@@ -283,11 +282,12 @@ export class GitHubCollector {
       )) {
         this.trackRateLimit(response.headers as Record<string, string | undefined>);
         await this.waitIfRateLimited(onProgress);
-        onProgress?.({ phase: `commits (page ${++page})`, collected: contributions.length });
+        page++;
+        onProgress?.({ phase: `commits (page ${page})`, collected: totalCollected + buffer.length });
 
         for (const commit of response.data) {
           if (commit.parents && commit.parents.length > 1) continue;
-          contributions.push({
+          buffer.push({
             type: 'commit',
             githubId: commit.sha,
             author: commit.author?.login,
@@ -303,26 +303,35 @@ export class GitHubCollector {
             },
           });
         }
+
+        if (onFlush && page % GitHubCollector.FLUSH_EVERY_PAGES === 0) {
+          await onFlush(buffer);
+          totalCollected += buffer.length;
+          buffer = [];
+        }
       }
 
-      return contributions;
+      if (onFlush) {
+        await onFlush(buffer);
+      }
+      return onFlush ? [] : buffer;
 
     } catch (error) {
       logger.error('Error collecting commits', { error, repo });
-      return contributions;
+      if (onFlush && buffer.length > 0) await onFlush(buffer);
+      return [];
     }
   }
 
-  /**
-   * Collect pull requests since a given date
-   */
   private async collectPullRequests(
     repo: Repository,
     since: Date,
     onProgress?: (detail: { phase: string; collected: number }) => void,
+    onFlush?: (records: ContributionRecord[]) => Promise<void>,
   ): Promise<ContributionRecord[]> {
-    const contributions: ContributionRecord[] = [];
+    let buffer: ContributionRecord[] = [];
     let page = 0;
+    let totalCollected = 0;
 
     try {
       for await (const response of this.octokit.paginate.iterator(
@@ -331,7 +340,8 @@ export class GitHubCollector {
       )) {
         this.trackRateLimit(response.headers as Record<string, string | undefined>);
         await this.waitIfRateLimited(onProgress);
-        onProgress?.({ phase: `pull_requests (page ${++page})`, collected: contributions.length });
+        page++;
+        onProgress?.({ phase: `pull_requests (page ${page})`, collected: totalCollected + buffer.length });
 
         let allOlderThanSince = true;
         for (const pr of response.data) {
@@ -339,7 +349,7 @@ export class GitHubCollector {
           allOlderThanSince = false;
           if (!pr.user) continue;
 
-          contributions.push({
+          buffer.push({
             type: 'pr',
             githubId: String(pr.number),
             author: pr.user.login,
@@ -358,15 +368,24 @@ export class GitHubCollector {
           });
         }
 
-        // Sorted desc by created — if entire page is older than since, no need to fetch more
         if (allOlderThanSince && response.data.length > 0) break;
+
+        if (onFlush && page % GitHubCollector.FLUSH_EVERY_PAGES === 0) {
+          await onFlush(buffer);
+          totalCollected += buffer.length;
+          buffer = [];
+        }
       }
 
-      return contributions;
+      if (onFlush) {
+        await onFlush(buffer);
+      }
+      return onFlush ? [] : buffer;
 
     } catch (error) {
       logger.error('Error collecting pull requests', { error, repo });
-      return contributions;
+      if (onFlush && buffer.length > 0) await onFlush(buffer);
+      return [];
     }
   }
 
@@ -378,16 +397,19 @@ export class GitHubCollector {
     repo: Repository,
     since: Date,
     onProgress?: (detail: { phase: string; collected: number }) => void,
+    onFlush?: (records: ContributionRecord[]) => Promise<void>,
   ): Promise<ContributionRecord[]> {
-    const contributions: ContributionRecord[] = [];
+    let buffer: ContributionRecord[] = [];
     let cursor: string | null = null;
     let page = 0;
+    let totalCollected = 0;
 
     try {
       let hasNextPage = true;
       while (hasNextPage) {
         await this.waitIfGraphQLRateLimited(onProgress);
-        onProgress?.({ phase: `reviews (page ${++page})`, collected: contributions.length });
+        page++;
+        onProgress?.({ phase: `reviews (page ${page})`, collected: totalCollected + buffer.length });
 
         const vars = { owner: repo.githubOrg, repo: repo.githubRepo, cursor };
         let data: GraphQLReviewsResponse;
@@ -415,25 +437,35 @@ export class GitHubCollector {
           if (new Date(pr.updatedAt) < since) continue;
           allOlderThanSince = false;
 
-          this.pushReviewRecords(contributions, pr.reviews.nodes, pr.number, pr.title, since);
+          this.pushReviewRecords(buffer, pr.reviews.nodes, pr.number, pr.title, since);
 
           if (pr.reviews.pageInfo.hasNextPage && pr.reviews.pageInfo.endCursor) {
             const remaining = await this.collectRemainingReviews(
               repo.githubOrg, repo.githubRepo, pr.number, pr.title,
               pr.reviews.pageInfo.endCursor, since, onProgress,
             );
-            contributions.push(...remaining);
+            buffer.push(...remaining);
           }
         }
 
         if (allOlderThanSince && pullRequests.nodes.length > 0) break;
+
+        if (onFlush && page % GitHubCollector.FLUSH_EVERY_PAGES === 0) {
+          await onFlush(buffer);
+          totalCollected += buffer.length;
+          buffer = [];
+        }
       }
 
-      return contributions;
+      if (onFlush) {
+        await onFlush(buffer);
+      }
+      return onFlush ? [] : buffer;
 
     } catch (error) {
       logger.error('Error collecting reviews', { error, repo });
-      return contributions;
+      if (onFlush && buffer.length > 0) await onFlush(buffer);
+      return [];
     }
   }
 
@@ -507,16 +539,15 @@ export class GitHubCollector {
     }
   }
 
-  /**
-   * Collect issues since a given date
-   */
   private async collectIssues(
     repo: Repository,
     since: Date,
     onProgress?: (detail: { phase: string; collected: number }) => void,
+    onFlush?: (records: ContributionRecord[]) => Promise<void>,
   ): Promise<ContributionRecord[]> {
-    const contributions: ContributionRecord[] = [];
+    let buffer: ContributionRecord[] = [];
     let page = 0;
+    let totalCollected = 0;
 
     try {
       for await (const response of this.octokit.paginate.iterator(
@@ -525,7 +556,8 @@ export class GitHubCollector {
       )) {
         this.trackRateLimit(response.headers as Record<string, string | undefined>);
         await this.waitIfRateLimited(onProgress);
-        onProgress?.({ phase: `issues (page ${++page})`, collected: contributions.length });
+        page++;
+        onProgress?.({ phase: `issues (page ${page})`, collected: totalCollected + buffer.length });
 
         for (const issue of response.data) {
           if (issue.pull_request) continue;
@@ -533,7 +565,7 @@ export class GitHubCollector {
 
           const issueDate = new Date(issue.created_at);
           if (issueDate >= since) {
-            contributions.push({
+            buffer.push({
               type: 'issue',
               githubId: String(issue.number),
               author: issue.user.login,
@@ -548,13 +580,23 @@ export class GitHubCollector {
             });
           }
         }
+
+        if (onFlush && page % GitHubCollector.FLUSH_EVERY_PAGES === 0) {
+          await onFlush(buffer);
+          totalCollected += buffer.length;
+          buffer = [];
+        }
       }
 
-      return contributions;
+      if (onFlush) {
+        await onFlush(buffer);
+      }
+      return onFlush ? [] : buffer;
 
     } catch (error) {
       logger.error('Error collecting issues', { error, repo });
-      return contributions;
+      if (onFlush && buffer.length > 0) await onFlush(buffer);
+      return [];
     }
   }
 
