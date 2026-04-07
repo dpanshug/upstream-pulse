@@ -250,8 +250,11 @@ export async function metricsRoutes(app: FastifyInstance) {
    * Optional `projectId` scopes to a single project; optional `githubOrg`
    * scopes to a single org; omit both for the global (all-orgs) view.
    */
-  app.get('/api/metrics/leadership', async (request, reply) => {
+  app.get<{
+    Querystring: { projectId?: string; githubOrg?: string };
+  }>('/api/metrics/leadership', async (request, reply) => {
     try {
+<<<<<<< Updated upstream
       const { githubOrg, projectId } = request.query as { githubOrg?: string; projectId?: string };
 
       const needsProjectJoin = !!(githubOrg || projectId);
@@ -264,6 +267,14 @@ export async function metricsRoutes(app: FastifyInstance) {
       const baseConditions = scopeFilters.length > 1 ? and(...scopeFilters) : scopeFilters[0];
 
       // Team-side: active maintainer_status rows joined to team members
+=======
+      const { projectId, githubOrg } = request.query as { projectId?: string; githubOrg?: string };
+
+      const filters = [eq(maintainerStatus.isActive, true)];
+      if (projectId) filters.push(eq(projects.id, projectId));
+      else if (githubOrg) filters.push(eq(projects.githubOrg, githubOrg));
+
+>>>>>>> Stashed changes
       const statuses = await db
         .select({
           id: maintainerStatus.id,
@@ -284,6 +295,7 @@ export async function metricsRoutes(app: FastifyInstance) {
         .from(maintainerStatus)
         .innerJoin(teamMembers, eq(maintainerStatus.teamMemberId, teamMembers.id))
         .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
+<<<<<<< Updated upstream
         .where(baseConditions);
 
       const isScoped = !!(githubOrg || projectId);
@@ -303,10 +315,26 @@ export async function metricsRoutes(app: FastifyInstance) {
 
       // Total-side: distinct usernames across ALL maintainer_status rows (same scope)
       const totalQuery = db
+=======
+        .where(and(...filters));
+
+      const isApproverType = (t: string) => t !== 'reviewer';
+      const teamApprovers = statuses.filter(s => isApproverType(s.positionType));
+      const teamReviewers = statuses.filter(s => s.positionType === 'reviewer');
+
+      const projectsWithMaintainers = [...new Set(statuses.map(s => s.projectId))];
+
+      const totalFilters = [eq(maintainerStatus.isActive, true)];
+      if (projectId) totalFilters.push(eq(maintainerStatus.projectId, projectId));
+      else if (githubOrg) totalFilters.push(eq(projects.githubOrg, githubOrg));
+
+      const totalMsCounts = await db
+>>>>>>> Stashed changes
         .select({
           positionType: maintainerStatus.positionType,
           count: sql<number>`count(distinct ${maintainerStatus.githubUsername})::int`,
         })
+<<<<<<< Updated upstream
         .from(maintainerStatus);
 
       const totalMsCounts = needsProjectJoin
@@ -317,10 +345,32 @@ export async function metricsRoutes(app: FastifyInstance) {
         : await totalQuery
             .where(baseConditions)
             .groupBy(maintainerStatus.positionType);
+=======
+        .from(maintainerStatus)
+        .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
+        .where(and(...totalFilters))
+        .groupBy(maintainerStatus.positionType);
+>>>>>>> Stashed changes
 
-      const totalApproversEstimate = totalMsCounts.find(r => r.positionType === 'maintainer')?.count ?? 0;
+      const totalApproversEstimate = totalMsCounts.filter(r => isApproverType(r.positionType)).reduce((s, r) => s + r.count, 0);
       const totalReviewersEstimate = totalMsCounts.find(r => r.positionType === 'reviewer')?.count ?? 0;
 
+<<<<<<< Updated upstream
+=======
+      const governanceByType = totalMsCounts
+        .map(r => ({
+          positionType: r.positionType,
+          label: r.positionType === 'reviewer' ? 'Reviewers'
+            : r.positionType === 'maintainer' ? 'Code Owners'
+            : r.positionType === 'approver' ? 'Approvers'
+            : r.positionType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + 's',
+          team: statuses.filter(s => s.positionType === r.positionType).length,
+          total: r.count,
+        }))
+        .filter(g => g.total > 0);
+
+      // Group by team member for the response
+>>>>>>> Stashed changes
       const memberMap = new Map<string, {
         id: string;
         name: string;
@@ -333,6 +383,13 @@ export async function metricsRoutes(app: FastifyInstance) {
           evidenceUrl?: string | null;
         }>;
       }>();
+
+      const defaultRoleLabel = (pt: string) => {
+        if (pt === 'reviewer') return 'Reviewer';
+        if (pt === 'maintainer') return 'Code Owner';
+        if (pt === 'approver') return 'Approver';
+        return pt.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      };
 
       for (const status of statuses) {
         if (!memberMap.has(status.teamMemberId!)) {
@@ -347,7 +404,7 @@ export async function metricsRoutes(app: FastifyInstance) {
         memberMap.get(status.teamMemberId!)!.roles.push({
           projectId: status.projectId!,
           projectName: status.projectName,
-          role: status.positionType === 'maintainer' ? 'Approver' : 'Reviewer',
+          role: status.positionTitle || defaultRoleLabel(status.positionType),
           paths: status.notes?.replace('Paths: ', ''),
           evidenceUrl: status.evidenceUrl,
         });
@@ -368,6 +425,7 @@ export async function metricsRoutes(app: FastifyInstance) {
             ? (teamReviewersCount / totalReviewersEstimate) * 100 
             : 0,
           projectsWithTeamLeadership: projectsWithMaintainers.length,
+          governanceByType,
         },
         members,
         raw: statuses,

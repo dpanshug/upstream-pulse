@@ -183,9 +183,16 @@ function ApproversReviewersSection({ teamLeaders }: { teamLeaders: LeadershipDat
 
   if (approversReviewers.length === 0) return null;
 
+  const roleLabels = Array.from(new Set(
+    approversReviewers.flatMap(m => m.roles.map(r => r.roleLabel))
+  ));
+  const sectionTitle = roleLabels.length > 0
+    ? `Project ${roleLabels.map(l => `${l}s`).join(' & ')}`
+    : 'Maintainers';
+
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-      <h3 className="text-sm font-medium text-gray-600 mb-4">Project Approvers & Reviewers</h3>
+      <h3 className="text-sm font-medium text-gray-600 mb-4">{sectionTitle}</h3>
       <div className="grid md:grid-cols-2 gap-3">
         {visible.map((member) => (
           <LeadershipMemberCard key={member.id} member={member} />
@@ -242,12 +249,13 @@ export function LeadershipSection({ leadership }: LeadershipSectionProps) {
         const govTypes = maintainers.governanceByType?.filter(g => g.total > 0) ?? [];
         if (govTypes.length === 0 && maintainers.totalApprovers === 0 && maintainers.totalReviewers === 0) return null;
 
-        const cards = govTypes.length > 0
+        const cards = (govTypes.length > 0
           ? govTypes.sort((a, b) => positionTypeOrder(a.positionType) - positionTypeOrder(b.positionType))
           : [
               ...(maintainers.totalApprovers > 0 ? [{ positionType: 'maintainer', label: 'Approvers', team: maintainers.teamApprovers, total: maintainers.totalApprovers }] : []),
               ...(maintainers.totalReviewers > 0 ? [{ positionType: 'reviewer', label: 'Reviewers', team: maintainers.teamReviewers, total: maintainers.totalReviewers }] : []),
-            ];
+            ]
+        ).filter(c => c.total > 0);
 
         if (cards.length === 0) return null;
 

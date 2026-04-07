@@ -244,12 +244,19 @@ export async function getLeadershipSummary(
       return memberMap.get(id)!;
     };
 
+    const defaultRoleLabel = (pt: string) => {
+      if (pt === 'reviewer') return 'Reviewer';
+      if (pt === 'maintainer') return 'Code Owner';
+      if (pt === 'approver') return 'Approver';
+      return pt.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    };
+
     for (const s of maintainerStatuses) {
       if (!s.teamMemberId) continue;
       getMember(s.teamMemberId, s.teamMemberName, s.githubUsername).roles.push({
         projectId: s.projectId!, projectName: s.projectName,
         roleType: s.positionType === 'reviewer' ? 'reviewer' : 'approver',
-        roleLabel: s.positionTitle || (s.positionType === 'reviewer' ? 'Reviewer' : 'Approver'),
+        roleLabel: s.positionTitle || defaultRoleLabel(s.positionType),
         scope: s.scope ?? 'root',
         isActive: s.isActive ?? true,
       });
