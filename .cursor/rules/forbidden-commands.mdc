@@ -1,0 +1,72 @@
+---
+description: Commands the agent must never run — protects against data loss, secret leaks, and accidental damage
+alwaysApply: true
+---
+
+# Forbidden Commands
+
+## Never Run — Git Destructive
+
+- `git push --force` / `git push -f` (any branch)
+- `git reset --hard`
+- `git clean -fd` / `git clean -xfd`
+- `git rebase` (rewrites history; suggest it but let the user run it)
+- `git branch -D` (force-delete branches)
+- `git checkout -- .` or `git restore .` on the whole repo (discards all changes)
+- `git stash drop` / `git stash clear`
+
+## Never Run — File System
+
+- `rm -rf` on project root, `backend/`, `frontend/`, `deploy/`, `.cursor/`, `.git/`, or `node_modules/`
+- `rm -rf /`, `rm -rf ~`, `rm -rf *` — never, under any circumstance
+- Bulk `mv` or `cp` that could overwrite project directories
+- `chmod -R` or `chown -R` on project directories
+- `> file` (shell redirect that truncates a file to zero bytes)
+- Deleting `package-lock.json` (causes dependency drift)
+
+## Never Run — Process Management
+
+- `kill`, `kill -9`, `killall`, `pkill` against processes you didn't start (especially SSH tunnels, port forwards, running dev servers in other terminals)
+- Terminating any background process without asking first
+
+## Never Run — Secrets & Credentials
+
+- `cat .env`, `echo $GITHUB_TOKEN`, or any command that prints secrets, tokens, passwords, or API keys to the terminal
+- `env` or `printenv` unfiltered (may dump secrets)
+- Piping `.env` or secret files to any command's stdout
+- Logging, printing, or embedding secrets in code, comments, or commit messages
+
+## Never Run — Package & Registry
+
+- `npm publish` / `npm unpublish`
+- `npm audit fix --force` (can break dependencies; suggest it, don't run it)
+- `docker push` to any registry
+- `docker rm`, `docker rmi`, `docker system prune`, `docker-compose down -v` (wipes volumes/images)
+- `npm link` in production directories
+
+## Never Run — Git Push & PR
+
+- `git push` to any remote without asking which remote and branch
+- `gh pr create` without confirming the base branch, target repo, and title with the user first
+- Never assume `origin/main` is the right target — ask
+
+## Never Run — Remote Code Execution
+
+- `curl ... | bash`, `wget ... | sh`, or any pipe-to-shell pattern
+- `npx` with untrusted/unknown packages (only use well-known tools like `tsc`, `drizzle-kit`, `prettier`)
+
+## Never Run — Network Exposure
+
+- `python -m http.server`, `nc -l`, `php -S` or any command that serves local files on the network
+- Binding services to `0.0.0.0` without asking
+
+## Never Run — System-Level
+
+- Modifying shell config files (`~/.zshrc`, `~/.bashrc`, `~/.gitconfig`)
+- `sudo` anything
+- `shutdown`, `reboot`, `dd`, `mkfs`, `fdisk` — system/disk operations
+- Installing global packages (`npm i -g`, `brew install`) — suggest it, don't run it
+
+## When in Doubt
+
+If a command is destructive, irreversible, or touches things outside the project directory — **stop and ask**.
