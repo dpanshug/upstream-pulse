@@ -9,3 +9,9 @@ kind: Kustomization
 
 resources:
   - ../../base
+
+images:
+  - name: quay.io/org-pulse/upstream-pulse-backend
+    newTag: 1e7a1df
+  - name: quay.io/org-pulse/upstream-pulse-frontend
+    newTag: 1e7a1df

@@ -2,7 +2,7 @@ name: Build and Push Images
 
 on:
   push:
-    branches: [main]
+    branches: [main, preprod]
 
 env:
   REGISTRY: quay.io
@@ -49,12 +49,17 @@ jobs:
       - name: Install kustomize
         uses: imranismail/setup-kustomize@v2
 
-      - name: Update image tags in manifests
+      - name: Determine target overlay
         run: |
-          cd deploy/openshift
-          kustomize edit set image ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-backend:${{ env.IMAGE_TAG }}
-          kustomize edit set image ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-frontend:${{ env.IMAGE_TAG }}
-          cd overlays/prod
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "OVERLAY=prod" >> $GITHUB_ENV
+          else
+            echo "OVERLAY=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
+
+      - name: Update image tags in overlay
+        run: |
+          cd deploy/openshift/overlays/${{ env.OVERLAY }}
           kustomize edit set image ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-backend:${{ env.IMAGE_TAG }}
           kustomize edit set image ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/upstream-pulse-frontend:${{ env.IMAGE_TAG }}
 
@@ -62,6 +67,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add deploy/openshift/kustomization.yaml deploy/openshift/overlays/prod/kustomization.yaml
+          git add deploy/openshift/overlays/${{ env.OVERLAY }}/kustomization.yaml
           git diff --cached --quiet || git commit -m "chore: update image tags to ${{ env.IMAGE_TAG }} [skip ci]"
           git push
