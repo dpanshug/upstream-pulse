@@ -290,6 +290,13 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     governanceModel: 'none',
   },
 
+  // ─── GGML (llama.cpp) ─────────────────────────
+  {
+    name: 'GGML',
+    githubOrg: 'ggml-org',
+    governanceModel: 'codeowners',
+  },
+
   // ─── PyTorch ──────────────────────────────────
   {
     name: 'PyTorch',

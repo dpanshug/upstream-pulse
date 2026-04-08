@@ -2,7 +2,7 @@
 
 Upstream Pulse provides contribution tracking and governance insights for the following upstream open-source organizations and projects. This document lists what is currently supported and what is planned next, organized by upstream organization.
 
-**Last updated**: 2026-04-01
+**Last updated**: 2026-04-07
 
 ---
 
@@ -209,6 +209,18 @@ Container tooling ecosystem — Podman, RamaLama, AI Lab Recipes, OLOT. Mixed go
 
 ---
 
+### GGML (`ggml-org/*`)
+
+High-performance LLM inference in C/C++. Home of `llama.cpp` (102k+ stars) — the leading open-source local LLM inference engine.
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| `ggml-org/llama.cpp` | LLM inference in C/C++ | **Tracked** |
+
+**Governance**: Uses GitHub CODEOWNERS (~100 owner entries). No community repo or structured leadership files. Led by @ggerganov.
+
+---
+
 ### PyTorch (`pytorch/*`)
 
 Meta's open-source deep learning framework. Tracking for emerging team contributions.
@@ -284,11 +296,12 @@ Additional upstream projects across various organizations.
 | **Argo** | 2 | 2 tracked |
 | **NVIDIA** | 4 | 4 tracked |
 | **Containers** | 5 | 5 tracked |
+| **GGML** | 1 | 1 tracked |
 | **PyTorch** | 1 | 1 tracked |
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
 | **Individual repos** | 6 | Planned |
-| **Total** | **72** | 57 tracked, 15 planned |
+| **Total** | **73** | 58 tracked, 15 planned |
 
 ---
 
