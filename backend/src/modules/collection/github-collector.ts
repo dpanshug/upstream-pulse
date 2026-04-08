@@ -1,8 +1,13 @@
 import { Octokit } from '@octokit/rest';
+import { throttling } from '@octokit/plugin-throttling';
 import * as yaml from 'js-yaml';
 import { config } from '../../shared/config/index.js';
 import { logger } from '../../shared/utils/logger.js';
+
 import type { Repository } from '../../shared/types/index.js';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const ThrottledOctokit = Octokit.plugin(throttling as any);
 
 export interface OwnersEntry {
   username: string;
@@ -143,8 +148,18 @@ export class GitHubCollector {
   private graphqlResetAt: Date | null = null;
 
   constructor(token?: string) {
-    this.octokit = new Octokit({
+    this.octokit = new ThrottledOctokit({
       auth: token || config.githubToken,
+      throttle: {
+        onRateLimit: (retryAfter: number, options: any, _octokit: any, retryCount: number) => {
+          logger.warn(`Rate limit hit for ${options.method} ${options.url}, retrying after ${retryAfter}s (attempt ${retryCount + 1})`);
+          return retryCount < 3;
+        },
+        onSecondaryRateLimit: (retryAfter: number, options: any, _octokit: any, retryCount: number) => {
+          logger.warn(`Secondary rate limit hit for ${options.method} ${options.url}, retrying after ${retryAfter}s`);
+          return retryCount < 2;
+        },
+      },
       log: {
         debug: (msg: string) => logger.debug(msg),
         info: (msg: string) => logger.info(msg),
@@ -318,8 +333,12 @@ export class GitHubCollector {
 
     } catch (error) {
       logger.error('Error collecting commits', { error, repo });
-      if (onFlush && buffer.length > 0) await onFlush(buffer);
-      return [];
+      try {
+        if (onFlush && buffer.length > 0) await onFlush(buffer);
+      } catch (flushError) {
+        logger.error('Failed to flush remaining commit buffer', { error: flushError });
+      }
+      throw error;
     }
   }
 
@@ -384,8 +403,12 @@ export class GitHubCollector {
 
     } catch (error) {
       logger.error('Error collecting pull requests', { error, repo });
-      if (onFlush && buffer.length > 0) await onFlush(buffer);
-      return [];
+      try {
+        if (onFlush && buffer.length > 0) await onFlush(buffer);
+      } catch (flushError) {
+        logger.error('Failed to flush remaining PR buffer', { error: flushError });
+      }
+      throw error;
     }
   }
 
@@ -422,7 +445,7 @@ export class GitHubCollector {
             data = await this.octokit.graphql<GraphQLReviewsResponse>(REVIEWS_QUERY, vars);
           } catch (retryError) {
             logger.error(`GraphQL reviews query failed after retry (page ${page})`, { error: (retryError as Error).message });
-            break;
+            throw retryError;
           }
         }
 
@@ -464,8 +487,12 @@ export class GitHubCollector {
 
     } catch (error) {
       logger.error('Error collecting reviews', { error, repo });
-      if (onFlush && buffer.length > 0) await onFlush(buffer);
-      return [];
+      try {
+        if (onFlush && buffer.length > 0) await onFlush(buffer);
+      } catch (flushError) {
+        logger.error('Failed to flush remaining reviews buffer', { error: flushError });
+      }
+      throw error;
     }
   }
 
@@ -595,8 +622,12 @@ export class GitHubCollector {
 
     } catch (error) {
       logger.error('Error collecting issues', { error, repo });
-      if (onFlush && buffer.length > 0) await onFlush(buffer);
-      return [];
+      try {
+        if (onFlush && buffer.length > 0) await onFlush(buffer);
+      } catch (flushError) {
+        logger.error('Failed to flush remaining issues buffer', { error: flushError });
+      }
+      throw error;
     }
   }
 
