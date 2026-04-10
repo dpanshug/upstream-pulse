@@ -81,6 +81,8 @@ export interface DashboardSummary {
 export interface OrgActivityItem {
   org: string;
   orgName: string;
+  strategicParticipation?: string | null;
+  strategicLeadership?: string | null;
   total: number;
   commits: number;
   prs: number;

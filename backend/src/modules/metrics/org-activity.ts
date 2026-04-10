@@ -212,9 +212,12 @@ export async function getOrgActivity(options: MetricsQueryOptions = {}): Promise
       ? parseFloat(((counts.total / totalContribs) * 100).toFixed(1))
       : 0;
 
+    const orgConfig = getOrgConfig(org);
     results.push({
       org,
-      orgName: getOrgConfig(org)?.name ?? org,
+      orgName: orgConfig?.name ?? org,
+      strategicParticipation: orgConfig?.strategicParticipation ?? null,
+      strategicLeadership: orgConfig?.strategicLeadership ?? null,
       ...counts,
       trend: sparklineMap.get(org) ?? [],
       totalTrend: totalSparklineMap.get(org) ?? [],

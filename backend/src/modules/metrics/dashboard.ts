@@ -241,7 +241,7 @@ export async function getDashboard(options: MetricsQueryOptions = {}): Promise<D
     buildTopProjects(),
     getLeadershipSummary(projectId, projectRepo, githubOrg),
     !projectId && !githubOrg
-      ? getOrgActivity({ days }).then(r => r.slice(0, 4))
+      ? getOrgActivity({ days })
       : Promise.resolve(undefined),
   ]);
 
