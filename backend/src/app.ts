@@ -821,6 +821,8 @@ app.get<{
           githubOrg: o.githubOrg,
           governanceModel: o.governanceModel,
           hasCommunityRepo: !!o.communityRepo,
+          strategicParticipation: o.strategicParticipation ?? null,
+          strategicLeadership: o.strategicLeadership ?? null,
           contributionCount: activity?.total ?? 0,
           trend: activity?.trend ?? [],
           totalTrend: activity?.totalTrend ?? [],

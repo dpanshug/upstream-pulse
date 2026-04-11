@@ -58,6 +58,10 @@ export interface UpstreamOrgConfig {
   repoGovernanceOverride?: Record<string, 'owners' | 'codeowners' | 'none'>;
   /** Maps repo names to their owning working groups (only relevant for orgs with WGs) */
   repoToWorkingGroup?: Record<string, string[]>;
+  /** Strategic participation classification: evaluating_participation, sustaining_participation, increasing_participation */
+  strategicParticipation?: 'evaluating_participation' | 'sustaining_participation' | 'increasing_participation';
+  /** Strategic leadership classification: evaluating_leadership, sustaining_leadership, increasing_leadership */
+  strategicLeadership?: 'evaluating_leadership' | 'sustaining_leadership' | 'increasing_leadership';
 }
 
 // ── Registry ────────────────────────────────────────────────────────
@@ -67,6 +71,8 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'Kubeflow',
     githubOrg: 'kubeflow',
+    strategicParticipation: 'sustaining_participation',
+    strategicLeadership: 'sustaining_leadership',
     communityRepo: {
       repo: 'community',
       defaultBranch: 'master',
@@ -99,6 +105,8 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'KServe',
     githubOrg: 'kserve',
+    strategicParticipation: 'sustaining_participation',
+    strategicLeadership: 'sustaining_leadership',
     communityRepo: {
       repo: 'community',
       defaultBranch: 'main',
@@ -140,6 +148,8 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'vLLM',
     githubOrg: 'vllm-project',
+    strategicParticipation: 'increasing_participation',
+    strategicLeadership: 'increasing_leadership',
     governanceModel: 'codeowners',
   },
 
@@ -166,6 +176,8 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'Ray',
     githubOrg: 'ray-project',
+    strategicParticipation: 'sustaining_participation',
+    strategicLeadership: 'sustaining_leadership',
     governanceModel: 'codeowners',
   },
 
@@ -180,6 +192,8 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'Llama Stack',
     githubOrg: 'llamastack',
+    strategicParticipation: 'sustaining_participation',
+    strategicLeadership: 'sustaining_leadership',
     governanceModel: 'codeowners',
   },
 
@@ -201,6 +215,8 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'llm-d',
     githubOrg: 'llm-d',
+    strategicParticipation: 'increasing_participation',
+    strategicLeadership: 'sustaining_leadership',
     communityRepo: {
       repo: 'llm-d',
       defaultBranch: 'main',
@@ -239,6 +255,8 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'MLflow',
     githubOrg: 'mlflow',
+    strategicParticipation: 'increasing_participation',
+    strategicLeadership: 'increasing_leadership',
     communityRepo: {
       repo: 'mlflow',
       defaultBranch: 'master',
@@ -301,6 +319,8 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'PyTorch',
     githubOrg: 'pytorch',
+    strategicParticipation: 'increasing_participation',
+    strategicLeadership: 'increasing_leadership',
     communityRepo: {
       repo: 'pytorch',
       defaultBranch: 'main',
@@ -313,6 +333,32 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
       ],
     },
     governanceModel: 'codeowners',
+  },
+
+  // ─── DocLing ──────────────────────────────────
+  {
+    name: 'DocLing',
+    githubOrg: 'docling',
+    strategicParticipation: 'sustaining_participation',
+    strategicLeadership: 'sustaining_leadership',
+    governanceModel: 'codeowners',
+  },
+
+  // ─── Agentic AI Foundation ────────────────────
+  {
+    name: 'Agentic AI Foundation',
+    githubOrg: 'aaif',
+    strategicParticipation: 'evaluating_participation',
+    governanceModel: 'none',
+  },
+
+  // ─── Kagenti ────────────────────
+  {
+    name: 'Kagenti',
+    githubOrg: 'kagenti',
+    strategicParticipation: 'increasing_participation',
+    strategicLeadership: 'increasing_leadership',
+    governanceModel: 'none',
   },
 ];
 

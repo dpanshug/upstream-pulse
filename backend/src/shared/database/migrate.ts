@@ -15,8 +15,14 @@ export async function runMigrations() {
   console.log('Running database migrations...');
 
   // Idempotent patches for databases that predate Drizzle migrations
+  // Only run if team_members table exists
   await client.unsafe(`
-    ALTER TABLE team_members ADD COLUMN IF NOT EXISTS source varchar(50) DEFAULT 'manual';
+    DO $$
+    BEGIN
+      IF EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'team_members') THEN
+        ALTER TABLE team_members ADD COLUMN IF NOT EXISTS source varchar(50) DEFAULT 'manual';
+      END IF;
+    END $$;
   `);
 
   await migrate(db, {
