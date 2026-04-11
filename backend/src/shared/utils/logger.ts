@@ -26,7 +26,7 @@ export const logger = winston.createLogger({
     timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     logFormat
   ),
-  defaultMeta: { service: 'upstream-pulse' },
+  defaultMeta: { service: 'upstream-pulse', version: '1.0.0' },
   transports: [
     new winston.transports.Console({
       format: combine(
