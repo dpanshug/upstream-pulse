@@ -209,7 +209,7 @@ export default function Dashboard() {
                 <OrgCardSkeleton />
               </>
             ) : (
-              orgActivity && orgActivity.length > 0 && orgActivity.map((activity) => (
+              orgActivity && orgActivity.length > 0 && orgActivity.slice(0, 4).map((activity) => (
                 <OrgActivityCard key={activity.org} activity={activity} selectedDays={selectedDays} />
               ))
             )}
