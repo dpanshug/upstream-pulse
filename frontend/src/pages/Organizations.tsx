@@ -34,7 +34,7 @@ export default function Organizations() {
   const daysParam = searchParams.get('days');
   const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : DEFAULT_PERIOD_DAYS;
 
-  const { data, isLoading, isFetching, error, refetch } = useQuery({
+  const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useQuery({
     queryKey: ['orgs', selectedDays],
     queryFn: () => fetchOrgs(selectedDays),
     placeholderData: (prev) => prev,
@@ -77,7 +77,7 @@ export default function Organizations() {
           </div>
         </div>
 
-        <div className={`transition-opacity duration-300 ${isRefetching ? 'opacity-40' : ''}`}>
+        <div className={`transition-opacity duration-300 ${isPlaceholderData ? 'opacity-60' : ''}`}>
         {isLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <OrgCardSkeleton />
