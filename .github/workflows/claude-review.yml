@@ -63,7 +63,6 @@ jobs:
               docs/*) ;;
               *.md) ;;
               package-lock.json|backend/package-lock.json|frontend/package-lock.json) ;;
-              .github/workflows/*) ;;
               *)
                 needs_review=true
                 break
@@ -139,7 +138,7 @@ jobs:
           track_progress: true
           display_report: "true"
           include_fix_links: "true"
-          claude_args: '--model claude-opus-4-6 --max-turns 15 --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin:*),Bash(git diff:*),Bash(git status:*),Bash(cd backend && npm test:*),Bash(cd backend && npm run lint:*),Bash(cd backend && npm run type-check:*),Bash(cd frontend && npm run build:*),Bash(cd frontend && npm run lint:*),Read,Glob,Grep,Edit,Write"'
+          claude_args: '--model claude-opus-4-6 --max-turns 50 --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr checkout:*),Bash(git add:*),Bash(git commit:*),Bash(git push origin:*),Bash(git diff:*),Bash(git status:*),Bash(cd backend && npm test:*),Bash(cd backend && npm run lint:*),Bash(cd backend && npm run type-check:*),Bash(cd frontend && npm run build:*),Bash(cd frontend && npm run lint:*),Read,Glob,Grep,Edit,Write"'
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -254,7 +253,6 @@ jobs:
               docs/*) ;;
               *.md) ;;
               package-lock.json|backend/package-lock.json|frontend/package-lock.json) ;;
-              .github/workflows/*) ;;
               *)
                 needs_review=true
                 break
@@ -308,7 +306,7 @@ jobs:
           track_progress: true
           display_report: "true"
           include_fix_links: "true"
-          claude_args: '--model claude-opus-4-6 --max-turns 10 --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Glob,Grep"'
+          claude_args: '--model claude-opus-4-6 --max-turns 25 --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Glob,Grep"'
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
