@@ -43,7 +43,7 @@ export default function Dashboard() {
   const daysParam = searchParams.get('days');
   const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : DEFAULT_PERIOD_DAYS;
 
-  const { data, isLoading, isFetching, error, refetch } = useQuery({
+  const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useQuery({
     queryKey: ['dashboard', selectedDays],
     queryFn: () => fetchDashboard(selectedDays),
     refetchInterval: 60000,
@@ -95,7 +95,7 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-        <div className={`transition-opacity duration-300 ${isRefetching ? 'opacity-40' : ''}`}>
+        <div className={`transition-opacity duration-300 ${isPlaceholderData ? 'opacity-60' : ''}`}>
         {/* Summary Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {isLoading ? (

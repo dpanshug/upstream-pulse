@@ -69,7 +69,7 @@ export default function OrganizationDetail() {
     staleTime: Infinity,
   });
 
-  const { data, isLoading, isFetching, error, refetch } = useQuery({
+  const { data, isLoading, isFetching, isPlaceholderData, error, refetch } = useQuery({
     queryKey: ['org-dashboard', org, selectedDays],
     queryFn: () => fetchOrgDashboard(org!, selectedDays),
     refetchInterval: 60000,
@@ -139,7 +139,7 @@ export default function OrganizationDetail() {
           </div>
         </div>
 
-        <div className={`transition-opacity duration-300 ${isRefetching ? 'opacity-40' : ''}`}>
+        <div className={`transition-opacity duration-300 ${isPlaceholderData ? 'opacity-60' : ''}`}>
         {/* Summary Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
           {isLoading ? (
