@@ -17,6 +17,6 @@ resources:
 - postgres-restore-test-cronjob.yaml
 images:
 - name: quay.io/org-pulse/upstream-pulse-backend
-  newTag: d9bbb82
+  newTag: 3eb7fc5
 - name: quay.io/org-pulse/upstream-pulse-frontend
-  newTag: d9bbb82
+  newTag: 3eb7fc5
