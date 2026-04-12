@@ -35,7 +35,16 @@ async function resolveAndStore(
   for (const record of records) {
     try {
       const identity = identities.get(record.author || 'unknown');
-      const inserted = await db.insert(contributions).values({
+      const updateFields: Record<string, unknown> = {};
+      if (record.linesAdded != null) updateFields.linesAdded = record.linesAdded;
+      if (record.linesDeleted != null) updateFields.linesDeleted = record.linesDeleted;
+      if (record.filesChanged != null) updateFields.filesChanged = record.filesChanged;
+      if (record.isMerged != null) updateFields.isMerged = record.isMerged;
+      if (record.metadata?.url) updateFields.githubUrl = record.metadata.url;
+
+      const hasUpdates = Object.keys(updateFields).length > 0;
+
+      const query = db.insert(contributions).values({
         projectId,
         teamMemberId: identity?.teamMember?.id,
         contributionType: record.type,
@@ -47,7 +56,15 @@ async function resolveAndStore(
         filesChanged: record.filesChanged,
         isMerged: record.isMerged,
         metadata: record.metadata,
-      }).onConflictDoNothing().returning({ id: contributions.id });
+      });
+
+      const inserted = hasUpdates
+        ? await query.onConflictDoUpdate({
+            target: [contributions.projectId, contributions.contributionType, contributions.githubId],
+            set: updateFields,
+          }).returning({ id: contributions.id })
+        : await query.onConflictDoNothing().returning({ id: contributions.id });
+
       if (inserted.length > 0) processed++;
     } catch (error) {
       errors++;
