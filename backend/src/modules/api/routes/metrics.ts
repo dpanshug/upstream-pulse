@@ -13,8 +13,13 @@ import {
   getMyTeamRank,
   getMyRoles,
   getTeamTotalContributions,
+  getMyRecentActivity,
+  getMyMergeRate,
+  computeStreak,
+  toHeatmapData,
 } from '../../metrics/my-contributions.js';
 import { getDateRange, formatDate, calculatePercentage } from '../../metrics/helpers.js';
+import { getActionQueue } from '../../metrics/my-github-queue.js';
 
 const DASHBOARD_CACHE_TTL = 5 * 60 * 1000;
 const dashboardCache = new Map<string, { data: unknown; ts: number }>();
@@ -407,7 +412,7 @@ export async function metricsRoutes(app: FastifyInstance) {
    *   - days: number of days (default: 30)
    */
   app.get<{
-    Querystring: { days?: string };
+    Querystring: { days?: string; heatmapYear?: string };
   }>('/api/metrics/me', async (request, reply) => {
     try {
       const resolved = await resolveTeamMember(
@@ -430,7 +435,17 @@ export async function metricsRoutes(app: FastifyInstance) {
       const periodStart = dateRange ? formatDate(dateRange.start) : 'All time';
       const periodEnd = dateRange ? formatDate(dateRange.end) : formatDate(new Date());
 
-      const [breakdown, trend, daily, myProjects, rank, roles, teamTotal] = await Promise.all([
+      const heatmapYearParam = request.query.heatmapYear;
+      const heatmapOptions = heatmapYearParam
+        ? {
+            dateRange: {
+              start: new Date(`${heatmapYearParam}-01-01`),
+              end: new Date(`${heatmapYearParam}-12-31`),
+            },
+          }
+        : { days: 365 };
+
+      const [breakdown, trend, daily, myProjects, rank, roles, teamTotal, recentActivity, mergeRateData, heatmapDaily] = await Promise.all([
         getMyContributionBreakdown(resolved.id, options),
         getMyContributionTrend(resolved.id, options),
         getMyDailyActivity(resolved.id, options),
@@ -438,7 +453,13 @@ export async function metricsRoutes(app: FastifyInstance) {
         getMyTeamRank(resolved.id, options),
         getMyRoles(resolved.id),
         getTeamTotalContributions(options),
+        getMyRecentActivity(resolved.id),
+        getMyMergeRate(resolved.id, options),
+        getMyDailyActivity(resolved.id, heatmapOptions),
       ]);
+
+      const streak = computeStreak(heatmapDaily);
+      const heatmap = toHeatmapData(heatmapDaily);
 
       return {
         resolved: true as const,
@@ -470,12 +491,51 @@ export async function metricsRoutes(app: FastifyInstance) {
         dailyActivity: daily,
         projects: myProjects,
         roles,
+        recentActivity,
+        mergeRate: mergeRateData,
+        streak,
+        heatmap,
       };
     } catch (error) {
       logger.error('Error fetching personal metrics', { error });
       reply.status(500);
       return {
         error: 'Failed to fetch personal metrics',
+        message: (error as Error).message,
+      };
+    }
+  });
+
+  /**
+   * GET /api/metrics/me/action-queue
+   *
+   * Live GitHub PR queue for the logged-in user.
+   * Returns open PRs authored by the user and PRs requesting their review,
+   * scoped to tracked project orgs. Cached for 2 minutes per user.
+   */
+  app.get('/api/metrics/me/action-queue', async (request, reply) => {
+    try {
+      const resolved = await resolveTeamMember(
+        request.identity.email || undefined,
+        request.identity.username || undefined,
+      );
+
+      if (!resolved?.githubUsername) {
+        return {
+          resolved: false as const,
+          reason: resolved
+            ? 'No GitHub username linked to your profile'
+            : 'Could not match your login to a team member',
+        };
+      }
+
+      const data = await getActionQueue(resolved.githubUsername);
+      return data;
+    } catch (error) {
+      logger.error('Error fetching action queue', { error });
+      reply.status(500);
+      return {
+        error: 'Failed to fetch action queue',
         message: (error as Error).message,
       };
     }

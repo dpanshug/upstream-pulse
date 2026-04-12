@@ -1,6 +1,6 @@
 import { db } from '../../shared/database/client.js';
 import { contributions, teamMembers, projects, maintainerStatus, leadershipPositions } from '../../shared/database/schema.js';
-import { eq, and, gte, lte, isNotNull, count, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, isNotNull, count, sql, desc } from 'drizzle-orm';
 import { getDateRange, formatDate, normalizeDateValue, buildCounts, buildTrend, calculatePercentage } from './helpers.js';
 import type { MetricsQueryOptions, TrendMetric, ContributionCounts } from './types.js';
 
@@ -317,4 +317,209 @@ export async function getTeamTotalContributions(
     .where(and(...conditions));
 
   return Number(row?.total ?? 0);
+}
+
+// ---------------------------------------------------------------------------
+// New queries for the Contributor Home page
+// ---------------------------------------------------------------------------
+
+export interface MyRecentActivityItem {
+  type: string;
+  date: string;
+  githubUrl: string;
+  projectName: string;
+  githubOrg: string;
+  githubRepo: string;
+  title: string | null;
+}
+
+/** Recent contributions with GitHub links for the activity feed. */
+export async function getMyRecentActivity(
+  teamMemberId: string,
+  limit = 500,
+): Promise<MyRecentActivityItem[]> {
+  const conditions: ReturnType<typeof eq>[] = [
+    eq(contributions.teamMemberId, teamMemberId),
+    isNotNull(contributions.githubUrl),
+  ];
+
+  const rows = await db
+    .select({
+      type: contributions.contributionType,
+      date: contributions.contributionDate,
+      githubUrl: contributions.githubUrl,
+      metadata: contributions.metadata,
+      collectedAt: contributions.collectedAt,
+      projectName: projects.name,
+      githubOrg: projects.githubOrg,
+      githubRepo: projects.githubRepo,
+    })
+    .from(contributions)
+    .innerJoin(projects, eq(contributions.projectId, projects.id))
+    .where(and(...conditions))
+    .orderBy(desc(contributions.contributionDate), desc(contributions.collectedAt))
+    .limit(limit);
+
+  return rows.map((r) => {
+    const meta = r.metadata as Record<string, unknown> | null;
+    return {
+      type: r.type,
+      date: normalizeDateValue(r.date),
+      githubUrl: r.githubUrl!,
+      projectName: r.projectName,
+      githubOrg: r.githubOrg,
+      githubRepo: r.githubRepo,
+      title: (meta?.title as string) ?? null,
+    };
+  });
+}
+
+export interface MyMergeRate {
+  mergeRate: number;
+  prsMerged: number;
+  prsTotal: number;
+}
+
+/** PR merge rate for a contributor (no line stats, just counts). */
+export async function getMyMergeRate(
+  teamMemberId: string,
+  options: MetricsQueryOptions = {},
+): Promise<MyMergeRate> {
+  const dateRange = getDateRange(options);
+  const conditions: ReturnType<typeof eq>[] = [
+    eq(contributions.teamMemberId, teamMemberId),
+    eq(contributions.contributionType, 'pr'),
+  ];
+  if (dateRange) {
+    conditions.push(gte(contributions.contributionDate, formatDate(dateRange.start)));
+    conditions.push(lte(contributions.contributionDate, formatDate(dateRange.end)));
+  }
+
+  const [row] = await db
+    .select({
+      total: count(),
+      merged: sql<number>`COUNT(*) FILTER (WHERE ${contributions.isMerged} = true)`,
+    })
+    .from(contributions)
+    .where(and(...conditions));
+
+  const prsTotal = Number(row?.total ?? 0);
+  const prsMerged = Number(row?.merged ?? 0);
+
+  return {
+    mergeRate: prsTotal > 0 ? parseFloat(((prsMerged / prsTotal) * 100).toFixed(1)) : 0,
+    prsMerged,
+    prsTotal,
+  };
+}
+
+export interface MyStreak {
+  current: number;
+  longest: number;
+  todayActive: boolean;
+}
+
+function isWeekend(date: Date): boolean {
+  const dow = date.getDay();
+  return dow === 0 || dow === 6;
+}
+
+/**
+ * Compute current and longest contribution streaks from daily activity data.
+ * Weekends (Sat/Sun) are skipped -- a streak only breaks on a weekday with
+ * zero contributions. Weekend contributions still count toward the streak
+ * total if they fall within an active run.
+ */
+export function computeStreak(dailyActivity: MyDailyActivity[]): MyStreak {
+  if (dailyActivity.length === 0) {
+    return { current: 0, longest: 0, todayActive: false };
+  }
+
+  const today = formatDate(new Date());
+
+  const activityMap = new Map<string, number>();
+  for (const day of dailyActivity) {
+    activityMap.set(day.date, day.total);
+  }
+
+  const todayActive = (activityMap.get(today) ?? 0) > 0;
+
+  // Current streak: walk backward from today, skipping weekends without activity.
+  // A streak breaks only when a weekday has 0 contributions.
+  // Max 730 iterations (2 years) as a safety bound.
+  const MAX_LOOKBACK = 730;
+  let current = 0;
+  const cursor = new Date();
+
+  if (!todayActive && !isWeekend(cursor)) {
+    // Today is a weekday with no activity -- check last working day
+    const prev = new Date(cursor);
+    prev.setDate(prev.getDate() - 1);
+    while (isWeekend(prev)) prev.setDate(prev.getDate() - 1);
+    if ((activityMap.get(formatDate(prev)) ?? 0) === 0) {
+      current = 0;
+    } else {
+      const c = new Date(prev);
+      for (let i = 0; i < MAX_LOOKBACK; i++) {
+        const ds = formatDate(c);
+        const total = activityMap.get(ds) ?? 0;
+        if (isWeekend(c)) {
+          if (total > 0) current++;
+          c.setDate(c.getDate() - 1);
+          continue;
+        }
+        if (total > 0) {
+          current++;
+          c.setDate(c.getDate() - 1);
+        } else {
+          break;
+        }
+      }
+    }
+  } else {
+    for (let i = 0; i < MAX_LOOKBACK; i++) {
+      const ds = formatDate(cursor);
+      const total = activityMap.get(ds) ?? 0;
+      if (isWeekend(cursor)) {
+        if (total > 0) current++;
+        cursor.setDate(cursor.getDate() - 1);
+        continue;
+      }
+      if (total > 0) {
+        current++;
+        cursor.setDate(cursor.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+  }
+
+  // Longest streak: scan sorted activity, skipping weekends without activity
+  let longest = 0;
+  let run = 0;
+  const sorted = [...dailyActivity].sort((a, b) => a.date.localeCompare(b.date));
+  for (const day of sorted) {
+    const d = new Date(day.date + 'T00:00:00');
+    if (day.total > 0) {
+      run++;
+      if (run > longest) longest = run;
+    } else if (isWeekend(d)) {
+      // Weekend with no activity doesn't break the streak
+      continue;
+    } else {
+      run = 0;
+    }
+  }
+
+  return { current, longest, todayActive };
+}
+
+export interface HeatmapEntry {
+  date: string;
+  total: number;
+}
+
+/** Extract simplified heatmap data from daily activity. */
+export function toHeatmapData(dailyActivity: MyDailyActivity[]): HeatmapEntry[] {
+  return dailyActivity.map((d) => ({ date: d.date, total: d.total }));
 }
