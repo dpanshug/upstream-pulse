@@ -37,7 +37,7 @@ function App() {
             <Routes>
               <Route element={<AppLayout />}>
                 <Route path="/" element={<Dashboard />} />
-                {import.meta.env.DEV && <Route path="/me" element={<MyContributions />} />}
+                <Route path="/me" element={<MyContributions />} />
                 <Route path="/organizations" element={<Organizations />} />
                 <Route path="/organizations/:org" element={<OrganizationDetail />} />
                 <Route path="/organizations/:org/projects/:projectId" element={<ProjectDetail />} />
