@@ -692,15 +692,6 @@ export default function MyContributions() {
         <div className={`transition-opacity duration-200 ${isPlaceholderData ? 'opacity-60' : ''}`}>
           {activeTab === 'overview' && (
             <div id="tabpanel-overview" role="tabpanel" aria-labelledby="tab-overview">
-              {/* Period selector */}
-              <div className="flex justify-end mb-4">
-                <PeriodSelector
-                  selectedDays={selectedDays}
-                  onSelect={handlePeriodChange}
-                  isLoading={isRefetching}
-                />
-              </div>
-
               {/* Action queue */}
               <section className="mb-6">
                 {queueLoading ? (
@@ -709,6 +700,15 @@ export default function MyContributions() {
                   <ActionQueue reviewRequests={queueData.reviewRequests} myOpenPRs={queueData.myOpenPRs} />
                 ) : null}
               </section>
+
+              {/* Period selector */}
+              <div className="flex justify-end mb-4">
+                <PeriodSelector
+                  selectedDays={selectedDays}
+                  onSelect={handlePeriodChange}
+                  isLoading={isRefetching}
+                />
+              </div>
 
               {/* Pulse strip */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
