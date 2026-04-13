@@ -76,8 +76,8 @@ interface GraphQLSearchResponse {
 }
 
 const PR_SEARCH_QUERY = `
-  query($query: String!) {
-    search(query: $query, type: ISSUE, first: 20) {
+  query($searchQuery: String!) {
+    search(query: $searchQuery, type: ISSUE, first: 20) {
       nodes {
         ... on PullRequest {
           title
@@ -134,8 +134,8 @@ async function fetchFromGitHub(
   const authorQuery = `is:pr is:open author:${githubUsername} ${orgFilter}`.trim();
 
   const [reviewResult, authorResult]: [GraphQLSearchResponse, GraphQLSearchResponse] = await Promise.all([
-    octokit.graphql(PR_SEARCH_QUERY, { query: reviewQuery }),
-    octokit.graphql(PR_SEARCH_QUERY, { query: authorQuery }),
+    octokit.graphql(PR_SEARCH_QUERY, { searchQuery: reviewQuery }),
+    octokit.graphql(PR_SEARCH_QUERY, { searchQuery: authorQuery }),
   ]);
 
   return {
