@@ -152,9 +152,14 @@ export function ActionQueue({ reviewRequests, myOpenPRs }: ActionQueueProps) {
 
   if (allClear) {
     return (
-      <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-400 bg-white rounded-xl shadow-sm border border-gray-100">
-        <CheckCircle2 className="w-4 h-4 text-green-400" />
-        All clear — nothing needs your attention
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 py-5 px-6">
+        <div className="flex items-center gap-2.5">
+          <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-gray-700">No open PRs or review requests</p>
+            <p className="text-xs text-gray-400 mt-0.5">PRs assigned to you for review and your open PRs will appear here</p>
+          </div>
+        </div>
       </div>
     );
   }
