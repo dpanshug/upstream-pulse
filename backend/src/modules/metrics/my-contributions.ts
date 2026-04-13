@@ -336,7 +336,7 @@ export interface MyRecentActivityItem {
 /** Recent contributions with GitHub links for the activity feed. */
 export async function getMyRecentActivity(
   teamMemberId: string,
-  limit = 500,
+  limit = 200,
 ): Promise<MyRecentActivityItem[]> {
   const conditions: ReturnType<typeof eq>[] = [
     eq(contributions.teamMemberId, teamMemberId),

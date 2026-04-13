@@ -435,12 +435,13 @@ export async function metricsRoutes(app: FastifyInstance) {
       const periodStart = dateRange ? formatDate(dateRange.start) : 'All time';
       const periodEnd = dateRange ? formatDate(dateRange.end) : formatDate(new Date());
 
-      const heatmapYearParam = request.query.heatmapYear;
-      const heatmapOptions = heatmapYearParam
+      const heatmapYearRaw = request.query.heatmapYear;
+      const heatmapYear = heatmapYearRaw ? parseInt(heatmapYearRaw, 10) : NaN;
+      const heatmapOptions = !isNaN(heatmapYear) && heatmapYear >= 2000 && heatmapYear <= 2100
         ? {
             dateRange: {
-              start: new Date(`${heatmapYearParam}-01-01`),
-              end: new Date(`${heatmapYearParam}-12-31`),
+              start: new Date(`${heatmapYear}-01-01`),
+              end: new Date(`${heatmapYear}-12-31`),
             },
           }
         : { days: 365 };
