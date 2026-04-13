@@ -450,7 +450,7 @@ export async function metricsRoutes(app: FastifyInstance) {
         getMyContributionBreakdown(resolved.id, options),
         getMyContributionTrend(resolved.id, options),
         getMyDailyActivity(resolved.id, options),
-        getMyProjects(resolved.id, options),
+        getMyProjects(resolved.id),
         getMyTeamRank(resolved.id, options),
         getMyRoles(resolved.id),
         getTeamTotalContributions(options),
