@@ -172,7 +172,7 @@ async function fetchMyContributions(days: number, heatmapYear?: number | null): 
 
 async function fetchActionQueue(): Promise<ActionQueueData | null> {
   const res = await apiFetch('/api/metrics/me/action-queue');
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error('Failed to fetch action queue');
   const data = await res.json();
   if (!data.resolved) return null;
   return data;
@@ -584,6 +584,7 @@ export default function MyContributions() {
     queryKey: ['my-action-queue'],
     queryFn: fetchActionQueue,
     refetchInterval: 120_000,
+    retry: 3,
   });
 
   if (error) {
