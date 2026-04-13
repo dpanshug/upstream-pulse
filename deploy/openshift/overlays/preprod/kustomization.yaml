@@ -12,6 +12,6 @@ resources:
 
 images:
 - name: quay.io/org-pulse/upstream-pulse-backend
-  newTag: 62c91e2
+  newTag: f5a7749
 - name: quay.io/org-pulse/upstream-pulse-frontend
-  newTag: 62c91e2
+  newTag: f5a7749
