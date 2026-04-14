@@ -565,20 +565,48 @@ app.post<{
   }
 });
 
+// Admin: trigger opportunity refresh (open issue collection for recommendation engine)
+app.post<{
+  Body: { mode?: string; projectId?: string };
+}>('/api/admin/opportunity-refresh', { preHandler: [requireAdmin] }, async (request, reply) => {
+  try {
+    const { CollectionScheduler } = await import('./jobs/scheduler.js');
+    const scheduler = new CollectionScheduler();
+
+    const mode = (request.body?.mode === 'full' ? 'full' : 'incremental') as 'incremental' | 'full';
+    const job = await scheduler.triggerOpportunityRefresh(mode, request.body?.projectId);
+
+    return {
+      success: true,
+      jobId: job.id,
+      mode,
+      message: `Opportunity refresh (${mode}) queued`,
+    };
+  } catch (error) {
+    logger.error('Error triggering opportunity refresh', { error });
+    reply.status(500);
+    return {
+      error: 'Failed to trigger opportunity refresh',
+      message: (error as Error).message,
+    };
+  }
+});
+
 // System status endpoint — exposes worker health, queue stats, job history, schedules
 app.get('/api/system/status', async (request, reply) => {
   try {
-    const { CollectionScheduler, contributionQueue, governanceQueue, leadershipQueue, teamSyncQueue } = await import('./jobs/scheduler.js');
+    const { CollectionScheduler, contributionQueue, governanceQueue, leadershipQueue, teamSyncQueue, opportunityQueue } = await import('./jobs/scheduler.js');
     const { collectionJobs } = await import('./shared/database/schema.js');
 
     const scheduler = new CollectionScheduler();
 
     // Gather queue stats for all workers in parallel
-    const [collectionStats, governanceStats, leadershipStats, teamSyncStats] = await Promise.all([
+    const [collectionStats, governanceStats, leadershipStats, teamSyncStats, opportunityStats] = await Promise.all([
       scheduler.getQueueStats(),
       scheduler.getGovernanceQueueStats(),
       scheduler.getLeadershipQueueStats(),
       scheduler.getTeamSyncQueueStats(),
+      scheduler.getOpportunityQueueStats(),
     ]);
 
     const recentJobs = await db.query.collectionJobs.findMany({
@@ -594,7 +622,7 @@ app.get('/api/system/status', async (request, reply) => {
     }, {} as Record<string, number>);
 
     // Fetch last successful sync per job type
-    const jobTypes = ['sync', 'full_sync', 'governance_refresh', 'leadership_refresh', 'team_sync'];
+    const jobTypes = ['sync', 'full_sync', 'governance_refresh', 'leadership_refresh', 'team_sync', 'opportunity_sync'];
     const lastSuccessful: Record<string, typeof recentJobs[0] | null> = {};
     for (const jt of jobTypes) {
       const found = recentJobs.find(j => j.jobType === jt && j.status === 'completed');
@@ -669,6 +697,15 @@ app.get('/api/system/status', async (request, reply) => {
         queue: teamSyncStats,
         lastSuccess: lastSuccessful['team_sync']?.completedAt || null,
         jobTypes: ['team_sync'],
+      },
+      {
+        id: 'opportunity-refresh',
+        name: 'Opportunity Scanner',
+        description: 'Collects open issues from tracked repos for the recommendation engine',
+        schedule: { cron: '0 0,6,12,18 * * *', human: 'Every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)', nextRun: (() => { const n = new Date(now); n.setMinutes(0, 0, 0); const h = [0, 6, 12, 18].find(h => { n.setHours(h); return n > now; }); if (h !== undefined) { n.setHours(h); return n.toISOString(); } n.setDate(n.getDate() + 1); n.setHours(0); return n.toISOString(); })() },
+        queue: opportunityStats,
+        lastSuccess: lastSuccessful['opportunity_sync']?.completedAt || null,
+        jobTypes: ['opportunity_sync'],
       },
     ];
 

@@ -41,6 +41,7 @@ coverage/
 
 # Misc
 *.pem
+gcp-sa-key.json
 .cache/
 access-stats-*.txt
 

@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useRef } from 'react';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { useSearchParams, Link } from 'react-router-dom';
 import {
   GitCommit,
@@ -30,6 +30,8 @@ import { StreakBadge } from '../components/profile/StreakBadge';
 import { ContributionHeatmap } from '../components/profile/ContributionHeatmap';
 import { ActionQueue, ActionQueueSkeleton } from '../components/profile/ActionQueue';
 import { RecentActivityFeed } from '../components/profile/RecentActivityFeed';
+import { DiscoverTab, DiscoverTabSkeleton } from '../components/profile/DiscoverTab';
+import type { ScoredRecommendation, AIInsight } from '../components/profile/DiscoverTab';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -176,6 +178,23 @@ async function fetchActionQueue(): Promise<ActionQueueData | null> {
   const data = await res.json();
   if (!data.resolved) return null;
   return data;
+}
+
+async function fetchRecommendations(refresh = false): Promise<ScoredRecommendation[]> {
+  const params = refresh ? '?refresh=true' : '';
+  const res = await apiFetch(`/api/metrics/me/recommendations${params}`);
+  if (!res.ok) throw new Error('Failed to fetch recommendations');
+  const data = await res.json();
+  if (!data.resolved) return [];
+  return data.recommendations;
+}
+
+async function fetchAIInsights(): Promise<AIInsight[]> {
+  const res = await apiFetch('/api/metrics/me/recommendations/ai', { method: 'POST' });
+  if (!res.ok) throw new Error('AI insights unavailable');
+  const data = await res.json();
+  if (!data.resolved) throw new Error('AI insights unavailable');
+  return data.insights;
 }
 
 // ---------------------------------------------------------------------------
@@ -533,12 +552,13 @@ function RolesSection({ maintainer, leadership }: { maintainer: MaintainerRole[]
 // Tabs
 // ---------------------------------------------------------------------------
 
-type TabId = 'overview' | 'activity' | 'governance';
+type TabId = 'overview' | 'activity' | 'governance' | 'discover';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'activity', label: 'Activity' },
   { id: 'governance', label: 'Governance' },
+  { id: 'discover', label: 'Discover' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -585,6 +605,23 @@ export default function MyContributions() {
     queryFn: fetchActionQueue,
     refetchInterval: 120_000,
     retry: 3,
+  });
+
+  const recFetchedAt = useRef<Date | null>(null);
+  const { data: recData, isLoading: recLoading, refetch: refetchRecs } = useQuery({
+    queryKey: ['my-recommendations'],
+    queryFn: async () => {
+      const recs = await fetchRecommendations();
+      recFetchedAt.current = new Date();
+      return recs;
+    },
+    enabled: activeTab === 'discover',
+    refetchInterval: 300_000,
+    retry: 2,
+  });
+
+  const aiMutation = useMutation({
+    mutationFn: fetchAIInsights,
   });
 
   if (error) {
@@ -872,6 +909,28 @@ export default function MyContributions() {
                   leadership={resolved.roles.leadership}
                 />
               ) : null}
+            </div>
+          )}
+
+          {activeTab === 'discover' && (
+            <div id="tabpanel-discover" role="tabpanel" aria-labelledby="tab-discover">
+              {recLoading ? (
+                <DiscoverTabSkeleton />
+              ) : (
+                <DiscoverTab
+                  recommendations={recData ?? []}
+                  isLoading={recLoading}
+                  aiInsights={aiMutation.data ?? null}
+                  isAiLoading={aiMutation.isPending}
+                  aiError={aiMutation.isError}
+                  onRequestAI={() => aiMutation.mutate()}
+                  onRefresh={async () => {
+                    recFetchedAt.current = new Date();
+                    await refetchRecs();
+                  }}
+                  lastUpdated={recFetchedAt.current}
+                />
+              )}
             </div>
           )}
         </div>
