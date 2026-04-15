@@ -224,9 +224,10 @@ function scoreOpportunity(
   const labelSet = new Set(labels.map(l => l.toLowerCase().replace(/\s+/g, '-')));
 
   // Language match (0-25), weighted by contribution share
-  if (opp.language) {
+  const oppLang = opp.language;
+  if (oppLang) {
     const langEntry = profile.topLanguages.find(
-      l => l.language.toLowerCase() === opp.language!.toLowerCase(),
+      l => l.language.toLowerCase() === oppLang.toLowerCase(),
     );
     if (langEntry) {
       score += Math.round(langEntry.weight * 25);
