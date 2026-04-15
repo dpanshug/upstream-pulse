@@ -77,11 +77,26 @@ export const teamSyncQueue = new Queue('team-sync', {
   },
 });
 
+export const opportunityQueue = new Queue('opportunity-refresh', {
+  connection: redisConnection,
+  defaultJobOptions: {
+    attempts: 2,
+    backoff: {
+      type: 'exponential',
+      delay: 5000,
+    },
+    removeOnComplete: 25,
+    removeOnFail: 10,
+  },
+});
+
 export class CollectionScheduler {
   private dailySyncSchedule: cron.ScheduledTask | null = null;
   private weeklyGovernanceSchedule: cron.ScheduledTask | null = null;
   private monthlyLeadershipSchedule: cron.ScheduledTask | null = null;
   private weeklyTeamSyncSchedule: cron.ScheduledTask | null = null;
+  private opportunityRefreshSchedule: cron.ScheduledTask | null = null;
+  private opportunityReconcileSchedule: cron.ScheduledTask | null = null;
 
   /**
    * Start scheduled jobs
@@ -118,11 +133,25 @@ export class CollectionScheduler {
       await this.triggerTeamSync();
     });
 
+    // Opportunity refresh every 6 hours (open issues for recommendations)
+    this.opportunityRefreshSchedule = cron.schedule('0 0,6,12,18 * * *', async () => {
+      logger.info('Triggering opportunity refresh (incremental)');
+      await this.triggerOpportunityRefresh('incremental');
+    });
+
+    // Weekly full reconciliation on Sundays at 5 AM UTC
+    this.opportunityReconcileSchedule = cron.schedule('0 5 * * 0', async () => {
+      logger.info('Triggering opportunity full reconciliation');
+      await this.triggerOpportunityRefresh('full');
+    });
+
     logger.info('Collection scheduler started', {
       weeklyTeamSync: '0 1 * * 1 (1 AM UTC on Mondays)',
       dailySync: '0 2 * * * (2 AM UTC)',
       weeklyGovernance: '0 3 * * 1 (3 AM UTC on Mondays)',
       monthlyLeadership: '0 4 1 * * (4 AM UTC on 1st of month)',
+      opportunityRefresh: '0 0,6,12,18 * * * (every 6 hours)',
+      opportunityReconcile: '0 5 * * 0 (5 AM UTC on Sundays)',
     });
   }
 
@@ -146,6 +175,14 @@ export class CollectionScheduler {
 
     if (this.weeklyTeamSyncSchedule) {
       this.weeklyTeamSyncSchedule.stop();
+    }
+
+    if (this.opportunityRefreshSchedule) {
+      this.opportunityRefreshSchedule.stop();
+    }
+
+    if (this.opportunityReconcileSchedule) {
+      this.opportunityReconcileSchedule.stop();
     }
 
     logger.info('Collection scheduler stopped');
@@ -491,6 +528,51 @@ export class CollectionScheduler {
       teamSyncQueue.getActiveCount(),
       teamSyncQueue.getCompletedCount(),
       teamSyncQueue.getFailedCount(),
+    ]);
+
+    return {
+      waiting,
+      active,
+      completed,
+      failed,
+      total: waiting + active + completed + failed,
+    };
+  }
+
+  /**
+   * Trigger opportunity refresh (open issues for recommendation engine).
+   * mode=incremental: fetch issues updated since last refresh (2 queries/repo).
+   * mode=full: paginate all open issues and reconcile DB (weekly ground truth).
+   */
+  async triggerOpportunityRefresh(mode: 'incremental' | 'full', projectId?: string) {
+    logger.info('Triggering opportunity refresh', { mode, projectId });
+
+    const job = await opportunityQueue.add(
+      `opportunity-${mode}`,
+      {
+        trigger: projectId ? 'manual' as const : 'scheduled' as const,
+        mode,
+        ...(projectId && { projectId }),
+      },
+      {
+        priority: mode === 'full' ? 1 : 2,
+        jobId: `opportunity-${mode}-${projectId || 'all'}-${Date.now()}`,
+      },
+    );
+
+    logger.info('Opportunity refresh job queued', { jobId: job.id, mode });
+    return job;
+  }
+
+  /**
+   * Get opportunity queue statistics
+   */
+  async getOpportunityQueueStats() {
+    const [waiting, active, completed, failed] = await Promise.all([
+      opportunityQueue.getWaitingCount(),
+      opportunityQueue.getActiveCount(),
+      opportunityQueue.getCompletedCount(),
+      opportunityQueue.getFailedCount(),
     ]);
 
     return {

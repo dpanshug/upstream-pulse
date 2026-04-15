@@ -21,6 +21,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@anthropic-ai/vertex-sdk": "^0.16.0",
     "@fastify/cors": "^8.4.2",
     "@fastify/websocket": "^8.3.1",
     "@google/generative-ai": "^0.1.3",

@@ -20,6 +20,7 @@ import {
 } from '../../metrics/my-contributions.js';
 import { getDateRange, formatDate, calculatePercentage } from '../../metrics/helpers.js';
 import { getActionQueue } from '../../metrics/my-github-queue.js';
+import { getRecommendations, getAIInsights, clearRecommendationCache } from '../../metrics/recommendation-engine.js';
 
 const DASHBOARD_CACHE_TTL = 5 * 60 * 1000;
 const dashboardCache = new Map<string, { data: unknown; ts: number }>();
@@ -537,6 +538,79 @@ export async function metricsRoutes(app: FastifyInstance) {
       reply.status(500);
       return {
         error: 'Failed to fetch action queue',
+        message: (error as Error).message,
+      };
+    }
+  });
+
+  /**
+   * GET /api/metrics/me/recommendations
+   *
+   * Personalized issue recommendations for the logged-in user.
+   * Rule-based scoring, no AI cost. Cached 1 hour.
+   * Query params:
+   *   - refresh: if "true", bypasses cache
+   */
+  app.get<{
+    Querystring: { refresh?: string };
+  }>('/api/metrics/me/recommendations', async (request, reply) => {
+    try {
+      const resolved = await resolveTeamMember(
+        request.identity.email || undefined,
+        request.identity.username || undefined,
+      );
+
+      if (!resolved) {
+        return { resolved: false as const };
+      }
+
+      const forceRefresh = request.query.refresh === 'true';
+      if (forceRefresh) {
+        clearRecommendationCache(resolved.id);
+      }
+
+      const recommendations = await getRecommendations(resolved.id, forceRefresh);
+      return { resolved: true as const, recommendations };
+    } catch (error) {
+      logger.error('Error fetching recommendations', { error });
+      reply.status(500);
+      return {
+        error: 'Failed to fetch recommendations',
+        message: (error as Error).message,
+      };
+    }
+  });
+
+  /**
+   * POST /api/metrics/me/recommendations/ai
+   *
+   * Claude-powered explanations for the user's current recommendations.
+   * Triggered on demand by the user clicking "Why this?" in the UI.
+   * Cached 1 hour per user + recommendation set.
+   */
+  app.post('/api/metrics/me/recommendations/ai', async (request, reply) => {
+    try {
+      const resolved = await resolveTeamMember(
+        request.identity.email || undefined,
+        request.identity.username || undefined,
+      );
+
+      if (!resolved) {
+        return { resolved: false as const };
+      }
+
+      const insights = await getAIInsights(resolved.id);
+      if (!insights) {
+        reply.status(503);
+        return { error: 'AI service unavailable' };
+      }
+
+      return { resolved: true as const, insights };
+    } catch (error) {
+      logger.error('Error fetching AI insights', { error });
+      reply.status(500);
+      return {
+        error: 'Failed to fetch AI insights',
         message: (error as Error).message,
       };
     }

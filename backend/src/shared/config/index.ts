@@ -34,6 +34,10 @@ export const config = {
   // Insight generation (Google Gemini)
   googleAIApiKey: process.env.GOOGLE_AI_API_KEY || '',
 
+  // Recommendation engine (Claude via Vertex AI)
+  vertexProjectId: process.env.ANTHROPIC_VERTEX_PROJECT_ID || 'itpc-gcp-ai-eng-claude',
+  vertexRegion: process.env.CLOUD_ML_REGION || 'us-east5',
+
   // Auth — admin users/groups (comma-separated)
   adminUsers: process.env.ADMIN_USERS || '',
   adminGroups: process.env.ADMIN_GROUPS || '',
