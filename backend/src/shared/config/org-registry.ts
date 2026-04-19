@@ -360,6 +360,25 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     strategicLeadership: 'increasing_leadership',
     governanceModel: 'none',
   },
+
+  // ─── Kuadrant ────────────────────
+  {
+    name: 'Kuadrant',
+    githubOrg: 'Kuadrant',
+    communityRepo: {
+      repo: 'kuadrant-operator',
+      defaultBranch: 'main',
+      leadershipFiles: [
+        {
+          path: 'MAINTAINERS.md',
+          groupName: 'Kuadrant',
+          positionType: 'maintainer',
+          format: 'bullet_list',
+        },
+      ],
+    },
+    governanceModel: 'none',
+  },
 ];
 
 // ── Lookup helpers ──────────────────────────────────────────────────

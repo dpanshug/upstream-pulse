@@ -39,8 +39,11 @@ Thumbs.db
 coverage/
 .nyc_output/
 
-# Misc
+# Secrets
 *.pem
+gcp-sa-key.json
+
+# Misc
 .cache/
 access-stats-*.txt
 
