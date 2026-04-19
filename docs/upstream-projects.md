@@ -2,7 +2,7 @@
 
 Upstream Pulse provides contribution tracking and governance insights for the following upstream open-source organizations and projects. This document lists what is currently supported and what is planned next, organized by upstream organization.
 
-**Last updated**: 2026-04-07
+**Last updated**: 2026-04-15
 
 ---
 
@@ -233,6 +233,20 @@ Meta's open-source deep learning framework. Tracking for emerging team contribut
 
 ---
 
+### Kuadrant (`Kuadrant/*`)
+
+Gateway policies for Kubernetes — API management, rate limiting, DNS, and auth.
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| `Kuadrant/authorino` | Kubernetes-native auth service | **Tracked** |
+| `Kuadrant/limitador` | Rate limiting service | **Tracked** |
+| `Kuadrant/wasm-shim` | Wasm extension for Envoy | **Tracked** |
+
+**Governance**: Leadership from `kuadrant-operator/MAINTAINERS.md` (13 org-level maintainers, bullet-list format). Tracked repos have no OWNERS/CODEOWNERS.
+
+---
+
 ## Planned Additions
 
 ### OpenVINO (`openvinotoolkit/*`)
@@ -298,10 +312,11 @@ Additional upstream projects across various organizations.
 | **Containers** | 5 | 5 tracked |
 | **GGML** | 1 | 1 tracked |
 | **PyTorch** | 1 | 1 tracked |
+| **Kuadrant** | 3 | 3 tracked |
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
 | **Individual repos** | 6 | Planned |
-| **Total** | **73** | 58 tracked, 15 planned |
+| **Total** | **76** | 61 tracked, 15 planned |
 
 ---
 

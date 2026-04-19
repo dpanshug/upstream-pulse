@@ -406,7 +406,10 @@ export class LeadershipCollector {
   // ── Bullet-list parser ─────────────────────────────────────────
 
   /**
-   * Parse a markdown file with `- [Name](https://github.com/username)` bullet entries.
+   * Parse a markdown file with bullet-list leadership entries.
+   * Supports two formats:
+   *   - `- [Name](https://github.com/username)`
+   *   - `- Name [@username](https://github.com/username)`
    * Optionally scoped to a specific section via `fileCfg.sectionHeading`.
    */
   private async parseBulletListFile(fileCfg: LeadershipFileConfig): Promise<LeadershipPosition[]> {
@@ -430,9 +433,14 @@ export class LeadershipCollector {
         lines = this.extractSection(lines, fileCfg.sectionHeading);
       }
 
-      const linkPattern = /^[-*]\s+\[([^\]]+)\]\(https?:\/\/github\.com\/([^/)]+)\/?[^)]*\)/;
+      // Format 1: - [Name](https://github.com/username)
+      const directLinkPattern = /^[-*]\s+\[([^\]]+)\]\(https?:\/\/github\.com\/([^/)]+)\/?[^)]*\)/;
+      // Format 2: - Name [@username](https://github.com/username)
+      const namedLinkPattern = /^[-*]\s+(.+?)\s+\[@?[^\]]+\]\(https?:\/\/github\.com\/([^/)]+)\/?[^)]*\)/;
+
       for (const line of lines) {
-        const match = line.trim().match(linkPattern);
+        const trimmed = line.trim();
+        const match = trimmed.match(directLinkPattern) || trimmed.match(namedLinkPattern);
         if (!match) continue;
 
         positions.push({
