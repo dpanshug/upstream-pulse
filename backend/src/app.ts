@@ -593,21 +593,17 @@ app.post<{
     }
 
     const deactivationSources = [source, ...replacesSources];
-    const incomingByUsername = new Map<string, typeof people[0]>();
-    const incomingByEmail = new Map<string, typeof people[0]>();
+    const seenUsernames = new Set<string>();
     const duplicateUsernames: string[] = [];
 
     for (const person of people) {
       if (!person.name || (!person.email && !person.githubUsername)) continue;
       if (person.githubUsername) {
         const lower = person.githubUsername.toLowerCase();
-        if (incomingByUsername.has(lower)) {
+        if (seenUsernames.has(lower)) {
           duplicateUsernames.push(person.githubUsername);
         }
-        incomingByUsername.set(lower, person);
-      }
-      if (person.email) {
-        incomingByEmail.set(person.email.toLowerCase(), person);
+        seenUsernames.add(lower);
       }
     }
 
