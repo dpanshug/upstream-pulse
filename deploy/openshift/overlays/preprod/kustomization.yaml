@@ -10,6 +10,9 @@ kind: Kustomization
 resources:
 - ../../base
 
+patches:
+- path: configmap-patch.yaml
+
 images:
 - name: quay.io/org-pulse/upstream-pulse-backend
   newTag: 9c77875
