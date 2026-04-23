@@ -618,76 +618,118 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
     let inserted = 0;
     const processedIds = new Set<string>();
     const incomingUsernames = new Set<string>();
-    const newlyInserted: Array<{ id: string; githubUsername: string }> = [];
     let deactivated = 0;
     let totalRelinked = 0;
 
+    const toUpdate: Array<{ id: string; person: typeof people[0]; existing: typeof existingMembers[0] }> = [];
+    const toInsert: typeof people = [];
+
+    for (const person of people) {
+      if (person.githubUsername) incomingUsernames.add(person.githubUsername.toLowerCase());
+
+      const existing =
+        (person.githubUsername ? existingByUsername.get(person.githubUsername.toLowerCase()) : undefined) ??
+        (person.email ? existingByEmail.get(person.email.toLowerCase()) : undefined);
+
+      if (existing) {
+        toUpdate.push({ id: existing.id, person, existing });
+        processedIds.add(existing.id);
+      } else {
+        toInsert.push(person);
+      }
+    }
+
+    const newlyInserted: Array<{ id: string; githubUsername: string }> = [];
+
     await db.transaction(async (tx) => {
-      for (const person of people) {
-        if (person.githubUsername) incomingUsernames.add(person.githubUsername.toLowerCase());
+      // Bulk update existing rows in chunks (single UPDATE per chunk via FROM VALUES)
+      const UPDATE_CHUNK_SIZE = 100;
+      for (let i = 0; i < toUpdate.length; i += UPDATE_CHUNK_SIZE) {
+        const chunk = toUpdate.slice(i, i + UPDATE_CHUNK_SIZE);
+        const valueRows = chunk.map(({ id, person, existing }) =>
+          sql`(${id}::uuid, ${person.name}, ${person.email || existing.primaryEmail || ''}, ${person.githubUsername || existing.githubUsername || ''}, ${person.employeeId || existing.employeeId || ''}, ${person.department || existing.department || ''}, ${person.role || existing.role || ''}, ${source})`
+        );
+        await tx.execute(sql`
+          UPDATE team_members AS t SET
+            name = c.name,
+            primary_email = NULLIF(c.email, ''),
+            github_username = NULLIF(c.github_username, ''),
+            employee_id = NULLIF(c.employee_id, ''),
+            department = NULLIF(c.department, ''),
+            role = NULLIF(c.role, ''),
+            source = c.source,
+            is_active = true,
+            end_date = NULL,
+            updated_at = NOW()
+          FROM (VALUES ${sql.join(valueRows, sql`, `)})
+            AS c(id, name, email, github_username, employee_id, department, role, source)
+          WHERE t.id = c.id
+        `);
+      }
+      upserted = toUpdate.length;
 
-        const existing =
-          (person.githubUsername ? existingByUsername.get(person.githubUsername.toLowerCase()) : undefined) ??
-          (person.email ? existingByEmail.get(person.email.toLowerCase()) : undefined);
-
-        if (existing) {
-          await tx.update(teamMembers).set({
-            name: person.name,
-            primaryEmail: person.email || existing.primaryEmail,
-            githubUsername: person.githubUsername || existing.githubUsername,
-            employeeId: person.employeeId || existing.employeeId,
-            department: person.department || existing.department,
-            role: person.role || existing.role,
-            source,
-            isActive: true,
-            endDate: null,
-            updatedAt: new Date(),
-          }).where(eq(teamMembers.id, existing.id));
-          processedIds.add(existing.id);
-          upserted++;
-        } else {
-          try {
-            const [newMember] = await tx.insert(teamMembers).values({
-              name: person.name,
-              primaryEmail: person.email || null,
-              githubUsername: person.githubUsername || null,
-              employeeId: person.employeeId || null,
-              department: person.department || null,
-              role: person.role || null,
+      // Batch insert new rows
+      if (toInsert.length > 0) {
+        try {
+          const insertedRows = await tx.insert(teamMembers).values(
+            toInsert.map(p => ({
+              name: p.name,
+              primaryEmail: p.email || null,
+              githubUsername: p.githubUsername || null,
+              employeeId: p.employeeId || null,
+              department: p.department || null,
+              role: p.role || null,
               source,
               isActive: true,
-            }).returning();
-            processedIds.add(newMember.id);
-            inserted++;
-            if (newMember.githubUsername) {
-              newlyInserted.push({ id: newMember.id, githubUsername: newMember.githubUsername });
-            }
-          } catch (insertError) {
-            if ((insertError as any).code === '23505') {
-              logger.warn(`Bulk sync: skipping duplicate for ${person.name} (${person.email})`, { insertError });
-            } else {
-              throw insertError;
+            }))
+          ).onConflictDoNothing().returning();
+
+          for (const m of insertedRows) {
+            processedIds.add(m.id);
+            if (m.githubUsername) newlyInserted.push({ id: m.id, githubUsername: m.githubUsername });
+          }
+          inserted = insertedRows.length;
+        } catch (insertError) {
+          logger.warn('Bulk sync: batch insert failed, falling back to per-row', { error: insertError });
+          for (const person of toInsert) {
+            try {
+              const [newMember] = await tx.insert(teamMembers).values({
+                name: person.name,
+                primaryEmail: person.email || null,
+                githubUsername: person.githubUsername || null,
+                employeeId: person.employeeId || null,
+                department: person.department || null,
+                role: person.role || null,
+                source,
+                isActive: true,
+              }).onConflictDoNothing().returning();
+              if (newMember) {
+                processedIds.add(newMember.id);
+                inserted++;
+                if (newMember.githubUsername) newlyInserted.push({ id: newMember.id, githubUsername: newMember.githubUsername });
+              }
+            } catch (rowError) {
+              logger.warn(`Bulk sync: skipping ${person.name}`, { error: rowError });
             }
           }
         }
       }
 
-      // Deactivate stale rows from owned sources
-      for (const m of existingMembers) {
-        if (!m.isActive) continue;
-        if (processedIds.has(m.id)) continue;
-        if (!m.source || !deactivationSources.includes(m.source)) continue;
-        if (m.githubUsername && incomingUsernames.has(m.githubUsername.toLowerCase())) continue;
+      // Batch deactivate stale rows
+      const idsToDeactivate = existingMembers
+        .filter(m => m.isActive && !processedIds.has(m.id) && m.source && deactivationSources.includes(m.source)
+          && !(m.githubUsername && incomingUsernames.has(m.githubUsername.toLowerCase())))
+        .map(m => m.id);
 
-        await tx.update(teamMembers).set({
-          isActive: false,
-          endDate: new Date().toISOString().split('T')[0],
-          updatedAt: new Date(),
-        }).where(eq(teamMembers.id, m.id));
-        deactivated++;
+      if (idsToDeactivate.length > 0) {
+        await tx.execute(sql`
+          UPDATE team_members SET is_active = false, end_date = ${new Date().toISOString().split('T')[0]}, updated_at = NOW()
+          WHERE id IN ${sql.join(idsToDeactivate.map(id => sql`${id}`), sql`, `)}
+        `);
+        deactivated = idsToDeactivate.length;
       }
 
-      // Relink orphaned contributions/maintainer/leadership for newly inserted members
+      // Batch relink orphaned data for newly inserted members
       for (const m of newlyInserted) {
         const contribResult = await tx.execute(sql`
           UPDATE contributions SET team_member_id = ${m.id}
