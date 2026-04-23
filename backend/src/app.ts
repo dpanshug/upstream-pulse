@@ -724,7 +724,7 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
       if (idsToDeactivate.length > 0) {
         await tx.execute(sql`
           UPDATE team_members SET is_active = false, end_date = ${new Date().toISOString().split('T')[0]}, updated_at = NOW()
-          WHERE id IN ${sql.join(idsToDeactivate.map(id => sql`${id}`), sql`, `)}
+          WHERE id IN (${sql.join(idsToDeactivate.map(id => sql`${id}`), sql`, `)})
         `);
         deactivated = idsToDeactivate.length;
       }
