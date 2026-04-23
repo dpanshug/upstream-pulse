@@ -572,11 +572,11 @@ const bulkSyncSchema = z.object({
   replacesSources: z.array(z.string()).optional().default([]),
   people: z.array(z.object({
     name: z.string().min(1),
-    email: z.string().optional(),
-    githubUsername: z.string().optional(),
-    employeeId: z.string().optional(),
-    department: z.string().optional(),
-    role: z.string().optional(),
+    email: z.string().nullable().optional(),
+    githubUsername: z.string().nullable().optional(),
+    employeeId: z.string().nullable().optional(),
+    department: z.string().nullable().optional(),
+    role: z.string().nullable().optional(),
   }).refine(p => p.email || p.githubUsername, {
     message: 'Each person needs at least email or githubUsername',
   })).min(1),
