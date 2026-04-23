@@ -39,7 +39,7 @@ export class IdentityResolver {
   ): Promise<ResolvedIdentity | null> {
     try {
       const member = await db.query.teamMembers.findFirst({
-        where: eq(teamMembers.githubUsername, githubUsername),
+        where: sql`LOWER(${teamMembers.githubUsername}) = LOWER(${githubUsername})`,
       });
 
       if (member) {

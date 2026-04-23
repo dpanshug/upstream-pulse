@@ -113,7 +113,9 @@ export class CollectionScheduler {
     });
 
     // Weekly team sync at 1 AM UTC on Mondays (before governance refresh at 3 AM)
+    // Only runs when GITHUB_TEAM_ORG is configured (opt-in)
     this.weeklyTeamSyncSchedule = cron.schedule('0 1 * * 1', async () => {
+      if (config.githubTeamOrgs.length === 0) return;
       logger.info('Triggering weekly team sync from GitHub org');
       await this.triggerTeamSync();
     });
@@ -459,6 +461,11 @@ export class CollectionScheduler {
     const orgs = orgFilter
       ? [orgFilter]
       : config.githubTeamOrgs;
+
+    if (orgs.length === 0) {
+      logger.info('Team sync skipped: no GitHub orgs configured (GITHUB_TEAM_ORG is empty)');
+      return [];
+    }
 
     logger.info(`Triggering team sync for ${orgs.length} org(s)`, { orgs, trigger });
 
