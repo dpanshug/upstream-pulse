@@ -14,6 +14,7 @@ import { teamMembers, projects } from './shared/database/schema.js';
 import { eq, sql, count, and } from 'drizzle-orm';
 import { registerIdentityMiddleware } from './shared/middleware/identity.js';
 import { requireAdmin } from './shared/middleware/admin-guard.js';
+import { z } from 'zod';
 
 // Validate configuration on startup
 try {
@@ -566,47 +567,41 @@ app.post<{
 });
 
 // Bulk team member sync from external source
-app.post<{
-  Body: {
-    source: string;
-    replacesSources?: string[];
-    people: Array<{
-      name: string;
-      email?: string;
-      githubUsername?: string;
-      employeeId?: string;
-      department?: string;
-      role?: string;
-    }>;
-  };
-}>('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (request, reply) => {
+const bulkSyncSchema = z.object({
+  source: z.string().min(1),
+  replacesSources: z.array(z.string()).optional().default([]),
+  people: z.array(z.object({
+    name: z.string().min(1),
+    email: z.string().optional(),
+    githubUsername: z.string().optional(),
+    employeeId: z.string().optional(),
+    department: z.string().optional(),
+    role: z.string().optional(),
+  }).refine(p => p.email || p.githubUsername, {
+    message: 'Each person needs at least email or githubUsername',
+  })).min(1),
+});
+
+app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (request, reply) => {
   try {
-    const { source, replacesSources = [], people } = request.body;
-
-    if (!source || typeof source !== 'string') {
+    const parsed = bulkSyncSchema.safeParse(request.body);
+    if (!parsed.success) {
       reply.status(400);
-      return { error: 'source is required (string label for this sync provider)' };
-    }
-    if (!Array.isArray(people) || people.length === 0) {
-      reply.status(400);
-      return { error: 'people array is required and must not be empty' };
+      return { error: 'Invalid request body', details: parsed.error.flatten() };
     }
 
+    const { source, replacesSources, people } = parsed.data;
     const deactivationSources = [source, ...replacesSources];
+
     const seenUsernames = new Set<string>();
     const duplicateUsernames: string[] = [];
-
     for (const person of people) {
-      if (!person.name || (!person.email && !person.githubUsername)) continue;
       if (person.githubUsername) {
         const lower = person.githubUsername.toLowerCase();
-        if (seenUsernames.has(lower)) {
-          duplicateUsernames.push(person.githubUsername);
-        }
+        if (seenUsernames.has(lower)) duplicateUsernames.push(person.githubUsername);
         seenUsernames.add(lower);
       }
     }
-
     if (duplicateUsernames.length > 0) {
       logger.warn(`Bulk sync: duplicate GitHub usernames in payload`, { duplicateUsernames });
     }
@@ -623,100 +618,95 @@ app.post<{
     let inserted = 0;
     const processedIds = new Set<string>();
     const incomingUsernames = new Set<string>();
+    const newlyInserted: Array<{ id: string; githubUsername: string }> = [];
+    let deactivated = 0;
+    let totalRelinked = 0;
 
-    for (const person of people) {
-      if (!person.name || (!person.email && !person.githubUsername)) continue;
-      if (person.githubUsername) incomingUsernames.add(person.githubUsername.toLowerCase());
+    await db.transaction(async (tx) => {
+      for (const person of people) {
+        if (person.githubUsername) incomingUsernames.add(person.githubUsername.toLowerCase());
 
-      const existing =
-        (person.githubUsername ? existingByUsername.get(person.githubUsername.toLowerCase()) : undefined) ??
-        (person.email ? existingByEmail.get(person.email.toLowerCase()) : undefined);
+        const existing =
+          (person.githubUsername ? existingByUsername.get(person.githubUsername.toLowerCase()) : undefined) ??
+          (person.email ? existingByEmail.get(person.email.toLowerCase()) : undefined);
 
-      if (existing) {
-        await db.update(teamMembers).set({
-          name: person.name,
-          primaryEmail: person.email || existing.primaryEmail,
-          githubUsername: person.githubUsername || existing.githubUsername,
-          employeeId: person.employeeId || existing.employeeId,
-          department: person.department || existing.department,
-          role: person.role || existing.role,
-          source,
-          isActive: true,
-          endDate: null,
-          updatedAt: new Date(),
-        }).where(eq(teamMembers.id, existing.id));
-        processedIds.add(existing.id);
-        upserted++;
-      } else {
-        try {
-          const [newMember] = await db.insert(teamMembers).values({
+        if (existing) {
+          await tx.update(teamMembers).set({
             name: person.name,
-            primaryEmail: person.email || null,
-            githubUsername: person.githubUsername || null,
-            employeeId: person.employeeId || null,
-            department: person.department || null,
-            role: person.role || null,
+            primaryEmail: person.email || existing.primaryEmail,
+            githubUsername: person.githubUsername || existing.githubUsername,
+            employeeId: person.employeeId || existing.employeeId,
+            department: person.department || existing.department,
+            role: person.role || existing.role,
             source,
             isActive: true,
-          }).returning();
-          processedIds.add(newMember.id);
-          inserted++;
-        } catch (insertError) {
-          if ((insertError as any).code === '23505') {
-            logger.warn(`Bulk sync: skipping duplicate for ${person.name} (${person.email})`, { insertError });
-          } else {
-            throw insertError;
+            endDate: null,
+            updatedAt: new Date(),
+          }).where(eq(teamMembers.id, existing.id));
+          processedIds.add(existing.id);
+          upserted++;
+        } else {
+          try {
+            const [newMember] = await tx.insert(teamMembers).values({
+              name: person.name,
+              primaryEmail: person.email || null,
+              githubUsername: person.githubUsername || null,
+              employeeId: person.employeeId || null,
+              department: person.department || null,
+              role: person.role || null,
+              source,
+              isActive: true,
+            }).returning();
+            processedIds.add(newMember.id);
+            inserted++;
+            if (newMember.githubUsername) {
+              newlyInserted.push({ id: newMember.id, githubUsername: newMember.githubUsername });
+            }
+          } catch (insertError) {
+            if ((insertError as any).code === '23505') {
+              logger.warn(`Bulk sync: skipping duplicate for ${person.name} (${person.email})`, { insertError });
+            } else {
+              throw insertError;
+            }
           }
         }
       }
-    }
 
-    // Deactivate stale rows from owned sources
-    let deactivated = 0;
-    for (const m of existingMembers) {
-      if (!m.isActive) continue;
-      if (processedIds.has(m.id)) continue;
-      if (!m.source || !deactivationSources.includes(m.source)) continue;
-      if (m.githubUsername && incomingUsernames.has(m.githubUsername.toLowerCase())) continue;
+      // Deactivate stale rows from owned sources
+      for (const m of existingMembers) {
+        if (!m.isActive) continue;
+        if (processedIds.has(m.id)) continue;
+        if (!m.source || !deactivationSources.includes(m.source)) continue;
+        if (m.githubUsername && incomingUsernames.has(m.githubUsername.toLowerCase())) continue;
 
-      await db.update(teamMembers).set({
-        isActive: false,
-        endDate: new Date().toISOString().split('T')[0],
-        updatedAt: new Date(),
-      }).where(eq(teamMembers.id, m.id));
-      deactivated++;
-    }
-
-    // Relink orphaned contributions/maintainer/leadership for new members
-    let totalRelinked = 0;
-    if (inserted > 0) {
-      try {
-        const newMembers = await db.query.teamMembers.findMany({
-          where: and(eq(teamMembers.source, source), eq(teamMembers.isActive, true)),
-        });
-        for (const m of newMembers) {
-          if (!m.githubUsername || !processedIds.has(m.id)) continue;
-          const contribResult = await db.execute(sql`
-            UPDATE contributions SET team_member_id = ${m.id}
-            WHERE team_member_id IS NULL
-              AND LOWER((metadata #>> '{}')::jsonb->>'author') = LOWER(${m.githubUsername})
-          `) as unknown as { rowCount?: number };
-          const msResult = await db.execute(sql`
-            UPDATE maintainer_status SET team_member_id = ${m.id}
-            WHERE team_member_id IS NULL AND LOWER(github_username) = LOWER(${m.githubUsername})
-          `) as unknown as { rowCount?: number };
-          const lpResult = await db.execute(sql`
-            UPDATE leadership_positions SET team_member_id = ${m.id}
-            WHERE team_member_id IS NULL AND LOWER(github_username) = LOWER(${m.githubUsername})
-          `) as unknown as { rowCount?: number };
-          totalRelinked += (contribResult.rowCount ?? 0) + (msResult.rowCount ?? 0) + (lpResult.rowCount ?? 0);
-        }
-      } catch (relinkError) {
-        logger.warn('Bulk sync: relink failed (non-fatal)', { error: relinkError });
+        await tx.update(teamMembers).set({
+          isActive: false,
+          endDate: new Date().toISOString().split('T')[0],
+          updatedAt: new Date(),
+        }).where(eq(teamMembers.id, m.id));
+        deactivated++;
       }
-    }
 
-    // Queue governance + leadership refresh if new members were added
+      // Relink orphaned contributions/maintainer/leadership for newly inserted members
+      for (const m of newlyInserted) {
+        const contribResult = await tx.execute(sql`
+          UPDATE contributions SET team_member_id = ${m.id}
+          WHERE team_member_id IS NULL
+            AND LOWER((metadata #>> '{}')::jsonb->>'author') = LOWER(${m.githubUsername})
+        `) as unknown as { rowCount?: number };
+        const msResult = await tx.execute(sql`
+          UPDATE maintainer_status SET team_member_id = ${m.id}
+          WHERE team_member_id IS NULL AND LOWER(github_username) = LOWER(${m.githubUsername})
+        `) as unknown as { rowCount?: number };
+        const lpResult = await tx.execute(sql`
+          UPDATE leadership_positions SET team_member_id = ${m.id}
+          WHERE team_member_id IS NULL AND LOWER(github_username) = LOWER(${m.githubUsername})
+        `) as unknown as { rowCount?: number };
+        totalRelinked += (contribResult.rowCount ?? 0) + (msResult.rowCount ?? 0) + (lpResult.rowCount ?? 0);
+      }
+    });
+
+    // Queue governance + leadership refresh if new members were added (outside transaction)
     if (inserted > 0 || totalRelinked > 0) {
       try {
         const { CollectionScheduler } = await import('./jobs/scheduler.js');
