@@ -12,7 +12,6 @@ export const projects = pgTable('projects', {
   governanceType: varchar('governance_type', { length: 50 }), // 'cncf', 'apache', 'linux-foundation'
   trackingEnabled: boolean('tracking_enabled').default(true),
   lastSyncAt: timestamp('last_sync_at'),
-  lastOpportunityRefreshAt: timestamp('last_opportunity_refresh_at'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
@@ -218,53 +217,13 @@ export const reports = pgTable('reports', {
   createdIdx: index('reports_created_idx').on(table.createdAt),
 }));
 
-// Open opportunities - open issues/PRs from tracked repos for recommendation engine
-export const openOpportunities = pgTable('open_opportunities', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
-  githubId: varchar('github_id', { length: 100 }).notNull(),
-  githubNumber: integer('github_number'),
-  githubUrl: varchar('github_url', { length: 500 }).notNull(),
-  title: varchar('title', { length: 500 }).notNull(),
-  body: varchar('body', { length: 5000 }),
-  labels: jsonb('labels').$type<string[]>().default([]),
-  language: varchar('language', { length: 100 }),
-  repo: varchar('repo', { length: 200 }).notNull(),
-  org: varchar('org', { length: 200 }).notNull(),
-  state: varchar('state', { length: 20 }).notNull().default('open'),
-  issueType: varchar('issue_type', { length: 50 }),
-  assigneeCount: integer('assignee_count').default(0),
-  commentsCount: integer('comments_count').default(0),
-  reactionsCount: integer('reactions_count').default(0),
-  githubCreatedAt: timestamp('github_created_at'),
-  githubUpdatedAt: timestamp('github_updated_at'),
-  closedAt: timestamp('closed_at'),
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-  lastRefreshedAt: timestamp('last_refreshed_at').defaultNow(),
-}, (table) => ({
-  githubIdIdx: uniqueIndex('open_opp_github_id_idx').on(table.githubId),
-  projectIdx: index('open_opp_project_idx').on(table.projectId),
-  stateIdx: index('open_opp_state_idx').on(table.state),
-  orgRepoIdx: index('open_opp_org_repo_idx').on(table.org, table.repo),
-  languageIdx: index('open_opp_language_idx').on(table.language),
-}));
-
 // Relations
-export const openOpportunitiesRelations = relations(openOpportunities, ({ one }) => ({
-  project: one(projects, {
-    fields: [openOpportunities.projectId],
-    references: [projects.id],
-  }),
-}));
-
 export const projectsRelations = relations(projects, ({ many }) => ({
   contributions: many(contributions),
   maintainerStatuses: many(maintainerStatus),
   leadershipPositions: many(leadershipPositions),
   metricsDaily: many(metricsDaily),
   collectionJobs: many(collectionJobs),
-  openOpportunities: many(openOpportunities),
 }));
 
 export const collectionJobsRelations = relations(collectionJobs, ({ one }) => ({
