@@ -44,6 +44,10 @@ coverage/
 .cache/
 access-stats-*.txt
 
+# Credentials / service account keys
+gcp-sa-key.json
+*-sa-key.json
+
 # Database
 *.sqlite
 *.sqlite-shm

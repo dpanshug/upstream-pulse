@@ -355,7 +355,7 @@ app.post<{
           UPDATE contributions
           SET team_member_id = ${newMember.id}
           WHERE team_member_id IS NULL
-            AND (metadata #>> '{}')::jsonb->>'author' = ${githubUsername}
+            AND LOWER((metadata #>> '{}')::jsonb->>'author') = LOWER(${githubUsername})
         `) as unknown as { count: number; rowCount?: number };
         relinked.contributions = contribResult.count ?? contribResult.rowCount ?? 0;
 
@@ -363,7 +363,7 @@ app.post<{
           UPDATE maintainer_status
           SET team_member_id = ${newMember.id}
           WHERE team_member_id IS NULL
-            AND github_username = ${githubUsername}
+            AND LOWER(github_username) = LOWER(${githubUsername})
         `) as unknown as { count: number; rowCount?: number };
         relinked.maintainerStatus = msResult.count ?? msResult.rowCount ?? 0;
 
@@ -371,7 +371,7 @@ app.post<{
           UPDATE leadership_positions
           SET team_member_id = ${newMember.id}
           WHERE team_member_id IS NULL
-            AND github_username = ${githubUsername}
+            AND LOWER(github_username) = LOWER(${githubUsername})
         `) as unknown as { count: number; rowCount?: number };
         relinked.leadershipPositions = lpResult.count ?? lpResult.rowCount ?? 0;
 
@@ -560,6 +560,193 @@ app.post<{
     reply.status(500);
     return {
       error: 'Failed to trigger team sync',
+      message: (error as Error).message,
+    };
+  }
+});
+
+// Bulk team member sync from external source
+app.post<{
+  Body: {
+    source: string;
+    replacesSources?: string[];
+    people: Array<{
+      name: string;
+      email?: string;
+      githubUsername?: string;
+      employeeId?: string;
+      department?: string;
+      role?: string;
+    }>;
+  };
+}>('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (request, reply) => {
+  try {
+    const { source, replacesSources = [], people } = request.body;
+
+    if (!source || typeof source !== 'string') {
+      reply.status(400);
+      return { error: 'source is required (string label for this sync provider)' };
+    }
+    if (!Array.isArray(people) || people.length === 0) {
+      reply.status(400);
+      return { error: 'people array is required and must not be empty' };
+    }
+
+    const deactivationSources = [source, ...replacesSources];
+    const incomingByUsername = new Map<string, typeof people[0]>();
+    const incomingByEmail = new Map<string, typeof people[0]>();
+    const duplicateUsernames: string[] = [];
+
+    for (const person of people) {
+      if (!person.name || (!person.email && !person.githubUsername)) continue;
+      if (person.githubUsername) {
+        const lower = person.githubUsername.toLowerCase();
+        if (incomingByUsername.has(lower)) {
+          duplicateUsernames.push(person.githubUsername);
+        }
+        incomingByUsername.set(lower, person);
+      }
+      if (person.email) {
+        incomingByEmail.set(person.email.toLowerCase(), person);
+      }
+    }
+
+    if (duplicateUsernames.length > 0) {
+      logger.warn(`Bulk sync: duplicate GitHub usernames in payload`, { duplicateUsernames });
+    }
+
+    const existingMembers = await db.query.teamMembers.findMany();
+    const existingByUsername = new Map<string, typeof existingMembers[0]>();
+    const existingByEmail = new Map<string, typeof existingMembers[0]>();
+    for (const m of existingMembers) {
+      if (m.githubUsername) existingByUsername.set(m.githubUsername.toLowerCase(), m);
+      if (m.primaryEmail) existingByEmail.set(m.primaryEmail.toLowerCase(), m);
+    }
+
+    let upserted = 0;
+    let inserted = 0;
+    const processedIds = new Set<string>();
+    const incomingUsernames = new Set<string>();
+
+    for (const person of people) {
+      if (!person.name || (!person.email && !person.githubUsername)) continue;
+      if (person.githubUsername) incomingUsernames.add(person.githubUsername.toLowerCase());
+
+      const existing =
+        (person.githubUsername ? existingByUsername.get(person.githubUsername.toLowerCase()) : undefined) ??
+        (person.email ? existingByEmail.get(person.email.toLowerCase()) : undefined);
+
+      if (existing) {
+        await db.update(teamMembers).set({
+          name: person.name,
+          primaryEmail: person.email || existing.primaryEmail,
+          githubUsername: person.githubUsername || existing.githubUsername,
+          employeeId: person.employeeId || existing.employeeId,
+          department: person.department || existing.department,
+          role: person.role || existing.role,
+          source,
+          isActive: true,
+          endDate: null,
+          updatedAt: new Date(),
+        }).where(eq(teamMembers.id, existing.id));
+        processedIds.add(existing.id);
+        upserted++;
+      } else {
+        try {
+          const [newMember] = await db.insert(teamMembers).values({
+            name: person.name,
+            primaryEmail: person.email || null,
+            githubUsername: person.githubUsername || null,
+            employeeId: person.employeeId || null,
+            department: person.department || null,
+            role: person.role || null,
+            source,
+            isActive: true,
+          }).returning();
+          processedIds.add(newMember.id);
+          inserted++;
+        } catch (insertError) {
+          if ((insertError as any).code === '23505') {
+            logger.warn(`Bulk sync: skipping duplicate for ${person.name} (${person.email})`, { insertError });
+          } else {
+            throw insertError;
+          }
+        }
+      }
+    }
+
+    // Deactivate stale rows from owned sources
+    let deactivated = 0;
+    for (const m of existingMembers) {
+      if (!m.isActive) continue;
+      if (processedIds.has(m.id)) continue;
+      if (!m.source || !deactivationSources.includes(m.source)) continue;
+      if (m.githubUsername && incomingUsernames.has(m.githubUsername.toLowerCase())) continue;
+
+      await db.update(teamMembers).set({
+        isActive: false,
+        endDate: new Date().toISOString().split('T')[0],
+        updatedAt: new Date(),
+      }).where(eq(teamMembers.id, m.id));
+      deactivated++;
+    }
+
+    // Relink orphaned contributions/maintainer/leadership for new members
+    let totalRelinked = 0;
+    if (inserted > 0) {
+      try {
+        const newMembers = await db.query.teamMembers.findMany({
+          where: and(eq(teamMembers.source, source), eq(teamMembers.isActive, true)),
+        });
+        for (const m of newMembers) {
+          if (!m.githubUsername || !processedIds.has(m.id)) continue;
+          const contribResult = await db.execute(sql`
+            UPDATE contributions SET team_member_id = ${m.id}
+            WHERE team_member_id IS NULL
+              AND LOWER((metadata #>> '{}')::jsonb->>'author') = LOWER(${m.githubUsername})
+          `) as unknown as { rowCount?: number };
+          const msResult = await db.execute(sql`
+            UPDATE maintainer_status SET team_member_id = ${m.id}
+            WHERE team_member_id IS NULL AND LOWER(github_username) = LOWER(${m.githubUsername})
+          `) as unknown as { rowCount?: number };
+          const lpResult = await db.execute(sql`
+            UPDATE leadership_positions SET team_member_id = ${m.id}
+            WHERE team_member_id IS NULL AND LOWER(github_username) = LOWER(${m.githubUsername})
+          `) as unknown as { rowCount?: number };
+          totalRelinked += (contribResult.rowCount ?? 0) + (msResult.rowCount ?? 0) + (lpResult.rowCount ?? 0);
+        }
+      } catch (relinkError) {
+        logger.warn('Bulk sync: relink failed (non-fatal)', { error: relinkError });
+      }
+    }
+
+    // Queue governance + leadership refresh if new members were added
+    if (inserted > 0 || totalRelinked > 0) {
+      try {
+        const { CollectionScheduler } = await import('./jobs/scheduler.js');
+        const scheduler = new CollectionScheduler();
+        await scheduler.triggerGovernanceRefresh();
+        await scheduler.triggerLeadershipRefresh();
+      } catch (refreshError) {
+        logger.warn('Bulk sync: governance/leadership refresh queue failed (non-fatal)', { error: refreshError });
+      }
+    }
+
+    logger.info(`Bulk team sync complete`, { source, upserted, inserted, deactivated, relinked: totalRelinked });
+
+    return {
+      success: true,
+      source,
+      upserted,
+      inserted,
+      deactivated,
+      relinked: totalRelinked,
+    };
+  } catch (error) {
+    logger.error('Error in bulk team sync', { error });
+    reply.status(500);
+    return {
+      error: 'Bulk team sync failed',
       message: (error as Error).message,
     };
   }
