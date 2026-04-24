@@ -172,7 +172,7 @@ async function fetchMyContributions(days: number, heatmapYear?: number | null): 
 
 async function fetchActionQueue(): Promise<ActionQueueData | null> {
   const res = await apiFetch('/api/metrics/me/action-queue');
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error('Failed to fetch action queue');
   const data = await res.json();
   if (!data.resolved) return null;
   return data;
@@ -584,6 +584,7 @@ export default function MyContributions() {
     queryKey: ['my-action-queue'],
     queryFn: fetchActionQueue,
     refetchInterval: 120_000,
+    retry: 3,
   });
 
   if (error) {
@@ -691,15 +692,6 @@ export default function MyContributions() {
         <div className={`transition-opacity duration-200 ${isPlaceholderData ? 'opacity-60' : ''}`}>
           {activeTab === 'overview' && (
             <div id="tabpanel-overview" role="tabpanel" aria-labelledby="tab-overview">
-              {/* Period selector */}
-              <div className="flex justify-end mb-4">
-                <PeriodSelector
-                  selectedDays={selectedDays}
-                  onSelect={handlePeriodChange}
-                  isLoading={isRefetching}
-                />
-              </div>
-
               {/* Action queue */}
               <section className="mb-6">
                 {queueLoading ? (
@@ -708,6 +700,15 @@ export default function MyContributions() {
                   <ActionQueue reviewRequests={queueData.reviewRequests} myOpenPRs={queueData.myOpenPRs} />
                 ) : null}
               </section>
+
+              {/* Period selector */}
+              <div className="flex justify-end mb-4">
+                <PeriodSelector
+                  selectedDays={selectedDays}
+                  onSelect={handlePeriodChange}
+                  isLoading={isRefetching}
+                />
+              </div>
 
               {/* Pulse strip */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

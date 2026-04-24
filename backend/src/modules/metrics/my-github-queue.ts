@@ -33,6 +33,7 @@ interface CacheEntry {
 }
 
 const CACHE_TTL_MS = 2 * 60 * 1000;
+const MAX_CACHE_SIZE = 100;
 const cache = new Map<string, CacheEntry>();
 
 let octokitInstance: InstanceType<typeof ThrottledOctokit> | null = null;
@@ -75,8 +76,8 @@ interface GraphQLSearchResponse {
 }
 
 const PR_SEARCH_QUERY = `
-  query($query: String!) {
-    search(query: $query, type: ISSUE, first: 20) {
+  query($searchQuery: String!) {
+    search(query: $searchQuery, type: ISSUE, first: 20) {
       nodes {
         ... on PullRequest {
           title
@@ -115,10 +116,17 @@ function mapPRNodes(nodes: GraphQLPRNode[]): PRItem[] {
     }));
 }
 
+const GITHUB_USERNAME_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$/;
+
 async function fetchFromGitHub(
   githubUsername: string,
   trackedOrgs: string[],
 ): Promise<ActionQueueData> {
+  if (!GITHUB_USERNAME_RE.test(githubUsername)) {
+    logger.warn('Invalid GitHub username for action queue, skipping', { githubUsername });
+    return { resolved: true, reviewRequests: [], myOpenPRs: [] };
+  }
+
   const octokit = getOctokit();
   const orgFilter = buildOrgFilter(trackedOrgs);
 
@@ -126,8 +134,8 @@ async function fetchFromGitHub(
   const authorQuery = `is:pr is:open author:${githubUsername} ${orgFilter}`.trim();
 
   const [reviewResult, authorResult]: [GraphQLSearchResponse, GraphQLSearchResponse] = await Promise.all([
-    octokit.graphql(PR_SEARCH_QUERY, { query: reviewQuery }),
-    octokit.graphql(PR_SEARCH_QUERY, { query: authorQuery }),
+    octokit.graphql(PR_SEARCH_QUERY, { searchQuery: reviewQuery }),
+    octokit.graphql(PR_SEARCH_QUERY, { searchQuery: authorQuery }),
   ]);
 
   return {
@@ -156,6 +164,13 @@ export async function getActionQueue(
 
   const trackedOrgs = await getTrackedOrgs();
   const data = await fetchFromGitHub(githubUsername, trackedOrgs);
+
+  if (cache.size >= MAX_CACHE_SIZE) {
+    const oldest = Array.from(cache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp)
+      .slice(0, 10);
+    for (const [key] of oldest) cache.delete(key);
+  }
 
   cache.set(githubUsername, { data, timestamp: Date.now() });
   return data;

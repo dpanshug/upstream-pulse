@@ -31,40 +31,63 @@ function relativeAge(dateStr: string): string {
   return `${weeks}w`;
 }
 
-function statusPill(pr: PRItem): { label: string; className: string } {
-  if (pr.isDraft) return { label: 'Draft', className: 'bg-gray-100 text-gray-600' };
+function statusPill(pr: PRItem): { label: string; className: string } | null {
+  if (pr.isDraft) return { label: 'Draft', className: 'bg-gray-100 text-gray-500' };
   switch (pr.reviewDecision) {
     case 'APPROVED':
-      return { label: 'Approved', className: 'bg-green-100 text-green-700' };
+      return { label: 'Approved', className: 'bg-green-50 text-green-700 ring-1 ring-inset ring-green-200' };
     case 'CHANGES_REQUESTED':
-      return { label: 'Changes', className: 'bg-amber-100 text-amber-700' };
+      return { label: 'Changes', className: 'bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200' };
     case 'REVIEW_REQUIRED':
-      return { label: 'Needs review', className: 'bg-blue-100 text-blue-700' };
+      return { label: 'Needs review', className: 'bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-200' };
     default:
-      return { label: 'Open', className: 'bg-blue-50 text-blue-600' };
+      return null;
   }
 }
 
 function PRRow({ pr }: { pr: PRItem }) {
   const status = statusPill(pr);
+  const repoShort = pr.repo.split('/')[1] ?? pr.repo;
+  const age = relativeAge(pr.createdAt);
+
   return (
     <a
       href={pr.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-center gap-3 py-2.5 px-3 -mx-3 rounded-lg hover:bg-gray-50 transition-colors group"
+      className="block py-2.5 px-3 -mx-3 rounded-lg hover:bg-gray-50 transition-colors group"
     >
-      <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${status.className}`}>
-        {status.label}
-      </span>
-      <span className="text-xs text-gray-400 shrink-0 font-mono">
-        {pr.repo.split('/')[1]}#{pr.number}
-      </span>
-      <span className="text-sm text-gray-700 truncate flex-1">{pr.title}</span>
-      <span className="text-xs text-gray-400 shrink-0 tabular-nums">{relativeAge(pr.createdAt)}</span>
-      <ExternalLink className="w-3 h-3 text-gray-300 group-hover:text-gray-500 shrink-0" />
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-gray-800 leading-snug line-clamp-2 group-hover:text-blue-600 transition-colors">
+            {pr.title}
+          </p>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className="text-[11px] text-gray-400 font-mono">{repoShort}#{pr.number}</span>
+            <span className="text-[11px] text-gray-300">·</span>
+            <span className="text-[11px] text-gray-400 tabular-nums">{age}</span>
+            {status && (
+              <>
+                <span className="text-[11px] text-gray-300">·</span>
+                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${status.className}`}>
+                  {status.label}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+        <ExternalLink className="w-3.5 h-3.5 text-gray-300 group-hover:text-blue-500 shrink-0 mt-0.5" />
+      </div>
     </a>
   );
+}
+
+function priorityScore(pr: PRItem): number {
+  if (pr.reviewDecision === 'CHANGES_REQUESTED') return 0;
+  if (pr.reviewDecision === 'APPROVED') return 1;
+  if (pr.reviewDecision === 'REVIEW_REQUIRED') return 2;
+  if (pr.isDraft) return 4;
+  return 3;
 }
 
 function PRGroup({
@@ -77,15 +100,23 @@ function PRGroup({
   items: PRItem[];
 }) {
   const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? items : items.slice(0, VISIBLE_LIMIT);
-  const hasMore = items.length > VISIBLE_LIMIT;
+  const sorted = [...items].sort((a, b) => priorityScore(a) - priorityScore(b));
+  const visible = expanded ? sorted : sorted.slice(0, VISIBLE_LIMIT);
+  const remaining = items.length - VISIBLE_LIMIT;
+  const hasMore = remaining > 0;
+
+  const badgeColor = count >= 15
+    ? 'bg-red-100 text-red-700'
+    : count >= 8
+      ? 'bg-amber-100 text-amber-700'
+      : 'bg-gray-100 text-gray-500';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center gap-2 mb-2">
         <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
         {count > 0 && (
-          <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+          <span className={`text-[11px] font-bold min-w-5 h-5 px-1.5 rounded-full flex items-center justify-center ${badgeColor}`}>
             {count}
           </span>
         )}
@@ -105,9 +136,9 @@ function PRGroup({
           {hasMore && (
             <button
               onClick={() => setExpanded(!expanded)}
-              className="w-full text-center pt-2 text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors"
+              className="w-full text-center pt-2.5 text-[11px] font-medium text-blue-600 hover:text-blue-800 transition-colors"
             >
-              {expanded ? 'Show less' : `Show ${items.length - VISIBLE_LIMIT} more`}
+              {expanded ? 'Show less' : `+${remaining} more`}
             </button>
           )}
         </>
@@ -121,9 +152,14 @@ export function ActionQueue({ reviewRequests, myOpenPRs }: ActionQueueProps) {
 
   if (allClear) {
     return (
-      <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-400 bg-white rounded-xl shadow-sm border border-gray-100">
-        <CheckCircle2 className="w-4 h-4 text-green-400" />
-        All clear — nothing needs your attention
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 py-5 px-6">
+        <div className="flex items-center gap-2.5">
+          <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-gray-700">No open PRs or review requests</p>
+            <p className="text-xs text-gray-400 mt-0.5">PRs assigned to you for review and your open PRs will appear here</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -142,9 +178,9 @@ export function ActionQueueSkeleton() {
       {[0, 1].map((i) => (
         <div key={i} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 space-y-3">
           <div className="h-4 w-32 bg-gray-100 rounded animate-pulse" />
-          <div className="h-8 w-full bg-gray-50 rounded animate-pulse" />
-          <div className="h-8 w-full bg-gray-50 rounded animate-pulse" />
-          <div className="h-8 w-3/4 bg-gray-50 rounded animate-pulse" />
+          <div className="h-10 w-full bg-gray-50 rounded animate-pulse" />
+          <div className="h-10 w-full bg-gray-50 rounded animate-pulse" />
+          <div className="h-10 w-3/4 bg-gray-50 rounded animate-pulse" />
         </div>
       ))}
     </div>

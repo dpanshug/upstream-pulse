@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: upstream-pulse-config
+  namespace: upstream-pulse
+data:
+  ADMIN_USERS: "admin,roster-sync-service"
+  GITHUB_TEAM_ORG: ""
