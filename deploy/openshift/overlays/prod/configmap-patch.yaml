@@ -4,5 +4,5 @@ metadata:
   name: upstream-pulse-config
   namespace: upstream-pulse
 data:
-  ADMIN_USERS: "admin,roster-sync-service"
+  ADMIN_USERS: "admin,roster-sync-service,dipgupta"
   GITHUB_TEAM_ORG: ""
