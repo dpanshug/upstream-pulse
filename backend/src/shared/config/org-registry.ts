@@ -310,7 +310,7 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
 
   // ─── GGML (llama.cpp) ─────────────────────────
   {
-    name: 'GGML',
+    name: 'llama.cpp',
     githubOrg: 'ggml-org',
     governanceModel: 'codeowners',
   },
