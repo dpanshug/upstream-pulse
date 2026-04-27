@@ -2,10 +2,15 @@
  * CODEOWNERS Parser
  *
  * Parses GitHub-native CODEOWNERS files to extract per-user maintainer entries.
- * Only @username references are captured — @org/team references are skipped
- * because resolving team membership requires `read:org` scope on external orgs.
  *
- * Checks `.github/CODEOWNERS` first, then root `CODEOWNERS`.
+ * Handles two owner formats:
+ *   1. @username — captured directly
+ *   2. @org/team — resolved via comment headers when the repo embeds a
+ *      team-member mapping in comments (e.g. `# org/team : user1, user2`).
+ *      This covers repos where GitHub team visibility is private and
+ *      maintainers are listed in comments by convention.
+ *
+ * Checks `.github/CODEOWNERS`, root `CODEOWNERS`, and `docs/CODEOWNERS`.
  */
 
 import { Octokit } from '@octokit/rest';
@@ -49,14 +54,54 @@ export class CodeownersParser {
     return null;
   }
 
+  /**
+   * Build a map from "org/team" → [usernames] by scanning comment lines
+   * matching the convention:  # org/team : user1, user2, ...
+   */
+  private buildTeamMap(content: string): Map<string, string[]> {
+    const teamMap = new Map<string, string[]>();
+
+    for (const rawLine of content.split('\n')) {
+      const line = rawLine.trim();
+      if (!line.startsWith('#')) continue;
+
+      const body = line.slice(1).trim();
+      const colonIdx = body.indexOf(':');
+      if (colonIdx === -1) continue;
+
+      const teamRef = body.slice(0, colonIdx).trim();
+      if (!teamRef.includes('/')) continue;
+
+      const usersStr = body.slice(colonIdx + 1).trim();
+      if (!usersStr) continue;
+
+      const users = usersStr
+        .split(/[,\s]+/)
+        .map(u => u.replace(/^@/, '').trim().toLowerCase())
+        .filter(Boolean);
+
+      if (users.length > 0) {
+        teamMap.set(teamRef.toLowerCase(), users);
+        logger.debug(`CODEOWNERS team mapping: ${teamRef} → ${users.join(', ')}`);
+      }
+    }
+
+    return teamMap;
+  }
+
   private parseContent(content: string, sourceUrl: string): CodeownersEntry[] {
+    const teamMap = this.buildTeamMap(content);
     const userPaths = new Map<string, Set<string>>();
+
+    const addUser = (username: string, pattern: string) => {
+      if (!userPaths.has(username)) userPaths.set(username, new Set());
+      userPaths.get(username)!.add(pattern);
+    };
 
     for (const rawLine of content.split('\n')) {
       const line = rawLine.trim();
       if (!line || line.startsWith('#')) continue;
 
-      // Format: <pattern> @owner1 @owner2 …
       const parts = line.split(/\s+/);
       if (parts.length < 2) continue;
 
@@ -66,13 +111,19 @@ export class CodeownersParser {
         const ref = parts[i];
         if (!ref.startsWith('@')) continue;
 
-        const value = ref.slice(1); // strip leading @
-        // Skip org/team references (contain a slash)
-        if (value.includes('/')) continue;
+        const value = ref.slice(1);
 
-        const username = value.toLowerCase();
-        if (!userPaths.has(username)) userPaths.set(username, new Set());
-        userPaths.get(username)!.add(pattern);
+        if (value.includes('/')) {
+          const resolved = teamMap.get(value.toLowerCase());
+          if (resolved) {
+            for (const username of resolved) {
+              addUser(username, pattern);
+            }
+          }
+          continue;
+        }
+
+        addUser(value.toLowerCase(), pattern);
       }
     }
 
