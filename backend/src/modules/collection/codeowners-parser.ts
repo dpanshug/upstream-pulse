@@ -70,7 +70,7 @@ export class CodeownersParser {
       if (colonIdx === -1) continue;
 
       const teamRef = body.slice(0, colonIdx).trim();
-      if (!teamRef.includes('/')) continue;
+      if (!/^[\w.-]+\/[\w.-]+$/.test(teamRef)) continue;
 
       const usersStr = body.slice(colonIdx + 1).trim();
       if (!usersStr) continue;
