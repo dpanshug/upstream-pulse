@@ -94,8 +94,9 @@ export class CodeownersParser {
     const userPaths = new Map<string, Set<string>>();
 
     const addUser = (username: string, pattern: string) => {
-      if (!userPaths.has(username)) userPaths.set(username, new Set());
-      userPaths.get(username)!.add(pattern);
+      const paths = userPaths.get(username) ?? new Set<string>();
+      paths.add(pattern);
+      userPaths.set(username, paths);
     };
 
     for (const rawLine of content.split('\n')) {
