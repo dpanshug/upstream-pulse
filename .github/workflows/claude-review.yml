@@ -96,7 +96,7 @@ jobs:
 
       - name: Checkout code
         if: steps.check-paths.outputs.needs_review == 'true' && steps.fork-guard.outputs.is_fork != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -269,7 +269,7 @@ jobs:
 
       - name: Checkout base branch
         if: steps.check-paths.outputs.needs_review == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.base.sha }}
 
