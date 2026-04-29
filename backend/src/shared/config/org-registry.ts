@@ -392,7 +392,6 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     governanceModel: 'codeowners',
     repoGovernanceOverride: {
       'kagenti': 'none',
-      'agent-examples': 'codeowners',
     },
   },
 
