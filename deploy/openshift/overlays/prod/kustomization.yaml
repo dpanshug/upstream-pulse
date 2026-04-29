@@ -21,6 +21,6 @@ patches:
 
 images:
 - name: quay.io/org-pulse/upstream-pulse-backend
-  newTag: 84bb405
+  newTag: 2eb0dd2
 - name: quay.io/org-pulse/upstream-pulse-frontend
-  newTag: 84bb405
+  newTag: 2eb0dd2
