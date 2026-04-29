@@ -335,13 +335,33 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     governanceModel: 'codeowners',
   },
 
-  // ─── DocLing ──────────────────────────────────
+  // ─── Docling ──────────────────────────────────
   {
-    name: 'DocLing',
-    githubOrg: 'docling',
+    name: 'Docling',
+    githubOrg: 'docling-project',
     strategicParticipation: 'sustaining_participation',
     strategicLeadership: 'sustaining_leadership',
-    governanceModel: 'codeowners',
+    communityRepo: {
+      repo: 'community',
+      defaultBranch: 'main',
+      leadershipFiles: [
+        {
+          path: 'GOVERNANCE.md',
+          groupName: 'Docling TSC',
+          positionType: 'tsc_member',
+          format: 'bullet_list',
+          sectionHeading: 'TSC member',
+        },
+        {
+          path: 'GOVERNANCE.md',
+          groupName: 'Docling Committers',
+          positionType: 'committer',
+          format: 'bullet_list',
+          sectionHeading: 'Committer',
+        },
+      ],
+    },
+    governanceModel: 'none',
   },
 
   // ─── Agentic AI Foundation ────────────────────
@@ -358,7 +378,22 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     githubOrg: 'kagenti',
     strategicParticipation: 'increasing_participation',
     strategicLeadership: 'increasing_leadership',
-    governanceModel: 'none',
+    communityRepo: {
+      repo: 'kagenti',
+      defaultBranch: 'main',
+      leadershipFiles: [
+        {
+          path: 'MAINTAINERS.md',
+          groupName: 'Kagenti Maintainers',
+          positionType: 'maintainer',
+        },
+      ],
+    },
+    governanceModel: 'codeowners',
+    repoGovernanceOverride: {
+      'kagenti': 'none',
+      'agent-examples': 'codeowners',
+    },
   },
 
   // ─── Kuadrant ────────────────────
