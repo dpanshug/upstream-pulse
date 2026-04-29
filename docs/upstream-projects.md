@@ -75,14 +75,14 @@ Feature store for ML pipelines.
 
 ---
 
-### Llama Stack (`llamastack/*`)
+### ogx (`ogx-ai/*`)
 
-Llama Stack framework and Kubernetes operator. Strategically important — 30.5% team share in core repo, 82.5% in k8s operator.
+ogx (Open GenAI Stack, formerly Llama Stack) — unified open-source API server for agentic AI. Strategically important — 30.5% team share in core repo, 82.5% in k8s operator.
 
 | Repo | Description | Status |
 |------|-------------|--------|
-| `llamastack/llama-stack` | Llama Stack framework (core) | **Tracked** |
-| `llamastack/llama-stack-k8s-operator` | Kubernetes operator for Llama Stack | **Tracked** |
+| `ogx-ai/ogx` | ogx framework (core) | **Tracked** |
+| `ogx-ai/ogx-k8s-operator` | Kubernetes operator for ogx | **Tracked** |
 
 **Governance**: Uses CODEOWNERS.
 
@@ -202,7 +202,7 @@ Container tooling ecosystem — Podman, RamaLama, AI Lab Recipes, OLOT. Mixed go
 | `containers/podman` | OCI container management tool | **Tracked** |
 | `containers/ramalama` | Local AI model serving with containers | **Tracked** |
 | `containers/ai-lab-recipes` | AI application recipes for containers | **Tracked** |
-| `containers/ramalama-stack` | Llama Stack provider for RamaLama | **Tracked** |
+| `containers/ramalama-stack` | ogx provider for RamaLama | **Tracked** |
 | `containers/olot` | OCI Layers On Top — append layers to OCI images | **Tracked** |
 
 **Governance**: Leadership from `containers/podman` MAINTAINERS.md (6 Core Maintainers, 5 Maintainers, 10 Reviewers, 3 Community Managers). Podman uses OWNERS (27 approvers, 14 reviewers). RamaLama uses CODEOWNERS (11 owners). Uses `repoGovernanceOverride` for per-repo model selection.
@@ -301,7 +301,7 @@ Additional upstream projects across various organizations.
 | **KServe** | 7 | 7 tracked |
 | **vLLM** | 2 | 2 tracked |
 | **Feast** | 1 | 1 tracked |
-| **Llama Stack** | 2 | 2 tracked |
+| **ogx** | 2 | 2 tracked |
 | **llm-d** | 6 | 6 tracked |
 | **MLflow** | 1 | 1 tracked |
 | **Kubernetes** | 7 | 7 tracked |

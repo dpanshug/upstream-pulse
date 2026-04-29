@@ -188,10 +188,10 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     governanceModel: 'codeowners',
   },
 
-  // ─── Llama Stack (moved from meta-llama) ────
+  // ─── ogx (Open GenAI Stack, formerly Llama Stack) ────
   {
-    name: 'Llama Stack',
-    githubOrg: 'llamastack',
+    name: 'ogx',
+    githubOrg: 'ogx-ai',
     strategicParticipation: 'sustaining_participation',
     strategicLeadership: 'sustaining_leadership',
     governanceModel: 'codeowners',
