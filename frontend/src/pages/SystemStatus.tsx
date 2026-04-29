@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../context/AuthContext';
 import {
   Activity,
   CheckCircle2,
@@ -18,6 +19,9 @@ import {
   Server,
   ChevronDown,
   Tag,
+  Play,
+  Loader2,
+  Check,
 } from 'lucide-react';
 import { PageLoading } from '../components/common/PageLoading';
 import { PageError } from '../components/common/PageError';
@@ -210,10 +214,50 @@ function QueueBar({ stats }: { stats: QueueStats }) {
   );
 }
 
-function WorkerCard({ worker }: { worker: WorkerInfo }) {
+const runNowEndpoints: Record<string, string> = {
+  'governance-refresh': '/api/governance/refresh',
+  'leadership-refresh': '/api/leadership/refresh',
+};
+
+type RunNowState = 'idle' | 'loading' | 'success' | 'error';
+
+function WorkerCard({
+  worker,
+  isAdmin,
+  onRunNowComplete,
+}: {
+  worker: WorkerInfo;
+  isAdmin: boolean;
+  onRunNowComplete?: () => void;
+}) {
   const hc = healthConfig[worker.health];
   const Icon = workerIcons[worker.id] || Activity;
   const isActive = worker.queue.active > 0;
+  const endpoint = runNowEndpoints[worker.id];
+  const canRunNow = isAdmin && !!endpoint;
+  const isBusy = worker.queue.active > 0 || worker.queue.waiting > 0;
+  const [runState, setRunState] = useState<RunNowState>('idle');
+  const [errorMsg, setErrorMsg] = useState('');
+  const resetTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const handleRunNow = useCallback(async () => {
+    if (!endpoint) return;
+    clearTimeout(resetTimer.current);
+    setRunState('loading');
+    setErrorMsg('');
+    try {
+      const res = await apiFetch(endpoint, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setRunState('success');
+      onRunNowComplete?.();
+      resetTimer.current = setTimeout(() => setRunState('idle'), 2500);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      setErrorMsg(msg);
+      setRunState('error');
+      resetTimer.current = setTimeout(() => setRunState('idle'), 3000);
+    }
+  }, [endpoint, onRunNowComplete]);
 
   return (
     <div className={`
@@ -263,9 +307,34 @@ function WorkerCard({ worker }: { worker: WorkerInfo }) {
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-1.5">
-        <Clock className="w-3 h-3 text-gray-400" />
-        <span className="text-xs font-mono text-gray-400">{worker.schedule.human}</span>
+      <div className="mt-3 flex items-center justify-between">
+        <div className="flex items-center gap-1.5">
+          <Clock className="w-3 h-3 text-gray-400" />
+          <span className="text-xs font-mono text-gray-400">{worker.schedule.human}</span>
+        </div>
+        {canRunNow && (
+          <button
+            onClick={handleRunNow}
+            disabled={isBusy || runState === 'loading'}
+            title={runState === 'error' ? `Failed: ${errorMsg}` : isBusy ? 'A job is already running or queued' : 'Queue a manual refresh now'}
+            className={`
+              flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all
+              ${runState === 'success'
+                ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                : runState === 'error'
+                  ? 'bg-red-50 text-red-600 border border-red-200'
+                  : isBusy || runState === 'loading'
+                    ? 'bg-gray-50 text-gray-400 border border-gray-200 cursor-not-allowed'
+                    : 'bg-indigo-50 text-indigo-600 border border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300'}
+            `}
+          >
+            {runState === 'loading' && <Loader2 className="w-3 h-3 animate-spin" />}
+            {runState === 'success' && <Check className="w-3 h-3" />}
+            {runState === 'error' && <AlertTriangle className="w-3 h-3" />}
+            {runState === 'idle' && (isBusy ? <Loader2 className="w-3 h-3" /> : <Play className="w-3 h-3" />)}
+            {runState === 'loading' ? 'Queuing...' : runState === 'success' ? 'Queued' : runState === 'error' ? 'Failed' : isBusy ? 'In Progress' : 'Run Now'}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -354,13 +423,15 @@ function JobRow({ job, isExpanded, onToggle }: { job: JobRecord; isExpanded: boo
 }
 
 export default function SystemStatus() {
+  const { isAdmin } = useAuth();
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
-  const { data, isLoading, error, refetch, isFetching } = useQuery({
+  const { data, isLoading, error, refetch, isFetching } = useQuery<SystemStatusData>({
     queryKey: ['system-status'],
     queryFn: fetchSystemStatus,
     refetchInterval: 15000,
     placeholderData: (prev) => prev,
   });
+  const handleRunNowComplete = useCallback(() => refetch(), [refetch]);
 
   if (isLoading) return <PageLoading message="Initializing system diagnostics..." />;
 
@@ -452,7 +523,12 @@ export default function SystemStatus() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {data.workers.map((worker) => (
-                <WorkerCard key={worker.id} worker={worker} />
+                <WorkerCard
+                  key={worker.id}
+                  worker={worker}
+                  isAdmin={isAdmin}
+                  onRunNowComplete={handleRunNowComplete}
+                />
               ))}
             </div>
           )}
