@@ -188,10 +188,10 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     governanceModel: 'codeowners',
   },
 
-  // ─── Llama Stack (moved from meta-llama) ────
+  // ─── ogx (Open GenAI Stack, formerly Llama Stack) ────
   {
-    name: 'Llama Stack',
-    githubOrg: 'llamastack',
+    name: 'ogx',
+    githubOrg: 'ogx-ai',
     strategicParticipation: 'sustaining_participation',
     strategicLeadership: 'sustaining_leadership',
     governanceModel: 'codeowners',
@@ -310,7 +310,7 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
 
   // ─── GGML (llama.cpp) ─────────────────────────
   {
-    name: 'GGML',
+    name: 'llama.cpp',
     githubOrg: 'ggml-org',
     governanceModel: 'codeowners',
   },
@@ -335,13 +335,33 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     governanceModel: 'codeowners',
   },
 
-  // ─── DocLing ──────────────────────────────────
+  // ─── Docling ──────────────────────────────────
   {
-    name: 'DocLing',
-    githubOrg: 'docling',
+    name: 'Docling',
+    githubOrg: 'docling-project',
     strategicParticipation: 'sustaining_participation',
     strategicLeadership: 'sustaining_leadership',
-    governanceModel: 'codeowners',
+    communityRepo: {
+      repo: 'community',
+      defaultBranch: 'main',
+      leadershipFiles: [
+        {
+          path: 'GOVERNANCE.md',
+          groupName: 'Docling TSC',
+          positionType: 'tsc_member',
+          format: 'bullet_list',
+          sectionHeading: 'TSC member',
+        },
+        {
+          path: 'GOVERNANCE.md',
+          groupName: 'Docling Committers',
+          positionType: 'committer',
+          format: 'bullet_list',
+          sectionHeading: 'Committer',
+        },
+      ],
+    },
+    governanceModel: 'none',
   },
 
   // ─── Agentic AI Foundation ────────────────────
@@ -358,6 +378,39 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     githubOrg: 'kagenti',
     strategicParticipation: 'increasing_participation',
     strategicLeadership: 'increasing_leadership',
+    communityRepo: {
+      repo: 'kagenti',
+      defaultBranch: 'main',
+      leadershipFiles: [
+        {
+          path: 'MAINTAINERS.md',
+          groupName: 'Kagenti Maintainers',
+          positionType: 'maintainer',
+        },
+      ],
+    },
+    governanceModel: 'codeowners',
+    repoGovernanceOverride: {
+      'kagenti': 'none',
+    },
+  },
+
+  // ─── Kuadrant ────────────────────
+  {
+    name: 'Kuadrant',
+    githubOrg: 'Kuadrant',
+    communityRepo: {
+      repo: 'kuadrant-operator',
+      defaultBranch: 'main',
+      leadershipFiles: [
+        {
+          path: 'MAINTAINERS.md',
+          groupName: 'Kuadrant',
+          positionType: 'maintainer',
+          format: 'bullet_list',
+        },
+      ],
+    },
     governanceModel: 'none',
   },
 ];

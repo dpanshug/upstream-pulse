@@ -38,9 +38,9 @@ jobs:
       NODE_ENV: test
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -48,6 +48,10 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+        working-directory: backend
+
+      - name: Audit for critical vulnerabilities
+        run: npm audit --audit-level=critical
         working-directory: backend
 
       - name: Type check
@@ -64,9 +68,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: npm
@@ -74,6 +78,10 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+        working-directory: frontend
+
+      - name: Audit for critical vulnerabilities
+        run: npm audit --audit-level=critical
         working-directory: frontend
 
       - name: Type check & build

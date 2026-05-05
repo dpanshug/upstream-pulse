@@ -23,7 +23,8 @@ FROM nginx:1.27-alpine
 LABEL maintainer="Upstream Pulse Contributors"
 LABEL description="Upstream Pulse Frontend Dashboard"
 
-# Remove default nginx config
+RUN apk upgrade --no-cache
+
 RUN rm /etc/nginx/conf.d/default.conf
 
 # Copy custom nginx config

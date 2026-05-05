@@ -2,7 +2,7 @@
 
 Upstream Pulse provides contribution tracking and governance insights for the following upstream open-source organizations and projects. This document lists what is currently supported and what is planned next, organized by upstream organization.
 
-**Last updated**: 2026-04-07
+**Last updated**: 2026-04-15
 
 ---
 
@@ -75,14 +75,14 @@ Feature store for ML pipelines.
 
 ---
 
-### Llama Stack (`llamastack/*`)
+### ogx (`ogx-ai/*`)
 
-Llama Stack framework and Kubernetes operator. Strategically important — 30.5% team share in core repo, 82.5% in k8s operator.
+ogx (Open GenAI Stack, formerly Llama Stack) — unified open-source API server for agentic AI. Strategically important — 30.5% team share in core repo, 82.5% in k8s operator.
 
 | Repo | Description | Status |
 |------|-------------|--------|
-| `llamastack/llama-stack` | Llama Stack framework (core) | **Tracked** |
-| `llamastack/llama-stack-k8s-operator` | Kubernetes operator for Llama Stack | **Tracked** |
+| `ogx-ai/ogx` | ogx framework (core) | **Tracked** |
+| `ogx-ai/ogx-k8s-operator` | Kubernetes operator for ogx | **Tracked** |
 
 **Governance**: Uses CODEOWNERS.
 
@@ -202,7 +202,7 @@ Container tooling ecosystem — Podman, RamaLama, AI Lab Recipes, OLOT. Mixed go
 | `containers/podman` | OCI container management tool | **Tracked** |
 | `containers/ramalama` | Local AI model serving with containers | **Tracked** |
 | `containers/ai-lab-recipes` | AI application recipes for containers | **Tracked** |
-| `containers/ramalama-stack` | Llama Stack provider for RamaLama | **Tracked** |
+| `containers/ramalama-stack` | ogx provider for RamaLama | **Tracked** |
 | `containers/olot` | OCI Layers On Top — append layers to OCI images | **Tracked** |
 
 **Governance**: Leadership from `containers/podman` MAINTAINERS.md (6 Core Maintainers, 5 Maintainers, 10 Reviewers, 3 Community Managers). Podman uses OWNERS (27 approvers, 14 reviewers). RamaLama uses CODEOWNERS (11 owners). Uses `repoGovernanceOverride` for per-repo model selection.
@@ -230,6 +230,20 @@ Meta's open-source deep learning framework. Tracking for emerging team contribut
 | `pytorch/pytorch` | Tensors and dynamic neural networks with GPU acceleration | **Tracked** |
 
 **Governance**: Uses GitHub CODEOWNERS (~150 owner entries). Leadership data sourced from `pytorch/pytorch` `persons_of_interest.rst` (BDFL, core maintainers, module maintainers across 25+ modules). Meta-led open-source project.
+
+---
+
+### Kuadrant (`Kuadrant/*`)
+
+Gateway policies for Kubernetes — API management, rate limiting, DNS, and auth.
+
+| Repo | Description | Status |
+|------|-------------|--------|
+| `Kuadrant/authorino` | Kubernetes-native auth service | **Tracked** |
+| `Kuadrant/limitador` | Rate limiting service | **Tracked** |
+| `Kuadrant/wasm-shim` | Wasm extension for Envoy | **Tracked** |
+
+**Governance**: Leadership from `kuadrant-operator/MAINTAINERS.md` (13 org-level maintainers, bullet-list format). Tracked repos have no OWNERS/CODEOWNERS.
 
 ---
 
@@ -287,7 +301,7 @@ Additional upstream projects across various organizations.
 | **KServe** | 7 | 7 tracked |
 | **vLLM** | 2 | 2 tracked |
 | **Feast** | 1 | 1 tracked |
-| **Llama Stack** | 2 | 2 tracked |
+| **ogx** | 2 | 2 tracked |
 | **llm-d** | 6 | 6 tracked |
 | **MLflow** | 1 | 1 tracked |
 | **Kubernetes** | 7 | 7 tracked |
@@ -298,10 +312,11 @@ Additional upstream projects across various organizations.
 | **Containers** | 5 | 5 tracked |
 | **GGML** | 1 | 1 tracked |
 | **PyTorch** | 1 | 1 tracked |
+| **Kuadrant** | 3 | 3 tracked |
 | **OpenVINO** | 4 | Planned |
 | **Caikit** | 3 | Planned |
 | **Individual repos** | 6 | Planned |
-| **Total** | **73** | 58 tracked, 15 planned |
+| **Total** | **76** | 61 tracked, 15 planned |
 
 ---
 

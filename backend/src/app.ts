@@ -729,24 +729,30 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
         deactivated = idsToDeactivate.length;
       }
 
-      // Batch relink orphaned data for newly inserted members
-      for (const m of newlyInserted) {
-        const contribResult = await tx.execute(sql`
+    });
+
+    // Relink orphaned data for newly inserted members (outside transaction
+    // so a null-byte error in one member's metadata doesn't abort the sync)
+    for (const m of newlyInserted) {
+      try {
+        const contribResult = await db.execute(sql`
           UPDATE contributions SET team_member_id = ${m.id}
           WHERE team_member_id IS NULL
             AND LOWER((metadata #>> '{}')::jsonb->>'author') = LOWER(${m.githubUsername})
         `) as unknown as { rowCount?: number };
-        const msResult = await tx.execute(sql`
+        const msResult = await db.execute(sql`
           UPDATE maintainer_status SET team_member_id = ${m.id}
           WHERE team_member_id IS NULL AND LOWER(github_username) = LOWER(${m.githubUsername})
         `) as unknown as { rowCount?: number };
-        const lpResult = await tx.execute(sql`
+        const lpResult = await db.execute(sql`
           UPDATE leadership_positions SET team_member_id = ${m.id}
           WHERE team_member_id IS NULL AND LOWER(github_username) = LOWER(${m.githubUsername})
         `) as unknown as { rowCount?: number };
         totalRelinked += (contribResult.rowCount ?? 0) + (msResult.rowCount ?? 0) + (lpResult.rowCount ?? 0);
+      } catch (relinkError) {
+        logger.warn(`Bulk sync: relink failed for @${m.githubUsername} (non-fatal)`, { error: relinkError });
       }
-    });
+    }
 
     // Queue governance + leadership refresh if new members were added (outside transaction)
     if (inserted > 0 || totalRelinked > 0) {

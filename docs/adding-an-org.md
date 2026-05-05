@@ -21,7 +21,7 @@ Before adding an org, confirm its governance format is already supported:
 | **Markdown leadership tables** (steering committee, TSC, maintainers) | Kubeflow, KServe, Argo | `LeadershipCollector.parseLeadershipMarkdown()` |
 | **WGs/SIGs YAML** (chairs + tech leads) | Kubeflow | `LeadershipCollector.fetchWorkingGroupLeadership()` |
 | **OWNERS files** (Kubernetes-style) | Kubeflow, KServe, Kubernetes SIGs, Feast | `GitHubCollector` (governance worker) |
-| **CODEOWNERS** (GitHub-native) | vLLM, Ray, OpenVINO, Meta Llama, Caikit | `CodeownersParser` |
+| **CODEOWNERS** (GitHub-native) | vLLM, Ray, OpenVINO, ogx, Caikit | `CodeownersParser` |
 | **None** | MLflow, Hugging Face, BerriAI | No governance collection |
 
 If the org uses one of these formats, you can add it with config alone. If not, see [Adding a New Parser](#7-adding-a-new-parser-if-needed).

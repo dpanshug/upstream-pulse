@@ -15,8 +15,12 @@ resources:
 - postgres-backup-cronjob.yaml
 - postgres-backup-monitor-cronjob.yaml
 - postgres-restore-test-cronjob.yaml
+
+patches:
+- path: configmap-patch.yaml
+
 images:
 - name: quay.io/org-pulse/upstream-pulse-backend
-  newTag: 68f8780
+  newTag: 27a450d
 - name: quay.io/org-pulse/upstream-pulse-frontend
-  newTag: 68f8780
+  newTag: 27a450d
