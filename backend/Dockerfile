@@ -33,6 +33,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist/
+COPY src/shared/database/migrations ./dist/shared/database/migrations/
 
 # Ensure the app directory is accessible by arbitrary UIDs (OpenShift requirement)
 RUN chown -R 1001:0 /app && chmod -R g=u /app
