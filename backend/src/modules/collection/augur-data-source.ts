@@ -35,7 +35,7 @@ export class CollectOSSAdapter {
     onProgress?: (detail: { phase: string; collected: number }) => void,
     onPhaseComplete?: (phase: string, records: ContributionRecord[]) => Promise<void>,
     phases?: ('commits' | 'pull_requests' | 'reviews' | 'issues')[],
-  ): Promise<ContributionRecord[]> {
+  ): Promise<void> {
     const augur = getAugurClient();
     if (!augur) {
       throw new Error('Augur DB client not available — is AUGUR_DATABASE_URL configured?');
@@ -83,7 +83,6 @@ export class CollectOSSAdapter {
 
     signal('done');
     logger.info(`CollectOSS: total contributions collected: ${totalCollected}`);
-    return [];
   }
 
   // ── Commits ─────────────────────────────────────────────────────

@@ -847,7 +847,7 @@ app.patch<{
   } catch (error) {
     logger.error('Error toggling data source', { error });
     reply.status(500);
-    return { error: 'Failed to toggle data source', message: (error as Error).message };
+    return { error: 'Failed to toggle data source' };
   }
 });
 
@@ -886,7 +886,7 @@ app.post<{
   } catch (error) {
     logger.error('Error resolving Augur repo', { error });
     reply.status(500);
-    return { error: 'Failed to resolve Augur repo', message: (error as Error).message };
+    return { error: 'Failed to resolve Augur repo' };
   }
 });
 
@@ -922,7 +922,7 @@ app.get('/api/system/augur-status', { preHandler: [requireAdmin] }, async (reque
   } catch (error) {
     logger.error('Error fetching Augur status', { error });
     reply.status(500);
-    return { error: 'Failed to fetch Augur status', message: (error as Error).message };
+    return { error: 'Failed to fetch Augur status' };
   }
 });
 
