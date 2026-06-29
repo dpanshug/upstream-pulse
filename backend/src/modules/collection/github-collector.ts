@@ -4,7 +4,7 @@ import * as yaml from 'js-yaml';
 import { config } from '../../shared/config/index.js';
 import { logger } from '../../shared/utils/logger.js';
 
-import type { Repository } from '../../shared/types/index.js';
+import type { Repository, ContributionRecord } from '../../shared/types/index.js';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ThrottledOctokit = Octokit.plugin(throttling as any);
@@ -27,19 +27,6 @@ const OWNERS_SKIP_KEYS = new Set([
 
 interface OwnersAliases {
   aliases?: Record<string, string[]>;
-}
-
-interface ContributionRecord {
-  type: 'commit' | 'pr' | 'review' | 'issue';
-  githubId: string;
-  author?: string;
-  email?: string;
-  date: Date;
-  isMerged?: boolean;
-  linesAdded?: number;
-  linesDeleted?: number;
-  filesChanged?: number;
-  metadata?: Record<string, any>;
 }
 
 interface GraphQLReviewNode {

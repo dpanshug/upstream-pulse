@@ -62,6 +62,8 @@ export interface UpstreamOrgConfig {
   strategicParticipation?: 'evaluating_participation' | 'sustaining_participation' | 'increasing_participation';
   /** Strategic leadership classification: evaluating_leadership, sustaining_leadership, increasing_leadership */
   strategicLeadership?: 'evaluating_leadership' | 'sustaining_leadership' | 'increasing_leadership';
+  /** Whether this org's repos are available in the CollectOSS/Augur database. Informational only — actual toggle is per-project. */
+  augurAvailable?: boolean;
 }
 
 // ── Registry ────────────────────────────────────────────────────────

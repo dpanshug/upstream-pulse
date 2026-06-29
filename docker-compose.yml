@@ -30,6 +30,23 @@ services:
       timeout: 3s
       retries: 5
 
+  # ── CollectOSS sample data (optional — for testing Augur integration locally) ──
+  collectoss-db:
+    image: ghcr.io/oss-aspen/sample-collected-data:latest
+    container_name: upstream-pulse-collectoss
+    ports:
+      - "${COLLECTOSS_DB_PORT:-5434}:5432"
+    environment:
+      POSTGRES_DB: sample_collected_data
+      POSTGRES_USER: sample_user
+      POSTGRES_PASSWORD: sample_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sample_user -d sample_collected_data"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles: ["collectoss"]
+
   # ── Application containers (only used with `docker-compose --profile app`) ──
   backend:
     build:

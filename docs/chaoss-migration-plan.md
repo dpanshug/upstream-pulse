@@ -51,22 +51,27 @@ The `contributions` table is a **stable interface**. Both backends write into it
 
 ---
 
-## Data Source: OSPO Data Team's Augur Instance
+## Data Source: OSPO Data Team's CollectOSS Instance
 
-The OSPO Aspen team runs an Augur instance at `eightknot.osci.io`.
+The OSPO Aspen team runs a CollectOSS/Augur instance at `eightknot.osci.io`.
 
 **Provided:**
-- PostgreSQL database (`augur` DB, `augur_data` schema)
+- PostgreSQL database (`collectoss` DB, `data` schema — renamed from `augur` / `augur_data` as of Jun 2026)
 - Commits, PRs, reviews, issues, contributor profiles, messages
 - SSH tunnel for dev: `ssh -L 5411:localhost:5432 <username>@eightknot.osci.io`
+- Local sample database for testing: `ghcr.io/oss-aspen/sample-collected-data:latest`
 - Database refreshed weekly (~12 hours refresh time, mostly 8Knot materialized views)
 - Production access available via Adrian Edwards (adredwar@redhat.com) or `#proj-ospo-aspen`
+
+**Schema rename (from Adrian Edwards, Jun 2026):**
+
+> Database name changed from `augur` to `collectoss`. Schema name changed from `augur_data` to `data`.
 
 **Schema stability (from Adrian Edwards, Jun 9):**
 
 > "The data schema is subject to potentially breaking changes. Advance warning may or may not be given. The recommendation for usecases requiring stability is to use the 'stable' schema that is being introduced."
 
-**Implication:** Write the adapter against `augur_data` tables initially. Migrate to the stable schema once it's available. The adapter pattern ensures this is a single-file change.
+**Implication:** All adapter queries are isolated in a single file (`augur-data-source.ts`). Schema changes require updating only that file.
 
 ---
 
@@ -128,19 +133,24 @@ The existing schema stays exactly as-is. The `CollectOSSAdapter` maps Augur data
 
 ---
 
-## CollectOSS Augur Tables We Read
+## CollectOSS Tables We Read
 
-| Augur table | Key columns | Maps to |
+All tables live in the `data` schema (previously `augur_data`). Column names verified against the sample database (`ghcr.io/oss-aspen/sample-collected-data`).
+
+| Table | Key columns | Maps to |
 |---|---|---|
-| `augur_data.repo` | `repo_id`, `repo_git` | projects.augur_repo_id |
-| `augur_data.commits` | `cmt_ght_author_id`, `cmt_committer_date` | contributions (type='commit'). **Note: 1 row per file — GROUP BY commit SHA needed** |
-| `augur_data.pull_requests` | `pr_src_id`, `pr_created_at`, `pr_merged_at`, `pr_state` | contributions (type='pr') |
-| `augur_data.pull_request_reviews` | `pr_review_id`, `cntrb_id`, `pr_review_submitted_at`, `pr_review_state` | contributions (type='review') |
-| `augur_data.issues` | `issue_id`, `gh_issue_number`, `created_at`, `issue_state`, `pull_request_id` | contributions (type='issue'). Filter out PRs where `pull_request_id IS NOT NULL` |
-| `augur_data.contributors` | `cntrb_id`, `cntrb_login`, `gh_user_id` | IdentityResolver — match against team_members |
-| `augur_data.messages` | PR/issue/review comment text | Available for future use |
+| `data.repo` | `repo_id`, `repo_git` | projects.augur_repo_id |
+| `data.commits` | `cmt_commit_hash`, `cmt_committer_date`, `cmt_added`, `cmt_removed`, `cmt_author_platform_username` | contributions (type='commit'). **Note: 1 row per file — GROUP BY commit SHA needed** |
+| `data.pull_requests` | `pr_src_number`, `pr_created_at`, `pr_merged_at`, `pr_src_state`, `pr_augur_contributor_id` | contributions (type='pr') |
+| `data.pull_request_reviews` | `pr_review_src_id`, `cntrb_id`, `pr_review_submitted_at`, `pr_review_state` | contributions (type='review') |
+| `data.issues` | `gh_issue_number`, `created_at`, `issue_state`, `reporter_id`, `pull_request` | contributions (type='issue'). Filter out PRs where `pull_request IS NOT NULL` |
+| `data.contributors` | `cntrb_id`, `cntrb_login`, `gh_user_id` | IdentityResolver — match against team_members |
+| `data.message` | PR/issue/review comment text | Available for future use |
 
-**Important detail:** Augur's `commits` table stores **1 row per file per commit**. If a commit touches 10 files, there are 10 rows. The adapter must `GROUP BY` commit SHA to produce 1 contribution record per commit, and `SUM` lines added/deleted across files.
+**Important details:**
+- Augur's `commits` table stores **1 row per file per commit**. The adapter GROUP BYs commit SHA and SUMs lines added/deleted.
+- Author resolution uses `cmt_author_platform_username` (direct GitHub username) with a fallback JOIN to `contributors.cntrb_login`.
+- PR number is in `pr_src_number` (not `pr_src_id` which is the GitHub API source ID).
 
 ---
 
@@ -186,7 +196,6 @@ if (project.dataSource === 'collectoss' && config.augurDatabaseUrl) {
 
 Add:
 - `augurDatabaseUrl` — optional, from `AUGUR_DATABASE_URL` env var
-- `dataSourceDefault` — optional, from `DATA_SOURCE_DEFAULT` env var, defaults to `'github'`
 
 ### 5. Schema migration
 
@@ -208,49 +217,41 @@ In a future phase (optional), if all projects are migrated to CollectOSS and Git
 
 ## Implementation Phases
 
-### Phase 0: Verify Data Availability (day 1)
+### Phase 0: Verify Data Availability — DONE
 
-SSH tunnel into Augur DB and check which repos exist.
+Column names verified against the sample database (`ghcr.io/oss-aspen/sample-collected-data`).
+Schema confirmed as `data.*` (renamed from `augur_data`).
 
-```bash
-ssh -L 5411:localhost:5432 dipgupta@eightknot.osci.io
-```
+Still needed: verify which of our tracked repos (kubeflow, kubernetes, pytorch, vllm, etc.) exist in the production CollectOSS instance.
 
 ```sql
-SELECT repo_git, repo_id FROM augur_data.repo
+SELECT repo_git, repo_id FROM data.repo
 WHERE repo_git LIKE '%kubeflow%' OR repo_git LIKE '%kubernetes%'
    OR repo_git LIKE '%pytorch%' OR repo_git LIKE '%vllm-project%'
    OR repo_git LIKE '%argoproj%' OR repo_git LIKE '%kserve%'
 ORDER BY repo_git;
 ```
 
-For missing repos, request the data team to add them via `#proj-ospo-aspen`.
+### Phase 1: Build Adapter + Config — DONE
 
-Also explore the schema to confirm column names:
-```sql
-\dt augur_data.*
-\d augur_data.commits
-\d augur_data.pull_requests
-\d augur_data.contributors
-```
+1. Added `AUGUR_DATABASE_URL` to config (optional)
+2. Created lazy-init read-only Postgres pool (`augur-client.ts`)
+3. Built `CollectOSSAdapter` with batched queries for all 4 contribution types
+4. Built `RepoResolver` with TTL-based cache
+5. Drizzle migration: added `data_source` and `augur_repo_id` to projects
+6. Updated collection-worker with dispatch logic (snapshots dataSource at enqueue time)
+7. Added admin API: toggle data source, resolve Augur repo, Augur status
+8. Added frontend: data source badges, admin toggle, System Status card
+9. Added Augur health check on worker startup
+10. Added sample DB to docker-compose (`collectoss` profile)
+11. Tested end-to-end with sample data (199 records collected for operate-first/blueprint)
 
-### Phase 1: Build Adapter + Config (3–5 days)
+### Phase 2: Validate (NEXT — blocked on production credentials)
 
-1. Add `AUGUR_DATABASE_URL` and `DATA_SOURCE_DEFAULT` to config
-2. Create second Postgres client for Augur DB (read-only)
-3. Build `CollectOSSAdapter` with all query methods
-4. Build `RepoResolver`
-5. Drizzle migration: add `data_source` and `augur_repo_id` to projects
-6. Script to populate `augur_repo_id` for existing projects
-7. Update collection-worker with dispatch logic
-8. Add admin API endpoint for toggling dataSource
-
-### Phase 2: Validate (1 week)
-
-1. Switch 3–5 test projects to `dataSource='collectoss'`
-2. Trigger collection for those projects
-3. Compare contribution counts, dates, and team attribution against the same projects still on GitHub-direct
-4. Verify MetricsService returns identical results
+1. Get correct credentials for the production CollectOSS instance from Adrian Edwards
+2. Verify which tracked repos exist in production
+3. Switch 3–5 test projects to `dataSource='collectoss'`
+4. Compare contribution counts, dates, and team attribution against GitHub-direct
 5. Check contributor resolution quality — measure % of null team matches
 6. Fix any discrepancies in the adapter
 
@@ -263,9 +264,8 @@ Also explore the schema to confirm column names:
 ### Phase 4: Production Connection
 
 1. Coordinate with Adrian Edwards for direct DB connection from OpenShift
-2. Update deployment config with production `AUGUR_DATABASE_URL` secret
-3. Ask about the stable schema — migrate adapter queries once available
-4. Verify connection and data flow from production pods
+2. Add `AUGUR_DATABASE_URL` as an OpenShift secret
+3. Verify connection and data flow from production pods
 
 ---
 
@@ -273,8 +273,9 @@ Also explore the schema to confirm column names:
 
 | Item | Status | Blocking? | Follow-up action |
 |---|---|---|---|
-| Which repos are in Augur DB | Not checked yet | Yes — blocks Phase 2 | Run query in Phase 0 |
-| Stable schema availability | Being introduced (per Adrian) | No — use augur_data initially | Ask for docs/timeline on #proj-ospo-aspen |
+| Production DB credentials | Auth failed for user `dipgupta` | Yes — blocks Phase 2 | Ask Adrian on #proj-ospo-aspen for correct username/password |
+| Which tracked repos are in production DB | Not checked yet | Yes — blocks Phase 2 | Run query once credentials work |
+| Schema rename applied to production? | Adrian announced rename to `collectoss`/`data` | No — code already uses `data` | Confirm production DB name is `collectoss` |
 | Production DB connection from OpenShift | "Reach out to data team" | Blocks Phase 4 only | Contact Adrian Edwards |
 | Refresh schedule coordination | ~12 hrs/week, mostly 8Knot views | No | Ask if raw tables can refresh first |
 | Contributor resolution quality | ~10% null authors reported in large instances | No — measure in Phase 2 | Side-by-side comparison during validation |
@@ -294,12 +295,13 @@ Also explore the schema to confirm column names:
 
 ---
 
-## Contacts
+## Contacts & Resources
 
 - **OSPO data team Slack:** `#proj-ospo-aspen`
 - **Adrian Edwards:** adredwar@redhat.com (production DB access, schema questions)
-- **Augur REST API docs:** https://oss-augur.readthedocs.io/en/main/rest-api/api.html
 - **CollectOSS repo:** https://github.com/chaoss/CollectOSS
+- **Sample database:** `ghcr.io/oss-aspen/sample-collected-data:latest` (local testing)
+- **Augur REST API docs:** https://oss-augur.readthedocs.io/en/main/rest-api/api.html
 
 ---
 

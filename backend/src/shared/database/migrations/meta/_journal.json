@@ -29,6 +29,13 @@
       "when": 1773250000000,
       "tag": "0003_add_maintainer_github_username",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1782711930724,
+      "tag": "0004_famous_celestials",
+      "breakpoints": true
     }
   ]
 }

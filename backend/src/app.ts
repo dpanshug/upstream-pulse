@@ -786,6 +786,137 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
   }
 });
 
+// ── CollectOSS / Augur admin endpoints ──────────────────────────────
+
+// Toggle a project's data source between 'github' and 'collectoss'
+const dataSourceToggleSchema = z.object({
+  dataSource: z.enum(['github', 'collectoss']),
+});
+
+app.patch<{
+  Params: { id: string };
+  Body: { dataSource: 'github' | 'collectoss' };
+}>('/api/admin/projects/:id/data-source', { preHandler: [requireAdmin] }, async (request, reply) => {
+  try {
+    const { id } = request.params;
+    const parsed = dataSourceToggleSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      return { error: 'dataSource must be "github" or "collectoss"', details: parsed.error.flatten() };
+    }
+    const { dataSource: newSource } = parsed.data;
+
+    const project = await db.query.projects.findFirst({
+      where: eq(projects.id, id),
+    });
+    if (!project) {
+      reply.status(404);
+      return { error: 'Project not found' };
+    }
+
+    if (newSource === 'collectoss') {
+      if (!config.augurDatabaseUrl) {
+        reply.status(400);
+        return { error: 'CollectOSS is not configured — set AUGUR_DATABASE_URL' };
+      }
+
+      // Resolve augurRepoId if not already set
+      if (!project.augurRepoId) {
+        const { resolveAugurRepoId } = await import('./modules/collection/repo-resolver.js');
+        const repoId = await resolveAugurRepoId(project.id, project.githubOrg, project.githubRepo);
+        if (!repoId) {
+          reply.status(400);
+          return { error: `Repository ${project.githubOrg}/${project.githubRepo} not found in Augur DB` };
+        }
+      }
+    }
+
+    const [updated] = await db.update(projects)
+      .set({ dataSource: newSource, updatedAt: new Date() })
+      .where(eq(projects.id, id))
+      .returning();
+
+    logger.info(`Data source toggled for ${project.name}: ${project.dataSource} → ${newSource}`);
+
+    return { success: true, project: updated };
+  } catch (error) {
+    logger.error('Error toggling data source', { error });
+    reply.status(500);
+    return { error: 'Failed to toggle data source', message: (error as Error).message };
+  }
+});
+
+// Resolve Augur repo_id for a project (pre-flight check before toggling)
+app.post<{
+  Params: { id: string };
+}>('/api/admin/projects/:id/resolve-augur-repo', { preHandler: [requireAdmin] }, async (request, reply) => {
+  try {
+    const { id } = request.params;
+
+    if (!config.augurDatabaseUrl) {
+      reply.status(400);
+      return { error: 'CollectOSS is not configured — set AUGUR_DATABASE_URL' };
+    }
+
+    const project = await db.query.projects.findFirst({
+      where: eq(projects.id, id),
+    });
+    if (!project) {
+      reply.status(404);
+      return { error: 'Project not found' };
+    }
+
+    const { resolveAugurRepoId } = await import('./modules/collection/repo-resolver.js');
+    const repoId = await resolveAugurRepoId(project.id, project.githubOrg, project.githubRepo);
+
+    if (!repoId) {
+      return { success: false, message: `${project.githubOrg}/${project.githubRepo} not found in Augur DB` };
+    }
+
+    return { success: true, augurRepoId: repoId };
+  } catch (error) {
+    logger.error('Error resolving Augur repo', { error });
+    reply.status(500);
+    return { error: 'Failed to resolve Augur repo', message: (error as Error).message };
+  }
+});
+
+// Augur connection status (for System Status page)
+app.get('/api/system/augur-status', { preHandler: [requireAdmin] }, async (request, reply) => {
+  try {
+    const { isAugurConfigured, testAugurConnection } = await import('./shared/database/augur-client.js');
+    const { getLastAugurHealth, checkAugurHealth } = await import('./modules/collection/augur-health.js');
+
+    const configured = isAugurConfigured();
+    let connected = false;
+    let health = getLastAugurHealth();
+
+    if (configured) {
+      connected = await testAugurConnection();
+      if (!health) {
+        health = await checkAugurHealth();
+      }
+    }
+
+    const projectCount = configured
+      ? (await db.select({ count: count() }).from(projects).where(eq(projects.dataSource, 'collectoss')))[0]?.count ?? 0
+      : 0;
+
+    return {
+      configured,
+      connected,
+      tablesVerified: health?.tablesVerified ?? false,
+      missingTables: health?.missingTables ?? [],
+      lastChecked: health?.lastChecked ?? null,
+      projectCount: Number(projectCount),
+    };
+  } catch (error) {
+    logger.error('Error fetching Augur status', { error });
+    reply.status(500);
+    return { error: 'Failed to fetch Augur status', message: (error as Error).message };
+  }
+});
+
 // System status endpoint — exposes worker health, queue stats, job history, schedules
 app.get('/api/system/status', async (request, reply) => {
   try {
@@ -1042,6 +1173,7 @@ app.get<{
           githubOrg: o.githubOrg,
           governanceModel: o.governanceModel,
           hasCommunityRepo: !!o.communityRepo,
+          augurAvailable: o.augurAvailable ?? false,
           strategicParticipation: o.strategicParticipation ?? null,
           strategicLeadership: o.strategicLeadership ?? null,
           contributionCount: activity?.total ?? 0,
