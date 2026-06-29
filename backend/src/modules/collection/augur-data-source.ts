@@ -127,7 +127,7 @@ export class CollectOSSAdapter {
         FROM data.commits c
         LEFT JOIN data.contributors ct ON c.cmt_ght_author_id = ct.cntrb_id
         WHERE c.repo_id = ${repoId}
-          AND c.cmt_committer_date >= ${since.toISOString()}
+          AND c.cmt_committer_date::timestamp >= ${since.toISOString()}::timestamp
         GROUP BY c.cmt_commit_hash, c.cmt_committer_date
         ORDER BY c.cmt_committer_date DESC
         LIMIT ${BATCH_SIZE} OFFSET ${offset}

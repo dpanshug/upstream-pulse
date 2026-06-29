@@ -25,7 +25,6 @@ export function getAugurClient(): postgres.Sql | null {
       max: 5,
       idle_timeout: 30,
       connect_timeout: 15,
-      types: { bigint: postgres.BigInt },
     });
 
     logger.info('Augur DB connection pool created (read-only, max 5)');

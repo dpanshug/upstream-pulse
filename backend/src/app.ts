@@ -789,6 +789,7 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
 // ── CollectOSS / Augur admin endpoints ──────────────────────────────
 
 // Toggle a project's data source between 'github' and 'collectoss'
+const uuidSchema = z.string().uuid();
 const dataSourceToggleSchema = z.object({
   dataSource: z.enum(['github', 'collectoss']),
 });
@@ -799,6 +800,10 @@ app.patch<{
 }>('/api/admin/projects/:id/data-source', { preHandler: [requireAdmin] }, async (request, reply) => {
   try {
     const { id } = request.params;
+    if (!uuidSchema.safeParse(id).success) {
+      reply.status(400);
+      return { error: 'Invalid project ID format' };
+    }
     const parsed = dataSourceToggleSchema.safeParse(request.body);
     if (!parsed.success) {
       reply.status(400);
@@ -852,6 +857,10 @@ app.post<{
 }>('/api/admin/projects/:id/resolve-augur-repo', { preHandler: [requireAdmin] }, async (request, reply) => {
   try {
     const { id } = request.params;
+    if (!uuidSchema.safeParse(id).success) {
+      reply.status(400);
+      return { error: 'Invalid project ID format' };
+    }
 
     if (!config.augurDatabaseUrl) {
       reply.status(400);

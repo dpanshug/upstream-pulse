@@ -31,11 +31,11 @@ export async function resolveAugurRepoId(
   }
 
   try {
-    const escapeLike = (s: string) => s.replace(/[%_\\]/g, '\\$&');
-    const pattern = `%${escapeLike(githubOrg)}/${escapeLike(githubRepo)}%`;
+    const repoUrl = `https://github.com/${githubOrg}/${githubRepo}`;
     const rows = await augur`
       SELECT repo_id FROM data.repo
-      WHERE repo_git LIKE ${pattern}
+      WHERE repo_git = ${repoUrl}
+         OR repo_git = ${repoUrl + '.git'}
       LIMIT 1
     `;
 
