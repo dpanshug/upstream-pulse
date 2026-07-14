@@ -10,7 +10,8 @@ const __app_dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__app_dirname, '../package.json'), 'utf-8'));
 import { logger } from './shared/utils/logger.js';
 import { db } from './shared/database/client.js';
-import { teamMembers, projects } from './shared/database/schema.js';
+import { teamMembers, projects, orgStrategy } from './shared/database/schema.js';
+import { resolveStrategy, loadStrategyOverrides } from './shared/config/strategy-resolver.js';
 import { eq, sql, count, and } from 'drizzle-orm';
 import { registerIdentityMiddleware } from './shared/middleware/identity.js';
 import { requireAdmin } from './shared/middleware/admin-guard.js';
@@ -1011,6 +1012,65 @@ app.post<{
   }
 });
 
+// Update strategic classification for an org
+const strategyBodySchema = z.object({
+  strategicParticipation: z.enum([
+    'evaluating_participation', 'sustaining_participation', 'increasing_participation',
+  ]).nullable(),
+  strategicLeadership: z.enum([
+    'evaluating_leadership', 'sustaining_leadership', 'increasing_leadership',
+  ]).nullable(),
+});
+
+app.patch<{
+  Params: { githubOrg: string };
+  Body: z.infer<typeof strategyBodySchema>;
+}>('/api/orgs/:githubOrg/strategy', { preHandler: [requireAdmin] }, async (request, reply) => {
+  try {
+    const { githubOrg } = request.params;
+    const { ORG_REGISTRY } = await import('./shared/config/org-registry.js');
+
+    const orgExists = ORG_REGISTRY.some(o => o.githubOrg === githubOrg);
+    if (!orgExists) {
+      reply.status(404);
+      return { error: `Organization "${githubOrg}" not found in registry` };
+    }
+
+    const parsed = strategyBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      return { error: 'Invalid request body', details: parsed.error.issues };
+    }
+
+    const { strategicParticipation, strategicLeadership } = parsed.data;
+    const updatedBy = request.identity?.email || request.identity?.username || 'unknown';
+
+    const [result] = await db.insert(orgStrategy).values({
+      githubOrg,
+      strategicParticipation,
+      strategicLeadership,
+      updatedBy,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: orgStrategy.githubOrg,
+      set: {
+        strategicParticipation,
+        strategicLeadership,
+        updatedBy,
+        updatedAt: new Date(),
+      },
+    }).returning();
+
+    logger.info('[AUDIT] Strategy updated', { githubOrg, strategicParticipation, strategicLeadership, updatedBy });
+
+    return { success: true, strategy: result };
+  } catch (error) {
+    logger.error('Error updating strategy', { error });
+    reply.status(500);
+    return { error: 'Failed to update strategy', message: (error as Error).message };
+  }
+});
+
 // Org registry endpoint with optional activity stats
 app.get<{
   Querystring: { days?: string };
@@ -1020,7 +1080,7 @@ app.get<{
     const { metricsService } = await import('./modules/metrics/metrics-service.js');
     const days = parseInt(request.query.days || '30', 10);
 
-    const [orgActivity, projectCounts] = await Promise.all([
+    const [orgActivity, projectCounts, strategyMap] = await Promise.all([
       metricsService.getOrgActivity({ days }),
       db.select({
         githubOrg: projects.githubOrg,
@@ -1029,6 +1089,7 @@ app.get<{
       .from(projects)
       .where(eq(projects.trackingEnabled, true))
       .groupBy(projects.githubOrg),
+      loadStrategyOverrides(),
     ]);
 
     const activityMap = new Map(orgActivity.map(a => [a.org, a]));
@@ -1042,8 +1103,7 @@ app.get<{
           githubOrg: o.githubOrg,
           governanceModel: o.governanceModel,
           hasCommunityRepo: !!o.communityRepo,
-          strategicParticipation: o.strategicParticipation ?? null,
-          strategicLeadership: o.strategicLeadership ?? null,
+          ...resolveStrategy(o.githubOrg, o, strategyMap),
           contributionCount: activity?.total ?? 0,
           trend: activity?.trend ?? [],
           totalTrend: activity?.totalTrend ?? [],

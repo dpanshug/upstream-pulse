@@ -2,6 +2,7 @@ import { db } from '../../shared/database/client.js';
 import { contributions, projects, maintainerStatus, leadershipPositions } from '../../shared/database/schema.js';
 import { eq, and, gte, lte, count, isNotNull, sql } from 'drizzle-orm';
 import { getOrgConfig } from '../../shared/config/org-registry.js';
+import { resolveStrategy, loadStrategyOverrides } from '../../shared/config/strategy-resolver.js';
 import { getDateRange, formatDate } from './helpers.js';
 import type { MetricsQueryOptions, OrgActivityItem } from './types.js';
 
@@ -19,7 +20,7 @@ export async function getOrgActivity(options: MetricsQueryOptions = {}): Promise
     end: new Date(),
   };
 
-  const [contribByOrg, totalContribByOrg, activeTeamMembersByOrg, sparklineData, totalSparklineData, leadershipCounts, maintainerCounts] = await Promise.all([
+  const [contribByOrg, totalContribByOrg, activeTeamMembersByOrg, sparklineData, totalSparklineData, leadershipCounts, maintainerCounts, strategyMap] = await Promise.all([
     db.select({
         githubOrg: projects.githubOrg,
         type: contributions.contributionType,
@@ -103,6 +104,8 @@ export async function getOrgActivity(options: MetricsQueryOptions = {}): Promise
         isNotNull(maintainerStatus.teamMemberId),
       ))
       .groupBy(projects.githubOrg),
+
+    loadStrategyOverrides(),
   ]);
 
   const prevTotals = new Map<string, number>();
@@ -216,8 +219,7 @@ export async function getOrgActivity(options: MetricsQueryOptions = {}): Promise
     results.push({
       org,
       orgName: orgConfig?.name ?? org,
-      strategicParticipation: orgConfig?.strategicParticipation ?? null,
-      strategicLeadership: orgConfig?.strategicLeadership ?? null,
+      ...resolveStrategy(org, orgConfig, strategyMap),
       ...counts,
       trend: sparklineMap.get(org) ?? [],
       totalTrend: totalSparklineMap.get(org) ?? [],
