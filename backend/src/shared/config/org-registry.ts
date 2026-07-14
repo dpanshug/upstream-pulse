@@ -298,13 +298,33 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     governanceModel: 'none',
   },
   {
-    name: 'NVIDIA',
+    name: 'OpenShell',
     githubOrg: 'NVIDIA',
+    strategicParticipation: 'increasing_participation',
+    strategicLeadership: 'increasing_leadership',
     governanceModel: 'codeowners',
   },
   {
     name: 'Seldon',
     githubOrg: 'SeldonIO',
+    governanceModel: 'none',
+  },
+
+  // ─── OpenClaw ────────────────────────────────
+  {
+    name: 'OpenClaw',
+    githubOrg: 'openclaw',
+    strategicParticipation: 'increasing_participation',
+    strategicLeadership: 'increasing_leadership',
+    governanceModel: 'codeowners',
+  },
+
+  // ─── OpenCode ────────────────────────────────
+  {
+    name: 'OpenCode',
+    githubOrg: 'anomalyco',
+    strategicParticipation: 'increasing_participation',
+    strategicLeadership: 'increasing_leadership',
     governanceModel: 'none',
   },
 
@@ -376,8 +396,6 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
   {
     name: 'Kagenti',
     githubOrg: 'kagenti',
-    strategicParticipation: 'increasing_participation',
-    strategicLeadership: 'increasing_leadership',
     communityRepo: {
       repo: 'kagenti',
       defaultBranch: 'main',
