@@ -25,8 +25,8 @@ export function resolveStrategy(
   registryConfig: { strategicParticipation?: string | null; strategicLeadership?: string | null } | undefined,
   strategyMap: StrategyMap,
 ): { strategicParticipation: string | null; strategicLeadership: string | null } {
-  if (strategyMap.has(githubOrg)) {
-    const override = strategyMap.get(githubOrg)!;
+  const override = strategyMap.get(githubOrg);
+  if (override) {
     return {
       strategicParticipation: override.strategicParticipation,
       strategicLeadership: override.strategicLeadership,
