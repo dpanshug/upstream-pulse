@@ -1,8 +1,6 @@
 import { db } from '../../shared/database/client.js';
-import { contributions, projects, maintainerStatus, leadershipPositions } from '../../shared/database/schema.js';
+import { contributions, projects, maintainerStatus, leadershipPositions, orgs } from '../../shared/database/schema.js';
 import { eq, and, gte, lte, count, isNotNull, sql } from 'drizzle-orm';
-import { getOrgConfig } from '../../shared/config/org-registry.js';
-import { resolveStrategy, loadStrategyOverrides } from '../../shared/config/strategy-resolver.js';
 import { getDateRange, formatDate } from './helpers.js';
 import type { MetricsQueryOptions, OrgActivityItem } from './types.js';
 
@@ -20,7 +18,7 @@ export async function getOrgActivity(options: MetricsQueryOptions = {}): Promise
     end: new Date(),
   };
 
-  const [contribByOrg, totalContribByOrg, activeTeamMembersByOrg, sparklineData, totalSparklineData, leadershipCounts, maintainerCounts, strategyMap] = await Promise.all([
+  const [contribByOrg, totalContribByOrg, activeTeamMembersByOrg, sparklineData, totalSparklineData, leadershipCounts, maintainerCounts, orgRows] = await Promise.all([
     db.select({
         githubOrg: projects.githubOrg,
         type: contributions.contributionType,
@@ -105,8 +103,10 @@ export async function getOrgActivity(options: MetricsQueryOptions = {}): Promise
       ))
       .groupBy(projects.githubOrg),
 
-    loadStrategyOverrides(),
+    db.select().from(orgs),
   ]);
+
+  const orgMap = new Map(orgRows.map(o => [o.githubOrg, o]));
 
   const prevTotals = new Map<string, number>();
   if (dateRange) {
@@ -215,11 +215,12 @@ export async function getOrgActivity(options: MetricsQueryOptions = {}): Promise
       ? parseFloat(((counts.total / totalContribs) * 100).toFixed(1))
       : 0;
 
-    const orgConfig = getOrgConfig(org);
+    const orgRow = orgMap.get(org.toLowerCase());
     results.push({
       org,
-      orgName: orgConfig?.name ?? org,
-      ...resolveStrategy(org, orgConfig, strategyMap),
+      orgName: orgRow?.name ?? org,
+      strategicParticipation: orgRow?.strategicParticipation ?? null,
+      strategicLeadership: orgRow?.strategicLeadership ?? null,
       ...counts,
       trend: sparklineMap.get(org) ?? [],
       totalTrend: totalSparklineMap.get(org) ?? [],

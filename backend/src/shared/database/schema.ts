@@ -217,13 +217,16 @@ export const reports = pgTable('reports', {
   createdIdx: index('reports_created_idx').on(table.createdAt),
 }));
 
-// Strategic classification overrides (UI-managed, takes precedence over org-registry defaults)
-export const orgStrategy = pgTable('org_strategy', {
+// Organizations — master list of tracked upstream orgs (UI-managed)
+export const orgs = pgTable('orgs', {
   githubOrg: varchar('github_org', { length: 255 }).primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  governanceModel: varchar('governance_model', { length: 50 }).notNull().default('none'),
   strategicParticipation: varchar('strategic_participation', { length: 50 }),
   strategicLeadership: varchar('strategic_leadership', { length: 50 }),
   updatedBy: varchar('updated_by', { length: 255 }),
   updatedAt: timestamp('updated_at').defaultNow(),
+  createdAt: timestamp('created_at').defaultNow(),
 });
 
 // Relations
