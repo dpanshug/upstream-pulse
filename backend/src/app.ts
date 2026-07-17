@@ -1146,7 +1146,8 @@ app.post<{
       logger.info('[AUDIT] Org created', { githubOrg: normalizedOrg, name, createdBy });
       return { success: true, org: result };
     } catch (insertError) {
-      if ((insertError as any).code === '23505') {
+      if (insertError instanceof Error && 'code' in insertError
+        && (insertError as { code: string }).code === '23505') {
         reply.status(409);
         return { error: `Organization "${githubOrg}" already exists` };
       }
