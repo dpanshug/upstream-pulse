@@ -1167,6 +1167,8 @@ app.get<{
     const { metricsService } = await import('./modules/metrics/metrics-service.js');
     const days = parseInt(request.query.days || '30', 10);
 
+    const { getOrgConfig } = await import('./shared/config/org-registry.js');
+
     const [orgRows, orgActivity, projectCounts] = await Promise.all([
       db.select().from(orgs),
       metricsService.getOrgActivity({ days }),
@@ -1189,7 +1191,7 @@ app.get<{
           name: o.name,
           githubOrg: o.githubOrg,
           governanceModel: o.governanceModel,
-          hasCommunityRepo: false,
+          hasCommunityRepo: !!getOrgConfig(o.githubOrg)?.communityRepo,
           strategicParticipation: o.strategicParticipation ?? null,
           strategicLeadership: o.strategicLeadership ?? null,
           contributionCount: activity?.total ?? 0,
@@ -1281,7 +1283,7 @@ const start = async () => {
       } catch (err) {
         logger.warn('Registry reconciliation skipped', { error: (err as Error).message });
       }
-    })();
+    })().catch(() => {});
 
   } catch (error) {
     logger.error('Error starting server', { error });
