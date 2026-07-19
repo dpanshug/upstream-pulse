@@ -1,5 +1,5 @@
 import { db } from '../../shared/database/client.js';
-import { projects, teamMembers, maintainerStatus, leadershipPositions } from '../../shared/database/schema.js';
+import { projects, teamMembers, maintainerStatus, leadershipPositions, orgs } from '../../shared/database/schema.js';
 import { eq, and, sql } from 'drizzle-orm';
 import { getOrgConfig } from '../../shared/config/org-registry.js';
 import { logger } from '../../shared/utils/logger.js';
@@ -25,7 +25,7 @@ export async function getLeadershipSummary(
     if (projectId) totalMsConditions.push(eq(maintainerStatus.projectId, projectId));
     if (githubOrg) totalMsConditions.push(eq(projects.githubOrg, githubOrg));
 
-    const [maintainerStatuses, allLp, totalLpCounts, totalMsCounts] = await Promise.all([
+    const [maintainerStatuses, allLp, totalLpCounts, totalMsCounts, orgRows] = await Promise.all([
       db
         .select({
           id: maintainerStatus.id,
@@ -83,7 +83,11 @@ export async function getLeadershipSummary(
         .innerJoin(projects, eq(maintainerStatus.projectId, projects.id))
         .where(and(...totalMsConditions))
         .groupBy(maintainerStatus.positionType, maintainerStatus.scope),
+
+      db.select().from(orgs),
     ]);
+
+    const orgNameMap = new Map(orgRows.map(o => [o.githubOrg, o.name]));
 
     let filteredLp = allLp;
     if (githubOrg && !projectId) {
@@ -134,10 +138,9 @@ export async function getLeadershipSummary(
     for (const pos of filteredLp) {
       const orgSlug = pos.communityOrg ?? 'unknown';
       if (!orgMap.has(orgSlug)) {
-        const orgCfg = getOrgConfig(orgSlug);
         orgMap.set(orgSlug, {
           org: orgSlug,
-          orgName: orgCfg?.name ?? orgSlug,
+          orgName: orgNameMap.get(orgSlug.toLowerCase()) ?? orgSlug,
           positions: new Map(),
         });
       }
@@ -177,10 +180,9 @@ export async function getLeadershipSummary(
       const orgSlug = row.communityOrg ?? 'unknown';
       if (!relevantOrgs.has(orgSlug)) continue;
       if (!orgMap.has(orgSlug)) {
-        const orgCfg = getOrgConfig(orgSlug);
         orgMap.set(orgSlug, {
           org: orgSlug,
-          orgName: orgCfg?.name ?? orgSlug,
+          orgName: orgNameMap.get(orgSlug.toLowerCase()) ?? orgSlug,
           positions: new Map(),
         });
       }
