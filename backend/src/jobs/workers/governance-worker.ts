@@ -13,7 +13,7 @@ import { randomUUID } from 'crypto';
 import { config } from '../../shared/config/index.js';
 import { logger } from '../../shared/utils/logger.js';
 import { db } from '../../shared/database/client.js';
-import { projects, collectionJobs, maintainerStatus, teamMembers } from '../../shared/database/schema.js';
+import { projects, collectionJobs, maintainerStatus, teamMembers, orgs } from '../../shared/database/schema.js';
 import { GitHubCollector } from '../../modules/collection/github-collector.js';
 import { CodeownersParser } from '../../modules/collection/codeowners-parser.js';
 import { getOrgConfig } from '../../shared/config/org-registry.js';
@@ -69,6 +69,9 @@ export const governanceWorker = new Worker<GovernanceJobData>(
           .map(m => [m.githubUsername!.toLowerCase(), m]),
       );
 
+      const orgRows = await db.select().from(orgs);
+      const orgDbMap = new Map(orgRows.map(o => [o.githubOrg, o]));
+
       const ownersCollector = new GitHubCollector();
       const codeownersParser = new CodeownersParser();
       let totalOwnersProcessed = 0;
@@ -77,9 +80,9 @@ export const governanceWorker = new Worker<GovernanceJobData>(
 
       for (const project of projectsToProcess) {
         try {
-          // Determine governance model from org registry; default to 'owners'
-          const orgCfg = getOrgConfig(project.githubOrg);
-          const model = orgCfg?.repoGovernanceOverride?.[project.githubRepo] ?? orgCfg?.governanceModel ?? 'owners';
+          const collectionCfg = getOrgConfig(project.githubOrg);
+          const orgRow = orgDbMap.get(project.githubOrg.toLowerCase());
+          const model = collectionCfg?.repoGovernanceOverride?.[project.githubRepo] ?? orgRow?.governanceModel ?? 'owners';
 
           if (model === 'none') {
             logger.debug(`Skipping governance for ${project.name} (model=none)`);

@@ -10,8 +10,8 @@ const __app_dirname = dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(readFileSync(join(__app_dirname, '../package.json'), 'utf-8'));
 import { logger } from './shared/utils/logger.js';
 import { db } from './shared/database/client.js';
-import { teamMembers, projects } from './shared/database/schema.js';
-import { eq, sql, count, and } from 'drizzle-orm';
+import { teamMembers, projects, orgs } from './shared/database/schema.js';
+import { eq, sql, count } from 'drizzle-orm';
 import { registerIdentityMiddleware } from './shared/middleware/identity.js';
 import { requireAdmin } from './shared/middleware/admin-guard.js';
 import { z } from 'zod';
@@ -128,6 +128,51 @@ app.get<{
   }
 
   return info;
+});
+
+// GitHub org info (for the Add Organization form)
+app.get<{
+  Querystring: { org: string };
+}>('/api/github/org-info', { preHandler: [requireAdmin] }, async (request, reply) => {
+  const { org } = request.query;
+  if (!org) {
+    reply.status(400);
+    return { error: 'org query param is required' };
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.github.com/users/${encodeURIComponent(org)}`,
+      {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'upstream-pulse',
+          ...(config.githubToken && { 'Authorization': `Bearer ${config.githubToken}` }),
+        },
+      },
+    );
+
+    if (!response.ok) {
+      reply.status(response.status === 404 ? 404 : 502);
+      return { error: response.status === 404
+        ? `GitHub organization "${org}" not found`
+        : 'GitHub API error' };
+    }
+
+    const data = await response.json() as Record<string, unknown>;
+    return {
+      login: data.login,
+      name: data.name || data.login,
+      avatarUrl: data.avatar_url,
+      description: data.description || data.bio || null,
+      publicRepos: data.public_repos || 0,
+      type: data.type,
+    };
+  } catch (error) {
+    logger.error('Error fetching GitHub org info', { error, org });
+    reply.status(502);
+    return { error: 'Failed to fetch GitHub organization info' };
+  }
 });
 
 // Projects API
@@ -1151,16 +1196,122 @@ app.post<{
   }
 });
 
-// Org registry endpoint with optional activity stats
+// Update an org (partial update)
+const orgUpdateSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  governanceModel: z.enum(['owners', 'codeowners', 'none']).optional(),
+  strategicParticipation: z.enum([
+    'evaluating_participation', 'sustaining_participation', 'increasing_participation',
+  ]).nullable().optional(),
+  strategicLeadership: z.enum([
+    'evaluating_leadership', 'sustaining_leadership', 'increasing_leadership',
+  ]).nullable().optional(),
+});
+
+app.patch<{
+  Params: { githubOrg: string };
+  Body: z.infer<typeof orgUpdateSchema>;
+}>('/api/orgs/:githubOrg', { preHandler: [requireAdmin] }, async (request, reply) => {
+  try {
+    const { githubOrg } = request.params;
+
+    const existing = await db.select().from(orgs).where(eq(orgs.githubOrg, githubOrg.toLowerCase())).limit(1);
+    if (existing.length === 0) {
+      reply.status(404);
+      return { error: `Organization "${githubOrg}" not found` };
+    }
+
+    const parsed = orgUpdateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      return { error: 'Invalid request body', details: parsed.error.issues };
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (parsed.data.name !== undefined) updates.name = parsed.data.name;
+    if (parsed.data.governanceModel !== undefined) updates.governanceModel = parsed.data.governanceModel;
+    if (parsed.data.strategicParticipation !== undefined) updates.strategicParticipation = parsed.data.strategicParticipation;
+    if (parsed.data.strategicLeadership !== undefined) updates.strategicLeadership = parsed.data.strategicLeadership;
+    updates.updatedBy = request.identity?.email || request.identity?.username || 'unknown';
+    updates.updatedAt = new Date();
+
+    const [result] = await db.update(orgs).set(updates).where(eq(orgs.githubOrg, githubOrg.toLowerCase())).returning();
+
+    logger.info('[AUDIT] Org updated', { githubOrg, updates: parsed.data, updatedBy: updates.updatedBy });
+    return { success: true, org: result };
+  } catch (error) {
+    logger.error('Error updating org', { error });
+    reply.status(500);
+    return { error: 'Failed to update org', message: (error as Error).message };
+  }
+});
+
+// Create a new org
+const orgCreateSchema = z.object({
+  githubOrg: z.string().min(1).max(255),
+  name: z.string().min(1).max(255),
+  governanceModel: z.enum(['owners', 'codeowners', 'none']).default('none'),
+  strategicParticipation: z.enum([
+    'evaluating_participation', 'sustaining_participation', 'increasing_participation',
+  ]).nullable().optional(),
+  strategicLeadership: z.enum([
+    'evaluating_leadership', 'sustaining_leadership', 'increasing_leadership',
+  ]).nullable().optional(),
+});
+
+app.post<{
+  Body: z.infer<typeof orgCreateSchema>;
+}>('/api/orgs', { preHandler: [requireAdmin] }, async (request, reply) => {
+  try {
+    const parsed = orgCreateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      return { error: 'Invalid request body', details: parsed.error.issues };
+    }
+
+    const { githubOrg, name, governanceModel, strategicParticipation, strategicLeadership } = parsed.data;
+    const normalizedOrg = githubOrg.toLowerCase();
+    const createdBy = request.identity?.email || request.identity?.username || 'unknown';
+
+    try {
+      const [result] = await db.insert(orgs).values({
+        githubOrg: normalizedOrg,
+        name,
+        governanceModel,
+        strategicParticipation: strategicParticipation ?? null,
+        strategicLeadership: strategicLeadership ?? null,
+        updatedBy: createdBy,
+      }).returning();
+
+      logger.info('[AUDIT] Org created', { githubOrg: normalizedOrg, name, createdBy });
+      return { success: true, org: result };
+    } catch (insertError) {
+      if (insertError instanceof Error && 'code' in insertError
+        && (insertError as { code: string }).code === '23505') {
+        reply.status(409);
+        return { error: `Organization "${githubOrg}" already exists` };
+      }
+      throw insertError;
+    }
+  } catch (error) {
+    logger.error('Error creating org', { error });
+    reply.status(500);
+    return { error: 'Failed to create org', message: (error as Error).message };
+  }
+});
+
+// Org list endpoint with optional activity stats
 app.get<{
   Querystring: { days?: string };
 }>('/api/orgs', async (request, reply) => {
   try {
-    const { ORG_REGISTRY } = await import('./shared/config/org-registry.js');
     const { metricsService } = await import('./modules/metrics/metrics-service.js');
     const days = parseInt(request.query.days || '30', 10);
 
-    const [orgActivity, projectCounts] = await Promise.all([
+    const { getOrgConfig } = await import('./shared/config/org-registry.js');
+
+    const [orgRows, orgActivity, projectCounts] = await Promise.all([
+      db.select().from(orgs),
       metricsService.getOrgActivity({ days }),
       db.select({
         githubOrg: projects.githubOrg,
@@ -1171,17 +1322,17 @@ app.get<{
       .groupBy(projects.githubOrg),
     ]);
 
-    const activityMap = new Map(orgActivity.map(a => [a.org, a]));
-    const projectCountMap = new Map(projectCounts.map(r => [r.githubOrg, Number(r.count)]));
+    const activityMap = new Map(orgActivity.map(a => [a.org.toLowerCase(), a]));
+    const projectCountMap = new Map(projectCounts.map(r => [r.githubOrg.toLowerCase(), Number(r.count)]));
 
     return {
-      orgs: ORG_REGISTRY.map(o => {
+      orgs: orgRows.map(o => {
         const activity = activityMap.get(o.githubOrg);
         return {
           name: o.name,
           githubOrg: o.githubOrg,
           governanceModel: o.governanceModel,
-          hasCommunityRepo: !!o.communityRepo,
+          hasCommunityRepo: !!getOrgConfig(o.githubOrg)?.communityRepo,
           augurAvailable: o.augurAvailable ?? false,
           strategicParticipation: o.strategicParticipation ?? null,
           strategicLeadership: o.strategicLeadership ?? null,
@@ -1259,6 +1410,22 @@ const start = async () => {
     logger.info(`Server listening on port ${config.port}`);
     logger.info(`Environment: ${config.nodeEnv}`);
     logger.info(`Health check: http://localhost:${config.port}/health`);
+
+    // Reconcile registry collection config with DB orgs
+    (async () => {
+      try {
+        const { ORG_REGISTRY } = await import('./shared/config/org-registry.js');
+        for (const cfg of ORG_REGISTRY) {
+          await db.insert(orgs).values({
+            githubOrg: cfg.githubOrg.toLowerCase(),
+            name: cfg.githubOrg,
+            governanceModel: 'none',
+          }).onConflictDoNothing();
+        }
+      } catch (err) {
+        logger.warn('Registry reconciliation skipped', { error: (err as Error).message });
+      }
+    })().catch(() => {});
 
   } catch (error) {
     logger.error('Error starting server', { error });

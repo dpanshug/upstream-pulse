@@ -1,8 +1,9 @@
 /**
- * Org Registry — static config defining all supported upstream organizations.
+ * Org Registry — collection/parser config for upstream organizations.
  *
- * Adding a new org = PR that adds an entry here.
- * Parsers live in code; this file only declares *what* to parse and *where*.
+ * This file only declares *what* to collect and *how* to parse it.
+ * The master org list (identity, governance model, strategic classifications)
+ * lives in the `orgs` DB table and is managed via the UI.
  */
 
 // ── Interfaces ──────────────────────────────────────────────────────
@@ -45,36 +46,25 @@ export interface CommunityRepoConfig {
   wgFile?: string;
 }
 
-export interface UpstreamOrgConfig {
-  /** Human-readable display name */
-  name: string;
+export interface OrgCollectionConfig {
   /** GitHub organization slug, e.g. 'kubeflow' */
   githubOrg: string;
   /** Community repo with leadership & WG data. undefined = no leadership collection */
   communityRepo?: CommunityRepoConfig;
-  /** Which maintainer-file format this org uses at the repo level */
-  governanceModel: 'owners' | 'codeowners' | 'none';
-  /** Per-repo override of governanceModel. Repos not listed use the org-level default. */
+  /** Per-repo override of governanceModel. Repos not listed use the org-level default from the DB. */
   repoGovernanceOverride?: Record<string, 'owners' | 'codeowners' | 'none'>;
   /** Maps repo names to their owning working groups (only relevant for orgs with WGs) */
   repoToWorkingGroup?: Record<string, string[]>;
-  /** Strategic participation classification: evaluating_participation, sustaining_participation, increasing_participation */
-  strategicParticipation?: 'evaluating_participation' | 'sustaining_participation' | 'increasing_participation';
-  /** Strategic leadership classification: evaluating_leadership, sustaining_leadership, increasing_leadership */
-  strategicLeadership?: 'evaluating_leadership' | 'sustaining_leadership' | 'increasing_leadership';
   /** Whether this org's repos are available in the CollectOSS/Augur database. Informational only — actual toggle is per-project. */
   augurAvailable?: boolean;
 }
 
 // ── Registry ────────────────────────────────────────────────────────
 
-export const ORG_REGISTRY: UpstreamOrgConfig[] = [
+export const ORG_REGISTRY: OrgCollectionConfig[] = [
   // ─── Kubeflow ───────────────────────────────
   {
-    name: 'Kubeflow',
     githubOrg: 'kubeflow',
-    strategicParticipation: 'sustaining_participation',
-    strategicLeadership: 'sustaining_leadership',
     communityRepo: {
       repo: 'community',
       defaultBranch: 'master',
@@ -87,7 +77,6 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
       ],
       wgFile: 'wgs.yaml',
     },
-    governanceModel: 'owners',
     repoToWorkingGroup: {
       'model-registry': ['WG Data'],
       'spark-operator': ['WG Data'],
@@ -105,10 +94,7 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
 
   // ─── KServe ─────────────────────────────────
   {
-    name: 'KServe',
     githubOrg: 'kserve',
-    strategicParticipation: 'sustaining_participation',
-    strategicLeadership: 'sustaining_leadership',
     communityRepo: {
       repo: 'community',
       defaultBranch: 'main',
@@ -121,16 +107,13 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
         {
           path: 'MAINTAINERS.md',
           groupName: 'KServe',
-          // positionType unset → parser reads role from each row
         },
       ],
     },
-    governanceModel: 'owners',
   },
 
   // ─── Argo ───────────────────────────────────
   {
-    name: 'Argo',
     githubOrg: 'argoproj',
     communityRepo: {
       repo: 'argoproj',
@@ -139,86 +122,24 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
         {
           path: 'MAINTAINERS.md',
           groupName: 'Argoproj',
-          // positionType unset → parser reads role from each row (e.g. "Lead - Workflows", "Approver - CD")
         },
       ],
     },
-    governanceModel: 'owners',
-  },
-
-  // ─── vLLM ───────────────────────────────────
-  {
-    name: 'vLLM',
-    githubOrg: 'vllm-project',
-    strategicParticipation: 'increasing_participation',
-    strategicLeadership: 'increasing_leadership',
-    governanceModel: 'codeowners',
   },
 
   // ─── Kubernetes ────────────────────────────
   {
-    name: 'Kubernetes',
     githubOrg: 'kubernetes',
     communityRepo: {
       repo: 'community',
       defaultBranch: 'master',
       wgFile: 'sigs.yaml',
     },
-    governanceModel: 'owners',
-  },
-
-  // ─── Kubernetes SIGs ────────────────────────
-  {
-    name: 'Kubernetes SIGs',
-    githubOrg: 'kubernetes-sigs',
-    governanceModel: 'owners',
-  },
-
-  // ─── Ray (KubeRay) ─────────────────────────
-  {
-    name: 'Ray',
-    githubOrg: 'ray-project',
-    strategicParticipation: 'sustaining_participation',
-    strategicLeadership: 'sustaining_leadership',
-    governanceModel: 'codeowners',
-  },
-
-  // ─── OpenVINO ───────────────────────────────
-  {
-    name: 'OpenVINO',
-    githubOrg: 'openvinotoolkit',
-    governanceModel: 'codeowners',
-  },
-
-  // ─── ogx (Open GenAI Stack, formerly Llama Stack) ────
-  {
-    name: 'ogx',
-    githubOrg: 'ogx-ai',
-    strategicParticipation: 'sustaining_participation',
-    strategicLeadership: 'sustaining_leadership',
-    governanceModel: 'codeowners',
-  },
-
-  // ─── Caikit ─────────────────────────────────
-  {
-    name: 'Caikit',
-    githubOrg: 'caikit',
-    governanceModel: 'codeowners',
-  },
-
-  // ─── Feast ──────────────────────────────────
-  {
-    name: 'Feast',
-    githubOrg: 'feast-dev',
-    governanceModel: 'owners',
   },
 
   // ─── llm-d ────────────────────────────────
   {
-    name: 'llm-d',
     githubOrg: 'llm-d',
-    strategicParticipation: 'increasing_participation',
-    strategicLeadership: 'sustaining_leadership',
     communityRepo: {
       repo: 'llm-d',
       defaultBranch: 'main',
@@ -235,16 +156,11 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
         },
       ],
     },
-    governanceModel: 'owners',
   },
 
   // ─── Containers (Podman, AI Lab Recipes, RamaLama, OLOT) ────
-  // No communityRepo — the org has no centralized leadership file.
-  // Podman's MAINTAINERS.md only covers Podman, not the whole org.
   {
-    name: 'Containers',
     githubOrg: 'containers',
-    governanceModel: 'owners',
     repoGovernanceOverride: {
       'ramalama': 'codeowners',
       'ai-lab-recipes': 'none',
@@ -253,12 +169,9 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
     },
   },
 
-  // ─── Individual repos (various orgs) ────────
+  // ─── MLflow ─────────────────────────────────
   {
-    name: 'MLflow',
     githubOrg: 'mlflow',
-    strategicParticipation: 'increasing_participation',
-    strategicLeadership: 'increasing_leadership',
     communityRepo: {
       repo: 'mlflow',
       defaultBranch: 'master',
@@ -272,57 +185,11 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
         },
       ],
     },
-    governanceModel: 'none',
-  },
-  {
-    name: 'Hugging Face',
-    githubOrg: 'huggingface',
-    governanceModel: 'none',
-  },
-  {
-    name: 'BerriAI',
-    githubOrg: 'BerriAI',
-    governanceModel: 'none',
-  },
-  {
-    name: 'EleutherAI',
-    githubOrg: 'EleutherAI',
-    governanceModel: 'none',
-  },
-  {
-    name: 'Elyra',
-    githubOrg: 'elyra-ai',
-    governanceModel: 'none',
-  },
-  {
-    name: 'CodeFlare',
-    githubOrg: 'project-codeflare',
-    governanceModel: 'none',
-  },
-  {
-    name: 'NVIDIA',
-    githubOrg: 'NVIDIA',
-    governanceModel: 'codeowners',
-  },
-  {
-    name: 'Seldon',
-    githubOrg: 'SeldonIO',
-    governanceModel: 'none',
-  },
-
-  // ─── GGML (llama.cpp) ─────────────────────────
-  {
-    name: 'llama.cpp',
-    githubOrg: 'ggml-org',
-    governanceModel: 'codeowners',
   },
 
   // ─── PyTorch ──────────────────────────────────
   {
-    name: 'PyTorch',
     githubOrg: 'pytorch',
-    strategicParticipation: 'increasing_participation',
-    strategicLeadership: 'increasing_leadership',
     communityRepo: {
       repo: 'pytorch',
       defaultBranch: 'main',
@@ -334,15 +201,11 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
         },
       ],
     },
-    governanceModel: 'codeowners',
   },
 
   // ─── Docling ──────────────────────────────────
   {
-    name: 'Docling',
     githubOrg: 'docling-project',
-    strategicParticipation: 'sustaining_participation',
-    strategicLeadership: 'sustaining_leadership',
     communityRepo: {
       repo: 'community',
       defaultBranch: 'main',
@@ -363,23 +226,11 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
         },
       ],
     },
-    governanceModel: 'none',
-  },
-
-  // ─── Agentic AI Foundation ────────────────────
-  {
-    name: 'Agentic AI Foundation',
-    githubOrg: 'aaif',
-    strategicParticipation: 'evaluating_participation',
-    governanceModel: 'none',
   },
 
   // ─── Kagenti ────────────────────
   {
-    name: 'Kagenti',
     githubOrg: 'kagenti',
-    strategicParticipation: 'increasing_participation',
-    strategicLeadership: 'increasing_leadership',
     communityRepo: {
       repo: 'kagenti',
       defaultBranch: 'main',
@@ -391,7 +242,6 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
         },
       ],
     },
-    governanceModel: 'codeowners',
     repoGovernanceOverride: {
       'kagenti': 'none',
     },
@@ -399,7 +249,6 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
 
   // ─── Kuadrant ────────────────────
   {
-    name: 'Kuadrant',
     githubOrg: 'Kuadrant',
     communityRepo: {
       repo: 'kuadrant-operator',
@@ -413,7 +262,6 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
         },
       ],
     },
-    governanceModel: 'none',
   },
 ];
 
@@ -421,12 +269,12 @@ export const ORG_REGISTRY: UpstreamOrgConfig[] = [
 
 const orgByGithubOrg = new Map(ORG_REGISTRY.map(o => [o.githubOrg.toLowerCase(), o]));
 
-/** Look up an org config by its GitHub org slug (case-insensitive). */
-export function getOrgConfig(githubOrg: string): UpstreamOrgConfig | undefined {
+/** Look up an org collection config by its GitHub org slug (case-insensitive). */
+export function getOrgConfig(githubOrg: string): OrgCollectionConfig | undefined {
   return orgByGithubOrg.get(githubOrg.toLowerCase());
 }
 
 /** All orgs that have a communityRepo configured (eligible for leadership collection). */
-export function getOrgsWithCommunityRepo(): UpstreamOrgConfig[] {
+export function getOrgsWithCommunityRepo(): OrgCollectionConfig[] {
   return ORG_REGISTRY.filter(o => o.communityRepo != null);
 }
