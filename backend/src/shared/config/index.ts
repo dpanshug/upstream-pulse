@@ -19,6 +19,9 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/upstream_pulse',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
 
+  // CollectOSS / Augur (optional — enables dual-backend collection)
+  augurDatabaseUrl: process.env.AUGUR_DATABASE_URL || '',
+
   // GitHub (public repo data)
   githubToken: process.env.GITHUB_TOKEN || '',
   githubOrg: process.env.GITHUB_ORG || 'kubernetes',

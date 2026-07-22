@@ -52,8 +52,64 @@ cd backend && npm run db:studio      # Drizzle Studio GUI
   job processing, Winston for logging
 - **Frontend**: React 18, Vite, TanStack React Query, React Router, Recharts,
   Tailwind CSS
+- **Data**: GitHub API (default) or CollectOSS/Augur DB (optional, per-project)
 - **Infra**: Docker Compose for local dev (Postgres + Redis), OpenShift for
   production, ArgoCD for GitOps deploys
+
+## Data Collection — Dual Backend
+
+Upstream Pulse supports two backends for collecting contribution data:
+
+1. **GitHub API (default)** — Direct collection via Octokit REST + GraphQL.
+   This is the default for all projects and requires only a `GITHUB_TOKEN`.
+
+2. **CollectOSS / Augur (optional)** — Reads from an external Augur/CollectOSS
+   PostgreSQL database maintained by the OSPO data team. Enabled by setting
+   `AUGUR_DATABASE_URL`. Each project can be toggled individually between
+   backends via the admin API or the project detail page.
+
+Both backends write into the same `contributions` table in the same format.
+MetricsService, the dashboard, and all other features work identically
+regardless of which backend collected the data.
+
+### Key files
+
+```
+backend/src/modules/collection/
+  github-collector.ts        # GitHub API collection (commits, PRs, reviews, issues)
+  augur-data-source.ts       # CollectOSS adapter (reads from Augur DB, same output format)
+  repo-resolver.ts           # Maps org/repo to Augur repo_id
+  augur-health.ts            # Startup health check for Augur DB connectivity
+backend/src/shared/database/
+  augur-client.ts            # Lazy-init read-only Postgres pool for Augur DB
+```
+
+### Testing CollectOSS locally
+
+```bash
+# Start the sample CollectOSS database (contains 7 repos with historical data)
+docker compose --profile collectoss up -d
+
+# Set in .env:
+AUGUR_DATABASE_URL=postgresql://sample_user:sample_password@localhost:5434/sample_collected_data
+
+# Restart dev server, then:
+# 1. System Status page shows Augur connection as "Connected"
+# 2. Add a project from the sample DB (e.g., operate-first/blueprint)
+# 3. Toggle its data source to CollectOSS on the project detail page
+# 4. Trigger collection via admin API or System Status
+```
+
+### CollectOSS admin API
+
+```
+PATCH /api/admin/projects/:id/data-source   — Toggle between 'github' and 'collectoss'
+POST  /api/admin/projects/:id/resolve-augur-repo — Pre-flight: check if repo exists in Augur
+GET   /api/system/augur-status               — Connection health, schema status, project count
+```
+
+See `docs/chaoss-migration-plan.md` for the full integration design and
+rollout phases.
 
 ## Key Patterns
 

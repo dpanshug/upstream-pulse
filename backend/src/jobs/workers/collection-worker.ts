@@ -8,12 +8,14 @@ import { projects, contributions, collectionJobs } from '../../shared/database/s
 import { GitHubCollector } from '../../modules/collection/github-collector.js';
 import { IdentityResolver } from '../../modules/identity/resolver.js';
 import { eq, sql } from 'drizzle-orm';
+import type { ContributionRecord } from '../../shared/types/index.js';
 
 interface CollectionJobData {
   projectId: string;
   jobType: 'sync' | 'full_sync';
   since?: string;
   phases?: ('commits' | 'pull_requests' | 'reviews' | 'issues')[];
+  dataSource?: 'github' | 'collectoss';
 }
 
 const redisConnection = new Redis(config.redisUrl, {
@@ -81,7 +83,7 @@ async function resolveAndStore(
 export const collectionWorker = new Worker<CollectionJobData>(
   'contribution-collection',
   async (job: Job<CollectionJobData>) => {
-    const { projectId, jobType, since, phases } = job.data;
+    const { projectId, jobType, since, phases, dataSource } = job.data;
 
     logger.info('Starting collection job', {
       jobId: job.id,
@@ -119,47 +121,76 @@ export const collectionWorker = new Worker<CollectionJobData>(
         ? new Date(since)
         : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-      const collector = new GitHubCollector();
       const resolver = new IdentityResolver();
       let recordsProcessed = 0;
       let errorsCount = 0;
 
-      await collector.collectRepositoryContributions(
-        {
-          name: project.name || `${project.githubOrg}/${project.githubRepo}`,
-          githubOrg: project.githubOrg,
-          githubRepo: project.githubRepo,
-          id: project.id,
-        },
-        sinceDate,
-        ({ phase, collected }) => {
-          job.updateProgress({ phase, collected });
-          if (phase === 'waiting_for_api') {
-            db.update(collectionJobs)
-              .set({ status: 'waiting_for_api' })
-              .where(eq(collectionJobs.id, jobRecordId))
-              .catch(() => {});
-          } else if (phase === 'resuming') {
-            db.update(collectionJobs)
-              .set({ status: 'running' })
-              .where(eq(collectionJobs.id, jobRecordId))
-              .catch(() => {});
-          }
-        },
-        async (phase, records) => {
-          if (records.length === 0) return;
-          const result = await resolveAndStore(records, project.id, resolver);
-          recordsProcessed += result.processed;
-          errorsCount += result.errors;
-          logger.info(`Phase ${phase} batch persisted`, {
-            project: project.name,
-            phaseRecords: records.length,
-            totalProcessed: recordsProcessed,
-          });
-          await job.updateProgress({ phase: `${phase}_stored`, stored: recordsProcessed });
-        },
-        phases,
-      );
+      const effectiveDataSource = dataSource ?? project.dataSource ?? 'github';
+      const useCollectOSS = effectiveDataSource === 'collectoss'
+        && config.augurDatabaseUrl;
+
+      const onProgress = ({ phase, collected }: { phase: string; collected: number }) => {
+        job.updateProgress({ phase, collected });
+        if (phase === 'waiting_for_api') {
+          db.update(collectionJobs)
+            .set({ status: 'waiting_for_api' })
+            .where(eq(collectionJobs.id, jobRecordId))
+            .catch(() => {});
+        } else if (phase === 'resuming') {
+          db.update(collectionJobs)
+            .set({ status: 'running' })
+            .where(eq(collectionJobs.id, jobRecordId))
+            .catch(() => {});
+        }
+      };
+
+      const onPhaseComplete = async (phase: string, records: ContributionRecord[]) => {
+        if (records.length === 0) return;
+        const result = await resolveAndStore(records, project.id, resolver);
+        recordsProcessed += result.processed;
+        errorsCount += result.errors;
+        logger.info(`Phase ${phase} batch persisted`, {
+          project: project.name,
+          phaseRecords: records.length,
+          totalProcessed: recordsProcessed,
+          dataSource: effectiveDataSource,
+        });
+        await job.updateProgress({ phase: `${phase}_stored`, stored: recordsProcessed });
+      };
+
+      if (useCollectOSS) {
+        const { CollectOSSAdapter } = await import('../../modules/collection/augur-data-source.js');
+        const adapter = new CollectOSSAdapter();
+        logger.info(`Using CollectOSS backend for ${project.name}`);
+
+        await adapter.collectAll(
+          {
+            id: project.id,
+            name: project.name || `${project.githubOrg}/${project.githubRepo}`,
+            githubOrg: project.githubOrg,
+            githubRepo: project.githubRepo,
+            augurRepoId: project.augurRepoId,
+          },
+          sinceDate,
+          onProgress,
+          onPhaseComplete,
+          phases,
+        );
+      } else {
+        const collector = new GitHubCollector();
+        await collector.collectRepositoryContributions(
+          {
+            name: project.name || `${project.githubOrg}/${project.githubRepo}`,
+            githubOrg: project.githubOrg,
+            githubRepo: project.githubRepo,
+            id: project.id,
+          },
+          sinceDate,
+          onProgress,
+          onPhaseComplete,
+          phases,
+        );
+      }
 
       await db.update(projects)
         .set({ lastSyncAt: new Date(), updatedAt: new Date() })

@@ -31,6 +31,8 @@ interface Project {
   githubRepo: string;
   ecosystem: string | null;
   trackingEnabled: boolean;
+  dataSource?: string | null;
+  lastSyncAt?: string | null;
 }
 
 interface MergedProject extends Project {
@@ -442,15 +444,22 @@ export default function Projects() {
                           </Link>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span
-                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                              project.trackingEnabled
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}
-                          >
-                            {project.trackingEnabled ? 'Active' : 'Inactive'}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                project.trackingEnabled
+                                  ? 'bg-green-100 text-green-800'
+                                  : 'bg-gray-100 text-gray-800'
+                              }`}
+                            >
+                              {project.trackingEnabled ? 'Active' : 'Inactive'}
+                            </span>
+                            {project.dataSource === 'collectoss' && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-100 text-violet-700 uppercase tracking-wide">
+                                CollectOSS
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right">
                           {dashboardLoading ? (
