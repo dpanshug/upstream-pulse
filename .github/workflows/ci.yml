@@ -2,13 +2,16 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, preprod, rhai-org-pulse]
   push:
-    branches: [main]
+    branches: [main, preprod, rhai-org-pulse]
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   # ── Backend: type-check, lint, integration tests ──
@@ -32,15 +35,20 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://postgres:password@localhost:5432/upstream_pulse_test
-      TEST_DATABASE_URL: postgresql://postgres:password@localhost:5432/upstream_pulse_test
-      TEST_ADMIN_DATABASE_URL: postgresql://postgres:password@localhost:5432/postgres
+      DATABASE_URL: "postgresql://postgres:password@localhost:5432/\
+        upstream_pulse_test"
+      TEST_DATABASE_URL: "postgresql://postgres:password@localhost:5432/\
+        upstream_pulse_test"
+      TEST_ADMIN_DATABASE_URL: "postgresql://postgres:password@localhost:5432/\
+        postgres"
       NODE_ENV: test
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 20
           cache: npm
@@ -68,9 +76,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 20
           cache: npm
@@ -87,3 +97,24 @@ jobs:
       - name: Type check & build
         run: npm run build
         working-directory: frontend
+
+  manifests:
+    name: OpenShift Manifest Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+
+      - name: Install kustomize
+        uses: "imranismail/setup-kustomize@53f941b41dca13ed\
+          61874bbc6b4b6e1562877530"
+        with:
+          kustomize-version: '5.8.1'
+
+      - name: Build deployment overlays
+        run: |
+          kustomize build deploy/openshift/overlays/dev >/dev/null
+          kustomize build deploy/openshift/overlays/preprod >/dev/null
+          kustomize build deploy/openshift/overlays/prod >/dev/null
