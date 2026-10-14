@@ -3,27 +3,14 @@ import { throttling } from '@octokit/plugin-throttling';
 import * as yaml from 'js-yaml';
 import { config } from '../../shared/config/index.js';
 import { logger } from '../../shared/utils/logger.js';
+import { parseOwnersContent, type OwnersEntry } from './owners-parser.js';
 
 import type { Repository } from '../../shared/types/index.js';
 
+export type { OwnersEntry } from './owners-parser.js';
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ThrottledOctokit = Octokit.plugin(throttling as any);
-
-export interface OwnersEntry {
-  username: string;
-  role: 'approver' | 'reviewer';
-  roleKey: string; // Original OWNERS key name (e.g., 'approvers', 'project-leads', 'owners')
-  path: string; // Directory path where OWNERS file was found
-  source: string; // Full path to the OWNERS file
-}
-
-type OwnersFileContent = Record<string, unknown>;
-
-const OWNERS_SKIP_KEYS = new Set([
-  'labels', 'options', 'filters',
-  'emeritus_approvers', 'emeritus_reviewers', 'emeritus_maintainers',
-  'security_contacts', 'auto-assign',
-]);
 
 interface OwnersAliases {
   aliases?: Record<string, string[]>;
@@ -886,57 +873,22 @@ export class GitHubCollector {
       }
 
       const content = Buffer.from(data.content, 'base64').toString('utf-8');
-      const parsed = yaml.load(content) as OwnersFileContent;
 
       // Get the directory path (where this OWNERS file applies)
       const directoryPath = filePath.replace(/\/?OWNERS$/, '') || '/';
 
-      // Process all keys that contain arrays of usernames
-      if (parsed && typeof parsed === 'object') {
-        for (const [key, value] of Object.entries(parsed)) {
-          if (OWNERS_SKIP_KEYS.has(key)) continue;
-          if (!Array.isArray(value)) continue;
-          if (!value.every(v => typeof v === 'string')) continue;
-
-          const role: 'approver' | 'reviewer' = key === 'reviewers' ? 'reviewer' : 'approver';
-
-          for (const entry of value as string[]) {
-            const resolvedUsers = this.resolveAlias(entry, aliases);
-            for (const username of resolvedUsers) {
-              entries.push({
-                username: username.toLowerCase(),
-                role,
-                roleKey: key,
-                path: directoryPath,
-                source: `https://github.com/${org}/${repo}/blob/main/${filePath}`,
-              });
-            }
-          }
-        }
-      }
+      entries.push(...parseOwnersContent(
+        content,
+        aliases,
+        directoryPath,
+        `https://github.com/${org}/${repo}/blob/main/${filePath}`,
+      ));
 
     } catch (error) {
       logger.warn(`Error parsing OWNERS file at ${filePath}`, { error });
     }
 
     return entries;
-  }
-
-  /**
-   * Resolve an alias to a list of usernames
-   * If the value is not an alias, returns it as-is
-   */
-  private resolveAlias(
-    value: string,
-    aliases: Record<string, string[]>
-  ): string[] {
-    // Check if this is an alias reference
-    if (aliases[value]) {
-      return aliases[value];
-    }
-
-    // Not an alias, return as single username
-    return [value];
   }
 
   /**
