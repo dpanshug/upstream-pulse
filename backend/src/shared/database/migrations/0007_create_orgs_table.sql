@@ -9,37 +9,11 @@ CREATE TABLE IF NOT EXISTS "orgs" (
   "created_at" timestamp DEFAULT now()
 );--> statement-breakpoint
 
-INSERT INTO "orgs" ("github_org", "name", "governance_model", "strategic_participation", "strategic_leadership") VALUES
-  ('kubeflow', 'Kubeflow', 'owners', 'sustaining_participation', 'sustaining_leadership'),
-  ('kserve', 'KServe', 'owners', 'sustaining_participation', 'sustaining_leadership'),
-  ('argoproj', 'Argo', 'owners', NULL, NULL),
-  ('vllm-project', 'vLLM', 'codeowners', 'increasing_participation', 'increasing_leadership'),
-  ('kubernetes', 'Kubernetes', 'owners', NULL, NULL),
-  ('kubernetes-sigs', 'Kubernetes SIGs', 'owners', NULL, NULL),
-  ('ray-project', 'Ray', 'codeowners', 'sustaining_participation', 'sustaining_leadership'),
-  ('openvinotoolkit', 'OpenVINO', 'codeowners', NULL, NULL),
-  ('ogx-ai', 'ogx', 'codeowners', 'sustaining_participation', 'sustaining_leadership'),
-  ('caikit', 'Caikit', 'codeowners', NULL, NULL),
-  ('feast-dev', 'Feast', 'owners', NULL, NULL),
-  ('llm-d', 'llm-d', 'owners', 'increasing_participation', 'sustaining_leadership'),
-  ('containers', 'Containers', 'owners', NULL, NULL),
-  ('mlflow', 'MLflow', 'none', 'increasing_participation', 'increasing_leadership'),
-  ('huggingface', 'Hugging Face', 'none', NULL, NULL),
-  ('berriai', 'BerriAI', 'none', NULL, NULL),
-  ('eleutherai', 'EleutherAI', 'none', NULL, NULL),
-  ('elyra-ai', 'Elyra', 'none', NULL, NULL),
-  ('project-codeflare', 'CodeFlare', 'none', NULL, NULL),
-  ('nvidia', 'OpenShell', 'codeowners', 'increasing_participation', 'increasing_leadership'),
-  ('seldonio', 'Seldon', 'none', NULL, NULL),
-  ('openclaw', 'OpenClaw', 'codeowners', 'increasing_participation', 'increasing_leadership'),
-  ('anomalyco', 'OpenCode', 'none', 'increasing_participation', 'increasing_leadership'),
-  ('ggml-org', 'llama.cpp', 'codeowners', NULL, NULL),
-  ('pytorch', 'PyTorch', 'codeowners', 'increasing_participation', 'increasing_leadership'),
-  ('docling-project', 'Docling', 'none', 'sustaining_participation', 'sustaining_leadership'),
-  ('aaif', 'Agentic AI Foundation', 'none', 'evaluating_participation', NULL),
-  ('kagenti', 'Kagenti', 'codeowners', NULL, NULL),
-  ('kuadrant', 'Kuadrant', 'none', NULL, NULL)
-ON CONFLICT DO NOTHING;--> statement-breakpoint
+-- Baseline org rows are intentionally NOT seeded here: the org list is
+-- deployment-specific and managed via the UI/API. Existing deployments
+-- migrate their strategy data from "org_strategy" below. Deployments that
+-- want the ORG_REGISTRY collection defaults inserted at startup can set
+-- ORG_REGISTRY_AUTOSEED=true.
 
 DO $$ BEGIN
   IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'org_strategy') THEN
