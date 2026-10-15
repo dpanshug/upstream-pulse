@@ -43,6 +43,14 @@ try {
   logger.warn('Failed to clean up stale job records', { error });
 }
 
+// Run Augur health check if configured (non-blocking)
+import { isAugurConfigured } from './shared/database/augur-client.js';
+if (isAugurConfigured()) {
+  import('./modules/collection/augur-health.js').then(({ checkAugurHealth }) =>
+    checkAugurHealth().catch((e) => logger.warn('Augur health check failed', { error: e }))
+  );
+}
+
 // Initialize scheduler
 const scheduler = new CollectionScheduler();
 
@@ -77,6 +85,12 @@ const shutdown = async () => {
     leadershipWorker.close(),
     teamSyncWorker.close(),
   ]);
+
+  // Close Augur connection pool if it was initialised
+  try {
+    const { closeAugurClient } = await import('./shared/database/augur-client.js');
+    await closeAugurClient();
+  } catch { /* not initialised */ }
 
   logger.info('Worker process stopped');
   process.exit(0);

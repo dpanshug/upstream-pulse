@@ -16,6 +16,12 @@
 | [Database Backups](database-backups.md) | S3 backup/restore, CronJobs, failure scenarios |
 | [GitHub API Usage](github-api-scaling.md) | Rate limits, capacity estimates, known limitations |
 
+## Data Sources
+
+| Doc | Description |
+|-----|-------------|
+| [CollectOSS Integration](chaoss-migration-plan.md) | Dual-backend architecture, Augur DB schema, per-project toggle, rollout plan |
+
 ## Extending
 
 | Doc | Description |

@@ -55,6 +55,8 @@ export interface OrgCollectionConfig {
   repoGovernanceOverride?: Record<string, 'owners' | 'codeowners' | 'none'>;
   /** Maps repo names to their owning working groups (only relevant for orgs with WGs) */
   repoToWorkingGroup?: Record<string, string[]>;
+  /** Whether this org's repos are available in the CollectOSS/Augur database. Informational only — actual toggle is per-project. */
+  augurAvailable?: boolean;
 }
 
 // ── Registry ────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import { config } from '../../shared/config/index.js';
 import { logger } from '../../shared/utils/logger.js';
 import { parseOwnersContent, type OwnersEntry } from './owners-parser.js';
 
-import type { Repository } from '../../shared/types/index.js';
+import type { Repository, ContributionRecord } from '../../shared/types/index.js';
 
 export type { OwnersEntry } from './owners-parser.js';
 
@@ -14,19 +14,6 @@ const ThrottledOctokit = Octokit.plugin(throttling as any);
 
 interface OwnersAliases {
   aliases?: Record<string, string[]>;
-}
-
-interface ContributionRecord {
-  type: 'commit' | 'pr' | 'review' | 'issue';
-  githubId: string;
-  author?: string;
-  email?: string;
-  date: Date;
-  isMerged?: boolean;
-  linesAdded?: number;
-  linesDeleted?: number;
-  filesChanged?: number;
-  metadata?: Record<string, any>;
 }
 
 interface GraphQLReviewNode {

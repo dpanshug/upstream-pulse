@@ -32,6 +32,21 @@ export type NewCollectionJob = InferInsertModel<typeof schema.collectionJobs>;
 export type Report = InferSelectModel<typeof schema.reports>;
 export type NewReport = InferInsertModel<typeof schema.reports>;
 
+// Collection record — shared between GitHubCollector and CollectOSSAdapter
+export interface ContributionRecord {
+  type: 'commit' | 'pr' | 'review' | 'issue';
+  githubId: string;
+  author?: string;
+  email?: string;
+  date: Date;
+  isMerged?: boolean;
+  linesAdded?: number;
+  linesDeleted?: number;
+  filesChanged?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  metadata?: Record<string, any>;
+}
+
 // Custom types
 export interface Repository {
   name: string;

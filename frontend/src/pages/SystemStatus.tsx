@@ -422,6 +422,95 @@ function JobRow({ job, isExpanded, onToggle }: { job: JobRecord; isExpanded: boo
   );
 }
 
+interface AugurStatus {
+  configured: boolean;
+  connected: boolean;
+  tablesVerified: boolean;
+  missingTables: string[];
+  lastChecked: string | null;
+  projectCount: number;
+}
+
+function AugurStatusCard({ isAdmin }: { isAdmin: boolean }) {
+  const { data } = useQuery<AugurStatus>({
+    queryKey: ['augur-status'],
+    queryFn: async () => {
+      const res = await apiFetch('/api/system/augur-status');
+      if (!res.ok) throw new Error('Failed to fetch Augur status');
+      return res.json();
+    },
+    enabled: isAdmin,
+    refetchInterval: 30000,
+    placeholderData: (prev) => prev,
+  });
+
+  if (!data) return null;
+
+  const isHealthy = data.configured && data.connected && data.tablesVerified;
+  const hc = !data.configured
+    ? healthConfig.idle
+    : isHealthy
+      ? healthConfig.healthy
+      : data.connected
+        ? healthConfig.warning
+        : healthConfig.error;
+
+  const statusLabel = !data.configured
+    ? 'Not Configured'
+    : isHealthy
+      ? 'Connected'
+      : data.connected
+        ? 'Partial'
+        : 'Disconnected';
+
+  return (
+    <section className="mb-8">
+      <div className="flex items-center gap-2 mb-4">
+        <Database className="w-4 h-4 text-gray-400" />
+        <h2 className="text-lg font-semibold text-gray-900">CollectOSS / Augur</h2>
+      </div>
+      <div className={`bg-white rounded-2xl border ${hc.border} p-5 shadow-sm`}>
+        <div className="flex items-start gap-3.5">
+          <div className={`w-10 h-10 rounded-xl ${hc.iconBg} flex items-center justify-center flex-shrink-0 ring-1 ${hc.ringColor}`}>
+            <Database className={`w-[18px] h-[18px] ${hc.color}`} strokeWidth={1.8} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-sm font-semibold text-gray-900">Augur Database</h3>
+              <span className={`sys-health-dot ${hc.dot} ${isHealthy ? 'sys-dot-pulse-light' : ''}`} />
+              <span className={`text-xs font-medium ${hc.color}`}>{statusLabel}</span>
+            </div>
+            {!data.configured ? (
+              <p className="text-xs text-gray-500">Set <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">AUGUR_DATABASE_URL</code> to enable CollectOSS as a data source.</p>
+            ) : (
+              <div className="grid grid-cols-3 gap-4 mt-3">
+                <div>
+                  <p className="text-xs font-mono uppercase tracking-wider text-gray-400 mb-0.5">Connection</p>
+                  <p className={`text-sm font-medium ${data.connected ? 'text-emerald-600' : 'text-red-600'}`}>
+                    {data.connected ? 'Connected' : 'Failed'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-mono uppercase tracking-wider text-gray-400 mb-0.5">Schema</p>
+                  <p className={`text-sm font-medium ${data.tablesVerified ? 'text-emerald-600' : 'text-amber-600'}`}>
+                    {data.tablesVerified ? 'Verified' : `${data.missingTables.length} missing`}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-mono uppercase tracking-wider text-gray-400 mb-0.5">Projects</p>
+                  <p className="text-sm font-medium text-gray-700">
+                    {data.projectCount} using CollectOSS
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export default function SystemStatus() {
   const { isAdmin } = useAuth();
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
@@ -533,6 +622,9 @@ export default function SystemStatus() {
             </div>
           )}
         </section>
+
+        {/* CollectOSS / Augur Status (admin only) */}
+        <AugurStatusCard isAdmin={isAdmin} />
 
         {/* Job Summary Stats */}
         <section className="mb-8">

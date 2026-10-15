@@ -176,6 +176,7 @@ export class CollectionScheduler {
             projectId: project.id,
             jobType: 'sync',
             since: sinceDate.toISOString(),
+            dataSource: project.dataSource ?? 'github',
           },
           {
             priority: 1,
@@ -186,6 +187,7 @@ export class CollectionScheduler {
         logger.debug('Queued daily sync job', {
           project: project.name,
           since: sinceDate.toISOString(),
+          dataSource: project.dataSource ?? 'github',
         });
       }
 
@@ -204,12 +206,17 @@ export class CollectionScheduler {
   async triggerFullHistorySync(projectId: string, repoCreatedAt: Date) {
     logger.info('Triggering full history sync', { projectId, since: repoCreatedAt });
 
+    const project = await db.query.projects.findFirst({
+      where: eq(projects.id, projectId),
+    });
+
     const job = await contributionQueue.add(
       'full-history-sync',
       {
         projectId,
         jobType: 'full_sync',
         since: repoCreatedAt.toISOString(),
+        dataSource: project?.dataSource ?? 'github',
       },
       {
         priority: 0, // Highest priority
@@ -233,11 +240,12 @@ export class CollectionScheduler {
   async triggerProjectCollection(projectId: string, since?: Date, phases?: ('commits' | 'pull_requests' | 'reviews' | 'issues')[]) {
     logger.info('Manually triggering collection', { projectId, phases: phases || 'all' });
 
+    const project = await db.query.projects.findFirst({
+      where: eq(projects.id, projectId),
+    });
+
     let sinceDate = since;
     if (!sinceDate) {
-      const project = await db.query.projects.findFirst({
-        where: eq(projects.id, projectId),
-      });
       sinceDate = project?.lastSyncAt || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     }
 
@@ -247,6 +255,7 @@ export class CollectionScheduler {
         projectId,
         jobType: 'sync',
         since: sinceDate.toISOString(),
+        dataSource: project?.dataSource ?? 'github',
         ...(phases && { phases }),
       },
       {
