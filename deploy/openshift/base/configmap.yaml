@@ -13,3 +13,9 @@ data:
   GITHUB_TEAM_ORG: "opendatahub-io"
   ADMIN_USERS: "admin"
   ADMIN_GROUPS: ""
+  # Contribution data source for new projects: github | collectoss
+  DEFAULT_DATA_SOURCE: "github"
+  # CollectOSS schema ('data' for CollectOSS >= 1.0, 'augur_data' for legacy Augur DBs)
+  COLLECTOSS_SCHEMA: "data"
+  # Collect from GitHub when a CollectOSS project's repo is missing/unreachable in CollectOSS
+  COLLECTOSS_FALLBACK_TO_GITHUB: "true"

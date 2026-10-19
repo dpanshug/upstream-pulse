@@ -8,6 +8,8 @@ import { collectionWorker } from './jobs/workers/collection-worker.js';
 import { governanceWorker } from './jobs/workers/governance-worker.js';
 import { leadershipWorker } from './jobs/workers/leadership-worker.js';
 import { teamSyncWorker } from './jobs/workers/team-sync-worker.js';
+import { isCollectossConfigured, closeCollectossClient } from './shared/database/collectoss-client.js';
+import { checkCollectossHealth } from './modules/collection/collectoss-health.js';
 
 // Validate configuration on startup
 try {
@@ -20,6 +22,8 @@ try {
 logger.info('Starting worker process', {
   nodeEnv: config.nodeEnv,
   redisUrl: config.redisUrl,
+  collectoss: isCollectossConfigured() ? 'configured' : 'disabled',
+  defaultDataSource: config.defaultDataSource,
 });
 
 // Clean up stale 'running' job records left by previous crashes/restarts.
@@ -43,12 +47,9 @@ try {
   logger.warn('Failed to clean up stale job records', { error });
 }
 
-// Run Augur health check if configured (non-blocking)
-import { isAugurConfigured } from './shared/database/augur-client.js';
-if (isAugurConfigured()) {
-  import('./modules/collection/augur-health.js').then(({ checkAugurHealth }) =>
-    checkAugurHealth().catch((e) => logger.warn('Augur health check failed', { error: e }))
-  );
+// CollectOSS health check (non-blocking, never throws) — logs schema/connectivity problems early
+if (isCollectossConfigured()) {
+  void checkCollectossHealth(true);
 }
 
 // Initialize scheduler
@@ -86,11 +87,11 @@ const shutdown = async () => {
     teamSyncWorker.close(),
   ]);
 
-  // Close Augur connection pool if it was initialised
   try {
-    const { closeAugurClient } = await import('./shared/database/augur-client.js');
-    await closeAugurClient();
-  } catch { /* not initialised */ }
+    await closeCollectossClient();
+  } catch (error) {
+    logger.warn('Failed to close CollectOSS connection pool', { error: (error as Error).message });
+  }
 
   logger.info('Worker process stopped');
   process.exit(0);

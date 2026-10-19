@@ -17,9 +17,11 @@ import {
   Star,
   CircleDot,
   ArrowRight,
+  Database,
 } from 'lucide-react';
 
 import { apiFetch } from '../../lib/api';
+import { useDataSourceConfig, type DataSource } from './DataSourceControl';
 
 interface Org {
   name: string;
@@ -332,6 +334,11 @@ export default function AddProjectModal({ open, onClose, prefilledOrg }: AddProj
   const [primaryLanguage, setPrimaryLanguage] = useState('');
   const [startCollection, setStartCollection] = useState(true);
   const [fullHistory, setFullHistory] = useState(true);
+  // undefined = use the instance default (DEFAULT_DATA_SOURCE)
+  const [dataSource, setDataSource] = useState<DataSource | undefined>(undefined);
+  const { data: instanceConfig } = useDataSourceConfig();
+  const collectossEnabled = instanceConfig?.dataSources?.collectossEnabled ?? false;
+  const defaultDataSource: DataSource = instanceConfig?.dataSources?.default ?? 'github';
   const [submitState, setSubmitState] = useState<SubmitState>({ status: 'idle' });
   const [repoLookup, setRepoLookup] = useState<RepoLookup>({ status: 'idle' });
 
@@ -436,6 +443,7 @@ export default function AddProjectModal({ open, onClose, prefilledOrg }: AddProj
           primaryLanguage: primaryLanguage.trim() || undefined,
           startCollection,
           fullHistory,
+          ...(dataSource && { dataSource }),
         }),
       });
 
@@ -772,6 +780,28 @@ export default function AddProjectModal({ open, onClose, prefilledOrg }: AddProj
                     </p>
                   </div>
                 </label>
+                {collectossEnabled && (
+                  <div className="pt-1">
+                    <label htmlFor="add-project-data-source" className="text-sm text-gray-700 flex items-center gap-1.5">
+                      <Database className="w-3.5 h-3.5 text-gray-400" />
+                      Data source
+                    </label>
+                    <select
+                      id="add-project-data-source"
+                      value={dataSource ?? ''}
+                      onChange={(e) => setDataSource(e.target.value === '' ? undefined : e.target.value as DataSource)}
+                      disabled={submitState.status === 'submitting'}
+                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-blue-500 focus:ring-blue-500 disabled:opacity-50"
+                    >
+                      <option value="">Default ({defaultDataSource === 'collectoss' ? 'CollectOSS' : 'GitHub API'})</option>
+                      <option value="github">GitHub API</option>
+                      <option value="collectoss">CollectOSS</option>
+                    </select>
+                    <p className="text-[12px] text-gray-400 mt-0.5">
+                      CollectOSS requires the repo to be tracked there; the default falls back to GitHub if it is not.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Submit error */}

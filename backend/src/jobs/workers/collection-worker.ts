@@ -5,17 +5,23 @@ import { config } from '../../shared/config/index.js';
 import { logger } from '../../shared/utils/logger.js';
 import { db } from '../../shared/database/client.js';
 import { projects, contributions, collectionJobs } from '../../shared/database/schema.js';
-import { GitHubCollector } from '../../modules/collection/github-collector.js';
+import { collectProjectContributions } from '../../modules/collection/project-collection.js';
 import { IdentityResolver } from '../../modules/identity/resolver.js';
 import { eq, sql } from 'drizzle-orm';
-import type { ContributionRecord } from '../../shared/types/index.js';
+import type { CollectionPhase, ContributionRecord, DataSource } from '../../shared/types/index.js';
 
-interface CollectionJobData {
+export interface CollectionJobData {
   projectId: string;
   jobType: 'sync' | 'full_sync';
   since?: string;
-  phases?: ('commits' | 'pull_requests' | 'reviews' | 'issues')[];
-  dataSource?: 'github' | 'collectoss';
+  phases?: CollectionPhase[];
+  /**
+   * true = "since last sync" run (daily schedule / manual without a date);
+   * false = explicit date range. CollectOSS uses its own cursor for incremental runs.
+   */
+  incremental?: boolean;
+  /** Force a backend for this run. Normally omitted — the worker reads project.dataSource. */
+  dataSource?: DataSource;
 }
 
 const redisConnection = new Redis(config.redisUrl, {
@@ -23,7 +29,7 @@ const redisConnection = new Redis(config.redisUrl, {
 });
 
 async function resolveAndStore(
-  records: { type: string; author?: string; email?: string; githubId: string; date: Date; metadata?: Record<string, any>; isMerged?: boolean; linesAdded?: number; linesDeleted?: number; filesChanged?: number }[],
+  records: ContributionRecord[],
   projectId: string,
   resolver: IdentityResolver,
 ): Promise<{ processed: number; errors: number }> {
@@ -83,7 +89,7 @@ async function resolveAndStore(
 export const collectionWorker = new Worker<CollectionJobData>(
   'contribution-collection',
   async (job: Job<CollectionJobData>) => {
-    const { projectId, jobType, since, phases, dataSource } = job.data;
+    const { projectId, jobType, since, phases, incremental, dataSource } = job.data;
 
     logger.info('Starting collection job', {
       jobId: job.id,
@@ -115,19 +121,12 @@ export const collectionWorker = new Worker<CollectionJobData>(
         name: project.name,
         org: project.githubOrg,
         repo: project.githubRepo,
+        dataSource: dataSource ?? project.dataSource,
       });
-
-      const sinceDate = since
-        ? new Date(since)
-        : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
       const resolver = new IdentityResolver();
       let recordsProcessed = 0;
       let errorsCount = 0;
-
-      const effectiveDataSource = dataSource ?? project.dataSource ?? 'github';
-      const useCollectOSS = effectiveDataSource === 'collectoss'
-        && config.augurDatabaseUrl;
 
       const onProgress = ({ phase, collected }: { phase: string; collected: number }) => {
         job.updateProgress({ phase, collected });
@@ -153,44 +152,23 @@ export const collectionWorker = new Worker<CollectionJobData>(
           project: project.name,
           phaseRecords: records.length,
           totalProcessed: recordsProcessed,
-          dataSource: effectiveDataSource,
         });
         await job.updateProgress({ phase: `${phase}_stored`, stored: recordsProcessed });
       };
 
-      if (useCollectOSS) {
-        const { CollectOSSAdapter } = await import('../../modules/collection/augur-data-source.js');
-        const adapter = new CollectOSSAdapter();
-        logger.info(`Using CollectOSS backend for ${project.name}`);
-
-        await adapter.collectAll(
-          {
-            id: project.id,
-            name: project.name || `${project.githubOrg}/${project.githubRepo}`,
-            githubOrg: project.githubOrg,
-            githubRepo: project.githubRepo,
-            augurRepoId: project.augurRepoId,
-          },
-          sinceDate,
-          onProgress,
-          onPhaseComplete,
+      const outcome = await collectProjectContributions(
+        {
+          project,
+          jobType,
+          since: since ? new Date(since) : undefined,
+          // Jobs queued before this field existed were all "since last sync" runs
+          incremental: incremental ?? jobType === 'sync',
           phases,
-        );
-      } else {
-        const collector = new GitHubCollector();
-        await collector.collectRepositoryContributions(
-          {
-            name: project.name || `${project.githubOrg}/${project.githubRepo}`,
-            githubOrg: project.githubOrg,
-            githubRepo: project.githubRepo,
-            id: project.id,
-          },
-          sinceDate,
-          onProgress,
-          onPhaseComplete,
-          phases,
-        );
-      }
+          dataSourceOverride: dataSource,
+        },
+        onProgress,
+        onPhaseComplete,
+      );
 
       await db.update(projects)
         .set({ lastSyncAt: new Date(), updatedAt: new Date() })
@@ -202,17 +180,25 @@ export const collectionWorker = new Worker<CollectionJobData>(
           completedAt: new Date(),
           recordsProcessed,
           errorsCount,
+          metadata: {
+            bullmqJobId: job.id,
+            dataSource: outcome.dataSource,
+            requestedDataSource: outcome.requestedDataSource,
+            ...(outcome.fallbackReason && { fallbackReason: outcome.fallbackReason }),
+            ...(outcome.collectoss && { collectoss: outcome.collectoss }),
+          },
         })
         .where(eq(collectionJobs.id, jobRecordId));
 
       logger.info('Collection job completed', {
         jobId: job.id,
         project: project.name,
+        dataSource: outcome.dataSource,
         recordsProcessed,
         errorsCount,
       });
 
-      return { success: true, recordsProcessed, errorsCount };
+      return { success: true, recordsProcessed, errorsCount, dataSource: outcome.dataSource };
 
     } catch (error) {
       logger.error('Collection job failed', {

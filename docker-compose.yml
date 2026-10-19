@@ -30,7 +30,7 @@ services:
       timeout: 3s
       retries: 5
 
-  # ── CollectOSS sample data (optional — for testing Augur integration locally) ──
+  # ── CollectOSS sample data (optional — local testing of the CollectOSS data source) ──
   collectoss-db:
     image: ghcr.io/oss-aspen/sample-collected-data:latest
     container_name: upstream-pulse-collectoss

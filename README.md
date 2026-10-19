@@ -15,9 +15,9 @@ Upstream Pulse helps engineering leadership answer critical questions about thei
 
 ## Key Features
 
-- **Dual-Backend Data Collection** — Collect contributions from the GitHub API
-  (default) or from a [CollectOSS/Augur](https://github.com/chaoss/CollectOSS)
-  database. Each project can be toggled independently between backends.
+- **Automated Data Collection** of commits, PRs, reviews and issues from the
+  GitHub API, or optionally from a [CollectOSS](https://github.com/chaoss/collectoss)
+  database — selectable per project
 - **Identity Resolution** mapping contributors to team members
 - **Leadership Tracking** for maintainer status and steering committee positions
 - **Executive Dashboard** with KPIs and trend visualizations
@@ -28,7 +28,7 @@ Upstream Pulse helps engineering leadership answer critical questions about thei
 |-------|-------------|
 | **Backend** | Node.js, TypeScript, Fastify, PostgreSQL, Redis, BullMQ, Drizzle ORM |
 | **Frontend** | React, Vite, Tailwind CSS, shadcn/ui |
-| **Data Sources** | GitHub API (default), CollectOSS/Augur PostgreSQL (optional) |
+| **Data Sources** | GitHub API (default), CollectOSS PostgreSQL (optional) |
 | **Deployment** | Docker, OpenShift / Kubernetes |
 
 ## Getting Started

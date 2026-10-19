@@ -20,7 +20,7 @@
 
 | Doc | Description |
 |-----|-------------|
-| [CollectOSS Integration](chaoss-migration-plan.md) | Dual-backend architecture, Augur DB schema, per-project toggle, rollout plan |
+| [CollectOSS Data Source](collectoss-integration.md) | Collecting contributions from CollectOSS, per-project source, sync semantics, rollout |
 
 ## Extending
 

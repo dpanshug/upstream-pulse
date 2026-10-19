@@ -52,64 +52,38 @@ cd backend && npm run db:studio      # Drizzle Studio GUI
   job processing, Winston for logging
 - **Frontend**: React 18, Vite, TanStack React Query, React Router, Recharts,
   Tailwind CSS
-- **Data**: GitHub API (default) or CollectOSS/Augur DB (optional, per-project)
+- **Data**: GitHub API (default) or CollectOSS DB (optional, per-project)
 - **Infra**: Docker Compose for local dev (Postgres + Redis), OpenShift for
   production, ArgoCD for GitOps deploys
 
-## Data Collection — Dual Backend
+## Data Collection — GitHub or CollectOSS
 
-Upstream Pulse supports two backends for collecting contribution data:
+Contributions (commits, PRs, reviews, issues) come from one of two backends,
+chosen per project (`projects.data_source`):
 
-1. **GitHub API (default)** — Direct collection via Octokit REST + GraphQL.
-   This is the default for all projects and requires only a `GITHUB_TOKEN`.
+1. **GitHub API (default)** — `GitHubCollector` (Octokit REST + GraphQL).
+2. **CollectOSS (optional)** — `CollectossAdapter` reads a CollectOSS
+   PostgreSQL database read-only. Enabled by `COLLECTOSS_DATABASE_URL`.
 
-2. **CollectOSS / Augur (optional)** — Reads from an external Augur/CollectOSS
-   PostgreSQL database maintained by the OSPO data team. Enabled by setting
-   `AUGUR_DATABASE_URL`. Each project can be toggled individually between
-   backends via the admin API or the project detail page.
+Both emit identical `ContributionRecord`s (same GitHub IDs) into the
+`contributions` table, so metrics and the dashboard are backend-agnostic and
+switching never duplicates rows. Governance, leadership and team sync always
+use GitHub.
 
-Both backends write into the same `contributions` table in the same format.
-MetricsService, the dashboard, and all other features work identically
-regardless of which backend collected the data.
+- `collectProjectContributions()` (`modules/collection/project-collection.ts`)
+  dispatches per run and falls back to GitHub if CollectOSS can't serve the repo.
+- CollectOSS incremental syncs use `projects.collectoss_synced_through`
+  (CollectOSS `data_collection_date` cursor), not `last_sync_at`.
+- All CollectOSS SQL lives in `collectoss-adapter.ts` / `collectoss-repo-resolver.ts`;
+  required columns are listed in `REQUIRED_COLUMNS` (`collectoss-health.ts`).
+- Env: `COLLECTOSS_DATABASE_URL`, `COLLECTOSS_SCHEMA` (default `data`),
+  `DEFAULT_DATA_SOURCE` (default `github`), `COLLECTOSS_FALLBACK_TO_GITHUB` (default `true`).
 
-### Key files
+Local testing: `docker compose --profile collectoss up -d collectoss-db`, set
+`COLLECTOSS_DATABASE_URL=postgresql://sample_user:sample_password@localhost:5434/sample_collected_data`.
+Adapter integration tests run when `COLLECTOSS_TEST_DATABASE_URL` is set.
 
-```
-backend/src/modules/collection/
-  github-collector.ts        # GitHub API collection (commits, PRs, reviews, issues)
-  augur-data-source.ts       # CollectOSS adapter (reads from Augur DB, same output format)
-  repo-resolver.ts           # Maps org/repo to Augur repo_id
-  augur-health.ts            # Startup health check for Augur DB connectivity
-backend/src/shared/database/
-  augur-client.ts            # Lazy-init read-only Postgres pool for Augur DB
-```
-
-### Testing CollectOSS locally
-
-```bash
-# Start the sample CollectOSS database (contains 7 repos with historical data)
-docker compose --profile collectoss up -d
-
-# Set in .env:
-AUGUR_DATABASE_URL=postgresql://sample_user:sample_password@localhost:5434/sample_collected_data
-
-# Restart dev server, then:
-# 1. System Status page shows Augur connection as "Connected"
-# 2. Add a project from the sample DB (e.g., operate-first/blueprint)
-# 3. Toggle its data source to CollectOSS on the project detail page
-# 4. Trigger collection via admin API or System Status
-```
-
-### CollectOSS admin API
-
-```
-PATCH /api/admin/projects/:id/data-source   — Toggle between 'github' and 'collectoss'
-POST  /api/admin/projects/:id/resolve-augur-repo — Pre-flight: check if repo exists in Augur
-GET   /api/system/augur-status               — Connection health, schema status, project count
-```
-
-See `docs/chaoss-migration-plan.md` for the full integration design and
-rollout phases.
+See [`docs/collectoss-integration.md`](docs/collectoss-integration.md).
 
 ## Key Patterns
 

@@ -15,6 +15,10 @@ import { eq, sql, count } from 'drizzle-orm';
 import { registerIdentityMiddleware } from './shared/middleware/identity.js';
 import { requireAdmin } from './shared/middleware/admin-guard.js';
 import { z } from 'zod';
+import { DATA_SOURCES } from './shared/types/index.js';
+import { errorMessage, isCollectossConfigured } from './shared/database/collectoss-client.js';
+import { resolveCollectossRepoId } from './modules/collection/collectoss-repo-resolver.js';
+import { checkCollectossHealth } from './modules/collection/collectoss-health.js';
 
 // Validate configuration on startup
 try {
@@ -83,6 +87,10 @@ app.get('/api/config', async () => ({
   adminContactName: config.adminContactName || undefined,
   adminContactUrl: config.adminContactUrl || undefined,
   version: pkg.version,
+  dataSources: {
+    collectossEnabled: isCollectossConfigured(),
+    default: config.defaultDataSource,
+  },
 }));
 
 // Current user identity (read from gateway headers + resolved team member)
@@ -213,6 +221,7 @@ app.post<{
     primaryLanguage?: string;
     startCollection?: boolean;
     fullHistory?: boolean;
+    dataSource?: 'github' | 'collectoss';
   };
 }>('/api/projects', { preHandler: [requireAdmin] }, async (request, reply) => {
   const { name, githubOrg, githubRepo, ecosystem, primaryLanguage, startCollection, fullHistory } = request.body;
@@ -220,6 +229,12 @@ app.post<{
   if (!name || !githubOrg || !githubRepo) {
     reply.status(400);
     return { error: 'name, githubOrg, and githubRepo are required' };
+  }
+
+  const requestedSource = request.body.dataSource;
+  if (requestedSource !== undefined && !(DATA_SOURCES as readonly string[]).includes(requestedSource)) {
+    reply.status(400);
+    return { error: 'dataSource must be "github" or "collectoss"' };
   }
 
   // Validate repo exists on GitHub and get creation date
@@ -233,6 +248,36 @@ app.post<{
 
   const repoCreatedAt = new Date(repoInfo.createdAt);
 
+  // Data source: explicit request > DEFAULT_DATA_SOURCE. CollectOSS is only
+  // assigned when it is configured and actually tracks the repo; an explicit
+  // request that cannot be honoured is rejected, the instance default silently
+  // falls back to GitHub.
+  let dataSource: 'github' | 'collectoss' = 'github';
+  let collectossRepoId: number | null = null;
+  const wantsCollectoss = (requestedSource ?? config.defaultDataSource) === 'collectoss';
+  if (wantsCollectoss) {
+    const { findCollectossRepoId } = await import('./modules/collection/collectoss-repo-resolver.js');
+    let lookupError: string | null = null;
+    if (isCollectossConfigured()) {
+      try {
+        collectossRepoId = await findCollectossRepoId(githubOrg, githubRepo);
+      } catch (error) {
+        lookupError = 'CollectOSS database is unreachable';
+        logger.warn('CollectOSS lookup failed while adding project', { error: errorMessage(error) });
+      }
+    } else {
+      lookupError = 'CollectOSS is not configured on this instance';
+    }
+    if (collectossRepoId != null) {
+      dataSource = 'collectoss';
+    } else if (requestedSource === 'collectoss') {
+      reply.status(400);
+      return { error: lookupError ?? `${githubOrg}/${githubRepo} is not tracked in CollectOSS` };
+    } else {
+      logger.info(`New project ${githubOrg}/${githubRepo} uses GitHub (default is CollectOSS: ${lookupError ?? 'repo not tracked'})`);
+    }
+  }
+
   // ── Step 1: Insert project (must succeed) ──────────────────────
   let newProject;
   try {
@@ -243,6 +288,8 @@ app.post<{
       ecosystem: ecosystem || 'unknown',
       primaryLanguage: primaryLanguage || repoInfo.language || undefined,
       trackingEnabled: true,
+      dataSource,
+      collectossRepoId,
     }).returning();
   } catch (error) {
     if ((error as any).code === '23505') {
@@ -831,143 +878,173 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
   }
 });
 
-// ── CollectOSS / Augur admin endpoints ──────────────────────────────
+// ── Contribution data source (GitHub / CollectOSS) ─────────────────
 
-// Toggle a project's data source between 'github' and 'collectoss'
 const uuidSchema = z.string().uuid();
-const dataSourceToggleSchema = z.object({
-  dataSource: z.enum(['github', 'collectoss']),
+const dataSourceSchema = z.object({
+  dataSource: z.enum(DATA_SOURCES),
 });
 
+/** Admin: switch a project's contribution data source. */
 app.patch<{
   Params: { id: string };
-  Body: { dataSource: 'github' | 'collectoss' };
+  Body: unknown;
 }>('/api/admin/projects/:id/data-source', { preHandler: [requireAdmin] }, async (request, reply) => {
-  try {
-    const { id } = request.params;
-    if (!uuidSchema.safeParse(id).success) {
-      reply.status(400);
-      return { error: 'Invalid project ID format' };
-    }
-    const parsed = dataSourceToggleSchema.safeParse(request.body);
-    if (!parsed.success) {
-      reply.status(400);
-      return { error: 'dataSource must be "github" or "collectoss"', details: parsed.error.flatten() };
-    }
-    const { dataSource: newSource } = parsed.data;
+  const { id } = request.params;
+  if (!uuidSchema.safeParse(id).success) {
+    reply.status(400);
+    return { error: 'Invalid project ID format' };
+  }
+  const parsed = dataSourceSchema.safeParse(request.body);
+  if (!parsed.success) {
+    reply.status(400);
+    return { error: 'dataSource must be "github" or "collectoss"', details: parsed.error.flatten() };
+  }
+  const { dataSource: newSource } = parsed.data;
 
-    const project = await db.query.projects.findFirst({
-      where: eq(projects.id, id),
-    });
+  try {
+    const project = await db.query.projects.findFirst({ where: eq(projects.id, id) });
     if (!project) {
       reply.status(404);
       return { error: 'Project not found' };
     }
 
+    let collectossRepoId = project.collectossRepoId;
     if (newSource === 'collectoss') {
-      if (!config.augurDatabaseUrl) {
+      if (!isCollectossConfigured()) {
         reply.status(400);
-        return { error: 'CollectOSS is not configured — set AUGUR_DATABASE_URL' };
+        return { error: 'CollectOSS is not configured on this instance (COLLECTOSS_DATABASE_URL)' };
       }
-
-      // Resolve augurRepoId if not already set
-      if (!project.augurRepoId) {
-        const { resolveAugurRepoId } = await import('./modules/collection/repo-resolver.js');
-        const repoId = await resolveAugurRepoId(project.id, project.githubOrg, project.githubRepo);
-        if (!repoId) {
-          reply.status(400);
-          return { error: `Repository ${project.githubOrg}/${project.githubRepo} not found in Augur DB` };
-        }
+      try {
+        collectossRepoId = await resolveCollectossRepoId(project.id, project.githubOrg, project.githubRepo);
+      } catch (error) {
+        logger.error('CollectOSS lookup failed while switching data source', { error: errorMessage(error) });
+        reply.status(502);
+        return { error: 'CollectOSS database is unreachable' };
+      }
+      if (collectossRepoId == null) {
+        reply.status(400);
+        return { error: `${project.githubOrg}/${project.githubRepo} is not tracked in CollectOSS` };
       }
     }
 
     const [updated] = await db.update(projects)
-      .set({ dataSource: newSource, updatedAt: new Date() })
+      .set({ dataSource: newSource, collectossRepoId, updatedAt: new Date() })
       .where(eq(projects.id, id))
       .returning();
 
-    logger.info(`Data source toggled for ${project.name}: ${project.dataSource} → ${newSource}`);
+    logger.info(`Data source for ${project.name}: ${project.dataSource} → ${newSource}`, {
+      by: request.identity?.email,
+    });
 
     return { success: true, project: updated };
   } catch (error) {
-    logger.error('Error toggling data source', { error });
+    logger.error('Error switching data source', { error });
     reply.status(500);
-    return { error: 'Failed to toggle data source' };
+    return { error: 'Failed to switch data source' };
   }
 });
 
-// Resolve Augur repo_id for a project (pre-flight check before toggling)
-app.post<{
+/**
+ * Admin: CollectOSS coverage for a project — whether CollectOSS tracks the repo,
+ * how fresh its data is, and contribution counts (CollectOSS vs. what is stored
+ * in Upstream Pulse) so admins can validate before switching.
+ */
+app.get<{
   Params: { id: string };
-}>('/api/admin/projects/:id/resolve-augur-repo', { preHandler: [requireAdmin] }, async (request, reply) => {
+  Querystring: { days?: string };
+}>('/api/admin/projects/:id/collectoss', { preHandler: [requireAdmin] }, async (request, reply) => {
+  const { id } = request.params;
+  if (!uuidSchema.safeParse(id).success) {
+    reply.status(400);
+    return { error: 'Invalid project ID format' };
+  }
+  const daysParsed = z.coerce.number().int().min(0).max(3650).default(90).safeParse(request.query.days);
+  if (!daysParsed.success) {
+    reply.status(400);
+    return { error: 'days must be an integer between 0 and 3650' };
+  }
+  const days = daysParsed.data;
+
+  if (!isCollectossConfigured()) {
+    return { configured: false, tracked: false };
+  }
+
   try {
-    const { id } = request.params;
-    if (!uuidSchema.safeParse(id).success) {
-      reply.status(400);
-      return { error: 'Invalid project ID format' };
-    }
-
-    if (!config.augurDatabaseUrl) {
-      reply.status(400);
-      return { error: 'CollectOSS is not configured — set AUGUR_DATABASE_URL' };
-    }
-
-    const project = await db.query.projects.findFirst({
-      where: eq(projects.id, id),
-    });
+    const project = await db.query.projects.findFirst({ where: eq(projects.id, id) });
     if (!project) {
       reply.status(404);
       return { error: 'Project not found' };
     }
 
-    const { resolveAugurRepoId } = await import('./modules/collection/repo-resolver.js');
-    const repoId = await resolveAugurRepoId(project.id, project.githubOrg, project.githubRepo);
-
-    if (!repoId) {
-      return { success: false, message: `${project.githubOrg}/${project.githubRepo} not found in Augur DB` };
+    let repoId: number | null;
+    try {
+      repoId = await resolveCollectossRepoId(project.id, project.githubOrg, project.githubRepo);
+    } catch (error) {
+      logger.error('CollectOSS coverage lookup failed', { error: errorMessage(error) });
+      reply.status(502);
+      return { error: 'CollectOSS database is unreachable' };
+    }
+    if (repoId == null) {
+      return { configured: true, tracked: false };
     }
 
-    return { success: true, augurRepoId: repoId };
+    const since = days > 0 ? new Date(Date.now() - days * 24 * 60 * 60 * 1000) : undefined;
+    const { CollectossAdapter } = await import('./modules/collection/collectoss-adapter.js');
+    const collectossCounts = await new CollectossAdapter().countContributions(repoId, since);
+
+    const { contributions } = await import('./shared/database/schema.js');
+    const localRows = await db
+      .select({ type: contributions.contributionType, count: count() })
+      .from(contributions)
+      .where(sql`${contributions.projectId} = ${project.id}${since
+        ? sql` AND ${contributions.contributionDate} >= ${since.toISOString().split('T')[0]}`
+        : sql``}`)
+      .groupBy(contributions.contributionType);
+    const local = Object.fromEntries(localRows.map(r => [r.type, Number(r.count)]));
+
+    return {
+      configured: true,
+      tracked: true,
+      repoId,
+      days,
+      syncedThrough: project.collectossSyncedThrough?.toISOString() ?? null,
+      counts: {
+        collectoss: collectossCounts,
+        upstreamPulse: {
+          commits: local.commit ?? 0,
+          prs: local.pr ?? 0,
+          reviews: local.review ?? 0,
+          issues: local.issue ?? 0,
+        },
+      },
+    };
   } catch (error) {
-    logger.error('Error resolving Augur repo', { error });
+    logger.error('Error fetching CollectOSS coverage', { error });
     reply.status(500);
-    return { error: 'Failed to resolve Augur repo' };
+    return { error: 'Failed to fetch CollectOSS coverage' };
   }
 });
 
-// Augur connection status (for System Status page)
-app.get('/api/system/augur-status', { preHandler: [requireAdmin] }, async (request, reply) => {
+/** Admin: CollectOSS connection / schema health and how many projects use it. */
+app.get('/api/system/collectoss-status', { preHandler: [requireAdmin] }, async (_request, reply) => {
   try {
-    const { isAugurConfigured, testAugurConnection } = await import('./shared/database/augur-client.js');
-    const { getLastAugurHealth, checkAugurHealth } = await import('./modules/collection/augur-health.js');
-
-    const configured = isAugurConfigured();
-    let connected = false;
-    let health = getLastAugurHealth();
-
-    if (configured) {
-      connected = await testAugurConnection();
-      if (!health) {
-        health = await checkAugurHealth();
-      }
-    }
-
-    const projectCount = configured
-      ? (await db.select({ count: count() }).from(projects).where(eq(projects.dataSource, 'collectoss')))[0]?.count ?? 0
-      : 0;
+    const health = await checkCollectossHealth();
+    const [{ value: projectCount } = { value: 0 }] = await db
+      .select({ value: count() })
+      .from(projects)
+      .where(sql`${projects.dataSource} = 'collectoss' AND ${projects.trackingEnabled} = true`);
 
     return {
-      configured,
-      connected,
-      tablesVerified: health?.tablesVerified ?? false,
-      missingTables: health?.missingTables ?? [],
-      lastChecked: health?.lastChecked ?? null,
+      ...health,
+      defaultDataSource: config.defaultDataSource,
+      fallbackToGithub: config.collectossFallbackToGithub,
       projectCount: Number(projectCount),
     };
   } catch (error) {
-    logger.error('Error fetching Augur status', { error });
+    logger.error('Error fetching CollectOSS status', { error });
     reply.status(500);
-    return { error: 'Failed to fetch Augur status' };
+    return { error: 'Failed to fetch CollectOSS status' };
   }
 });
 
@@ -1333,7 +1410,6 @@ app.get<{
           githubOrg: o.githubOrg,
           governanceModel: o.governanceModel,
           hasCommunityRepo: !!getOrgConfig(o.githubOrg)?.communityRepo,
-          augurAvailable: o.augurAvailable ?? false,
           strategicParticipation: o.strategicParticipation ?? null,
           strategicLeadership: o.strategicLeadership ?? null,
           contributionCount: activity?.total ?? 0,

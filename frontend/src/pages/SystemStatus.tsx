@@ -359,6 +359,8 @@ function JobRow({ job, isExpanded, onToggle }: { job: JobRecord; isExpanded: boo
         : null;
   const hasErrors = job.errorsCount > 0 && !!job.errorDetails;
   const clickable = !!hasErrors;
+  const ranOn = typeof job.metadata?.dataSource === 'string' ? job.metadata.dataSource : null;
+  const fallbackReason = typeof job.metadata?.fallbackReason === 'string' ? job.metadata.fallbackReason : null;
 
   return (
     <>
@@ -374,6 +376,19 @@ function JobRow({ job, isExpanded, onToggle }: { job: JobRecord; isExpanded: boo
         </td>
         <td className="py-3 px-4">
           <span className="text-sm font-medium text-gray-700">{label}</span>
+          {ranOn === 'collectoss' && (
+            <span className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded bg-violet-100 text-violet-700 uppercase tracking-wide">
+              CollectOSS
+            </span>
+          )}
+          {fallbackReason && (
+            <span
+              className="ml-2 px-1.5 py-0.5 text-[10px] font-medium rounded bg-amber-100 text-amber-700 uppercase tracking-wide"
+              title={`CollectOSS unavailable — collected from GitHub: ${fallbackReason}`}
+            >
+              GitHub fallback
+            </span>
+          )}
         </td>
         <td className="py-3 px-4">
           {job.scope ? (
@@ -422,31 +437,36 @@ function JobRow({ job, isExpanded, onToggle }: { job: JobRecord; isExpanded: boo
   );
 }
 
-interface AugurStatus {
+interface CollectossStatus {
   configured: boolean;
   connected: boolean;
-  tablesVerified: boolean;
-  missingTables: string[];
-  lastChecked: string | null;
+  schema: string;
+  schemaVerified: boolean;
+  missing: string[];
+  latestCollectionAt: string | null;
+  error: string | null;
+  lastChecked: string;
+  defaultDataSource: 'github' | 'collectoss';
+  fallbackToGithub: boolean;
   projectCount: number;
 }
 
-function AugurStatusCard({ isAdmin }: { isAdmin: boolean }) {
-  const { data } = useQuery<AugurStatus>({
-    queryKey: ['augur-status'],
+function CollectossStatusCard({ isAdmin }: { isAdmin: boolean }) {
+  const { data } = useQuery<CollectossStatus>({
+    queryKey: ['collectoss-status'],
     queryFn: async () => {
-      const res = await apiFetch('/api/system/augur-status');
-      if (!res.ok) throw new Error('Failed to fetch Augur status');
+      const res = await apiFetch('/api/system/collectoss-status');
+      if (!res.ok) throw new Error('Failed to fetch CollectOSS status');
       return res.json();
     },
     enabled: isAdmin,
-    refetchInterval: 30000,
+    refetchInterval: 60000,
     placeholderData: (prev) => prev,
   });
 
   if (!data) return null;
 
-  const isHealthy = data.configured && data.connected && data.tablesVerified;
+  const isHealthy = data.configured && data.connected && data.schemaVerified;
   const hc = !data.configured
     ? healthConfig.idle
     : isHealthy
@@ -460,14 +480,14 @@ function AugurStatusCard({ isAdmin }: { isAdmin: boolean }) {
     : isHealthy
       ? 'Connected'
       : data.connected
-        ? 'Partial'
+        ? 'Schema Mismatch'
         : 'Disconnected';
 
   return (
     <section className="mb-8">
       <div className="flex items-center gap-2 mb-4">
         <Database className="w-4 h-4 text-gray-400" />
-        <h2 className="text-lg font-semibold text-gray-900">CollectOSS / Augur</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Data Sources</h2>
       </div>
       <div className={`bg-white rounded-2xl border ${hc.border} p-5 shadow-sm`}>
         <div className="flex items-start gap-3.5">
@@ -476,33 +496,53 @@ function AugurStatusCard({ isAdmin }: { isAdmin: boolean }) {
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-sm font-semibold text-gray-900">Augur Database</h3>
+              <h3 className="text-sm font-semibold text-gray-900">CollectOSS</h3>
               <span className={`sys-health-dot ${hc.dot} ${isHealthy ? 'sys-dot-pulse-light' : ''}`} />
               <span className={`text-xs font-medium ${hc.color}`}>{statusLabel}</span>
             </div>
             {!data.configured ? (
-              <p className="text-xs text-gray-500">Set <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">AUGUR_DATABASE_URL</code> to enable CollectOSS as a data source.</p>
+              <p className="text-xs text-gray-500">
+                All projects collect from the GitHub API. Set{' '}
+                <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">COLLECTOSS_DATABASE_URL</code>{' '}
+                to enable CollectOSS as a data source.
+              </p>
             ) : (
-              <div className="grid grid-cols-3 gap-4 mt-3">
-                <div>
-                  <p className="text-xs font-mono uppercase tracking-wider text-gray-400 mb-0.5">Connection</p>
-                  <p className={`text-sm font-medium ${data.connected ? 'text-emerald-600' : 'text-red-600'}`}>
-                    {data.connected ? 'Connected' : 'Failed'}
-                  </p>
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-3">
+                  <div>
+                    <p className="text-xs font-mono uppercase tracking-wider text-gray-400 mb-0.5">Schema</p>
+                    <p className={`text-sm font-medium ${data.schemaVerified ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      {!data.connected ? '—' : data.schemaVerified ? `${data.schema} ✓` : `${data.missing.length} missing`}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-mono uppercase tracking-wider text-gray-400 mb-0.5">Data as of</p>
+                    <p className="text-sm font-medium text-gray-700">
+                      {data.latestCollectionAt ? formatRelativeTime(data.latestCollectionAt) : '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-mono uppercase tracking-wider text-gray-400 mb-0.5">Projects</p>
+                    <p className="text-sm font-medium text-gray-700">{data.projectCount} on CollectOSS</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-mono uppercase tracking-wider text-gray-400 mb-0.5">New projects</p>
+                    <p className="text-sm font-medium text-gray-700">
+                      {data.defaultDataSource === 'collectoss' ? 'CollectOSS' : 'GitHub'}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-mono uppercase tracking-wider text-gray-400 mb-0.5">Schema</p>
-                  <p className={`text-sm font-medium ${data.tablesVerified ? 'text-emerald-600' : 'text-amber-600'}`}>
-                    {data.tablesVerified ? 'Verified' : `${data.missingTables.length} missing`}
+                {data.connected && !data.schemaVerified && data.missing.length > 0 && (
+                  <p className="text-xs text-amber-700 mt-3 break-words">
+                    Missing: {data.missing.slice(0, 8).join(', ')}{data.missing.length > 8 ? ` +${data.missing.length - 8} more` : ''}
                   </p>
-                </div>
-                <div>
-                  <p className="text-xs font-mono uppercase tracking-wider text-gray-400 mb-0.5">Projects</p>
-                  <p className="text-sm font-medium text-gray-700">
-                    {data.projectCount} using CollectOSS
+                )}
+                {data.fallbackToGithub && (
+                  <p className="text-xs text-gray-400 mt-3">
+                    Projects whose repo is not in CollectOSS (or when it is unreachable) fall back to the GitHub API.
                   </p>
-                </div>
-              </div>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -623,8 +663,8 @@ export default function SystemStatus() {
           )}
         </section>
 
-        {/* CollectOSS / Augur Status (admin only) */}
-        <AugurStatusCard isAdmin={isAdmin} />
+        {/* Data source / CollectOSS status (admin only) */}
+        <CollectossStatusCard isAdmin={isAdmin} />
 
         {/* Job Summary Stats */}
         <section className="mb-8">

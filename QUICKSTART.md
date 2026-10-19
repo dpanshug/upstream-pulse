@@ -130,50 +130,33 @@ curl -X POST http://localhost:4321/api/admin/collect \
   -d '{"projectId": "uuid-from-api-projects"}'
 ```
 
-## Optional: CollectOSS / Augur Backend
+## Optional: CollectOSS Data Source
 
-By default, Upstream Pulse collects data directly from the GitHub API. Optionally, you can use a [CollectOSS/Augur](https://github.com/chaoss/CollectOSS) database as a second data source. This is useful when an OSPO data team already maintains an Augur instance with historical contribution data.
-
-Each project can be independently toggled between `github` and `collectoss` backends. Both write into the same `contributions` table — the dashboard works identically regardless of source.
+By default, Upstream Pulse collects contributions from the GitHub API. Optionally, it can read them from a [CollectOSS](https://github.com/chaoss/collectoss) database instead — useful when an OSPO/CHAOSS team already collects your repos. The source is chosen per project; the dashboard works identically either way.
 
 ### Test locally with sample data
 
-A sample CollectOSS database is available for local testing:
-
 ```bash
-# Start the sample database (contains 7 repos with historical data)
-docker compose --profile collectoss up -d
+# Start the sample CollectOSS database (7 repos with historical data)
+docker compose --profile collectoss up -d collectoss-db
 
 # Add to your .env:
-AUGUR_DATABASE_URL=postgresql://sample_user:sample_password@localhost:5434/sample_collected_data
+COLLECTOSS_DATABASE_URL=postgresql://sample_user:sample_password@localhost:5434/sample_collected_data
 ```
 
-Restart the dev server. The System Status page will show the Augur connection as "Connected".
-
-### Try a collection from CollectOSS
+Restart the API and worker. **System Status → Data Sources** should show CollectOSS as "Connected".
 
 ```bash
-# Add a project from the sample DB
+# Add a project from the sample DB, collected from CollectOSS
 curl -X POST http://localhost:4321/api/projects \
   -H "Content-Type: application/json" \
-  -d '{"name": "Blueprint", "githubOrg": "operate-first", "githubRepo": "blueprint"}'
-
-# Toggle it to CollectOSS (use the project ID from the response)
-curl -X PATCH http://localhost:4321/api/admin/projects/<project-id>/data-source \
-  -H "Content-Type: application/json" \
-  -d '{"dataSource": "collectoss"}'
-
-# Trigger collection (sample data is historical, use an old date)
-curl -X POST http://localhost:4321/api/admin/collect \
-  -H "Content-Type: application/json" \
-  -d '{"projectId": "<project-id>", "since": "2020-01-01"}'
+  -d '{"name": "Blueprint", "githubOrg": "operate-first", "githubRepo": "blueprint",
+       "dataSource": "collectoss", "startCollection": true, "fullHistory": true}'
 ```
 
-View the project on the dashboard with the period set to "All time" to see the collected contributions.
+The sample data is historical — view the project with the period set to "All time". Existing projects can be switched on their detail page ("Change source").
 
-### Connect to a real Augur instance
-
-For production use, set `AUGUR_DATABASE_URL` to your Augur/CollectOSS PostgreSQL instance. See [CollectOSS Integration Plan](docs/chaoss-migration-plan.md) for full details on schema, column mappings, and rollout phases.
+See [CollectOSS Data Source](docs/collectoss-integration.md) for configuration, sync semantics and rollout.
 
 ---
 
@@ -287,5 +270,5 @@ npm run db:studio
 - **[Architecture](docs/ARCHITECTURE.md)** — How the system works (data flow, schema, API reference)
 - **[Workers & Jobs](docs/workers.md)** — Background job queues, schedules, and monitoring
 - **[Adding an Org](docs/adding-an-org.md)** — How to add a new upstream org to track
-- **[CollectOSS Integration](docs/chaoss-migration-plan.md)** — Dual-backend setup with Augur/CollectOSS
+- **[CollectOSS Data Source](docs/collectoss-integration.md)** — Collecting contributions from CollectOSS instead of the GitHub API
 - **[Contributing](CONTRIBUTING.md)** — Code contribution guidelines

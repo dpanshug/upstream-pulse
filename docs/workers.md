@@ -97,7 +97,7 @@ Syncs team members from the GitHub organization (requires `GITHUB_TEAM_TOKEN` wi
 **File:** `workers/collection-worker.ts`
 
 **What it does:**
-1. Fetches commits, pull requests, issues, and reviews from GitHub
+1. Fetches commits, pull requests, issues, and reviews from the project's data source — GitHub (default) or CollectOSS (see [CollectOSS Data Source](collectoss-integration.md)); CollectOSS projects fall back to GitHub if CollectOSS can't serve the repo
 2. Resolves contributor identities to team members
 3. Stores contributions in the database (skips duplicates via `onConflictDoNothing`)
 4. Updates project `last_sync_at` timestamp
@@ -325,3 +325,5 @@ The collector tracks rate limits from response headers. When remaining calls dro
 | `GITHUB_TEAM_TOKEN` | For team sync | Separate PAT with `read:org` scope (falls back to `GITHUB_TOKEN`) |
 | `GITHUB_TEAM_ORG` | For team sync | Comma-separated GitHub org(s) to sync members from |
 | `DATABASE_URL` | Yes | PostgreSQL connection URL |
+| `COLLECTOSS_DATABASE_URL` | No | Read-only CollectOSS database; enables CollectOSS as a contribution source |
+| `DEFAULT_DATA_SOURCE` | No | `github` (default) or `collectoss` for newly added projects |

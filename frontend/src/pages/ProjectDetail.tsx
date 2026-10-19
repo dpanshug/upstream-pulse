@@ -1,4 +1,3 @@
-import { useState, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
@@ -11,10 +10,9 @@ import {
   Activity,
   Calendar,
   ExternalLink,
-  Database,
-  Loader2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { DataSourceControl } from '../components/admin/DataSourceControl';
 
 import {
   DashboardData,
@@ -49,9 +47,6 @@ export default function ProjectDetail() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAdmin } = useAuth();
-  const [toggling, setToggling] = useState(false);
-  const [toggleResult, setToggleResult] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [showConfirm, setShowConfirm] = useState(false);
 
   const daysParam = searchParams.get('days');
   const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : DEFAULT_PERIOD_DAYS;
@@ -95,37 +90,8 @@ export default function ProjectDetail() {
   const projectName = projectInfo?.name ?? 'Project';
   const githubOrg = projectInfo?.githubOrg;
   const githubRepo = projectInfo?.githubRepo;
-  const currentDataSource: string = projectInfo?.dataSource ?? 'github';
+  const currentDataSource = projectInfo?.dataSource === 'collectoss' ? 'collectoss' : 'github';
   const isRefetching = isFetching && !isLoading;
-
-  const handleToggleDataSource = useCallback(async () => {
-    if (!projectId || toggling) return;
-    const newSource = currentDataSource === 'collectoss' ? 'github' : 'collectoss';
-
-    setToggling(true);
-    setToggleResult(null);
-    try {
-      const res = await apiFetch(`/api/admin/projects/${projectId}/data-source`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dataSource: newSource }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Unknown error' }));
-        setToggleResult({ type: 'error', message: err.error || 'Failed to switch' });
-        return;
-      }
-      setToggleResult({ type: 'success', message: `Switched to ${newSource === 'collectoss' ? 'CollectOSS' : 'GitHub'}` });
-      queryClient.invalidateQueries({ queryKey: ['project-info', projectId] });
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      setTimeout(() => setToggleResult(null), 3000);
-    } catch {
-      setToggleResult({ type: 'error', message: 'Failed to switch data source' });
-    } finally {
-      setToggling(false);
-      setShowConfirm(false);
-    }
-  }, [projectId, toggling, currentDataSource, queryClient]);
 
   return (
     <div className="bg-gray-50">
@@ -151,48 +117,8 @@ export default function ProjectDetail() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold text-gray-900">{projectName}</h1>
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium ${
-                currentDataSource === 'collectoss'
-                  ? 'bg-violet-100 text-violet-700'
-                  : 'bg-gray-100 text-gray-600'
-              }`}>
-                <Database className="w-3 h-3" />
-                {currentDataSource === 'collectoss' ? 'CollectOSS' : 'GitHub'}
-              </span>
-              {isAdmin && !showConfirm && !toggleResult && (
-                <button
-                  onClick={() => setShowConfirm(true)}
-                  disabled={toggling}
-                  className="text-xs text-gray-400 hover:text-blue-600 transition-colors disabled:opacity-50"
-                  title={`Switch to ${currentDataSource === 'collectoss' ? 'GitHub' : 'CollectOSS'}`}
-                >
-                  Switch source
-                </button>
-              )}
-              {showConfirm && (
-                <span className="inline-flex items-center gap-1.5 text-xs">
-                  <span className="text-gray-500">Switch to {currentDataSource === 'collectoss' ? 'GitHub' : 'CollectOSS'}?</span>
-                  <button
-                    onClick={handleToggleDataSource}
-                    disabled={toggling}
-                    className="font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
-                  >
-                    {toggling ? <Loader2 className="w-3 h-3 animate-spin inline" /> : 'Confirm'}
-                  </button>
-                  <button
-                    onClick={() => setShowConfirm(false)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    Cancel
-                  </button>
-                </span>
-              )}
-              {toggleResult && (
-                <span className={`text-xs font-medium ${
-                  toggleResult.type === 'success' ? 'text-emerald-600' : 'text-red-600'
-                }`}>
-                  {toggleResult.message}
-                </span>
+              {projectId && (
+                <DataSourceControl projectId={projectId} dataSource={currentDataSource} isAdmin={isAdmin} />
               )}
             </div>
             {githubOrg && githubRepo && (

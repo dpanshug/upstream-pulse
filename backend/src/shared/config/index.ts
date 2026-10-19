@@ -19,8 +19,14 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/upstream_pulse',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
 
-  // CollectOSS / Augur (optional — enables dual-backend collection)
-  augurDatabaseUrl: process.env.AUGUR_DATABASE_URL || '',
+  // CollectOSS (optional — alternative contribution data source, read-only Postgres)
+  collectossDatabaseUrl: process.env.COLLECTOSS_DATABASE_URL || '',
+  // Schema holding CollectOSS tables ('data' since CollectOSS 1.0; 'augur_data' on legacy Augur DBs)
+  collectossSchema: process.env.COLLECTOSS_SCHEMA || 'data',
+  // Data source assigned to newly added projects: 'github' | 'collectoss'
+  defaultDataSource: (process.env.DEFAULT_DATA_SOURCE === 'collectoss' ? 'collectoss' : 'github') as 'github' | 'collectoss',
+  // When a CollectOSS project's repo is missing/unreachable in CollectOSS, collect from GitHub instead of failing
+  collectossFallbackToGithub: process.env.COLLECTOSS_FALLBACK_TO_GITHUB !== 'false',
 
   // GitHub (public repo data)
   githubToken: process.env.GITHUB_TOKEN || '',
