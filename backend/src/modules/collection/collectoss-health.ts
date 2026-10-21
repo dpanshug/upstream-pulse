@@ -24,21 +24,24 @@ export const REQUIRED_COLUMNS: Record<string, readonly string[]> = {
   repo: ['repo_id', 'repo_git'],
   commits: [
     'repo_id', 'cmt_commit_hash', 'cmt_filename', 'cmt_added', 'cmt_removed',
-    'cmt_author_timestamp', 'cmt_author_email', 'cmt_ght_author_id',
+    'cmt_author_timestamp', 'cmt_author_raw_email', 'cmt_ght_author_id',
     'cmt_author_platform_username', 'data_collection_date',
   ],
   commit_messages: ['repo_id', 'cmt_hash', 'cmt_msg'],
   pull_requests: [
     'pull_request_id', 'repo_id', 'pr_src_number', 'pr_src_state', 'pr_src_title',
-    'pr_created_at', 'pr_merged_at', 'pr_augur_contributor_id', 'data_collection_date',
+    'pr_created_at', 'pr_merged_at', 'pr_updated_at', 'pr_html_url',
+    'pr_augur_contributor_id', 'data_collection_date',
   ],
   pull_request_reviews: [
-    'pull_request_id', 'cntrb_id', 'pr_review_src_id', 'pr_review_state',
-    'pr_review_submitted_at', 'data_collection_date',
+    'pr_review_id', 'pull_request_id', 'cntrb_id', 'pr_review_src_id',
+    'pr_review_state', 'pr_review_submitted_at', 'pr_review_html_url',
+    'data_collection_date',
   ],
   issues: [
-    'repo_id', 'gh_issue_number', 'issue_state', 'issue_title', 'created_at',
-    'reporter_id', 'pull_request', 'data_collection_date',
+    'issue_id', 'repo_id', 'gh_issue_number', 'issue_state', 'issue_title',
+    'created_at', 'updated_at', 'html_url', 'reporter_id', 'pull_request',
+    'data_collection_date',
   ],
   contributors: ['cntrb_id', 'cntrb_login'],
 };
