@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, boolean, integer, decimal, jsonb, date, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, boolean, integer, bigint, decimal, jsonb, date, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Projects table - tracks repositories to monitor
@@ -11,11 +11,18 @@ export const projects = pgTable('projects', {
   primaryLanguage: varchar('primary_language', { length: 50 }),
   governanceType: varchar('governance_type', { length: 50 }), // 'cncf', 'apache', 'linux-foundation'
   trackingEnabled: boolean('tracking_enabled').default(true),
+  // Contribution data source: 'github' (GitHub API) | 'collectoss' (CollectOSS DB)
+  dataSource: varchar('data_source', { length: 20 }).notNull().default('github'),
+  // CollectOSS data.repo.repo_id — resolved lazily from github org/repo
+  collectossRepoId: bigint('collectoss_repo_id', { mode: 'number' }),
+  // CollectOSS incremental cursor: max data_collection_date already ingested
+  collectossSyncedThrough: timestamp('collectoss_synced_through'),
   lastSyncAt: timestamp('last_sync_at'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
   uniqueRepo: uniqueIndex('unique_github_repo').on(table.githubOrg, table.githubRepo),
+  dataSourceIdx: index('projects_data_source_idx').on(table.dataSource),
 }));
 
 // Team members table - organization team registry

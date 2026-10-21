@@ -16,6 +16,12 @@
 | [Database Backups](database-backups.md) | S3 backup/restore, CronJobs, failure scenarios |
 | [GitHub API Usage](github-api-scaling.md) | Rate limits, capacity estimates, known limitations |
 
+## Data Sources
+
+| Doc | Description |
+|-----|-------------|
+| [CollectOSS Data Source](collectoss-integration.md) | Collecting contributions from CollectOSS, per-project source, sync semantics, rollout |
+
 ## Extending
 
 | Doc | Description |

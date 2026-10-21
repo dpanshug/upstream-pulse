@@ -11,6 +11,8 @@ import {
   Calendar,
   ExternalLink,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { DataSourceControl } from '../components/admin/DataSourceControl';
 
 import {
   DashboardData,
@@ -44,6 +46,7 @@ export default function ProjectDetail() {
   const { projectId, org } = useParams<{ projectId: string; org?: string }>();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isAdmin } = useAuth();
 
   const daysParam = searchParams.get('days');
   const selectedDays = daysParam !== null ? parseInt(daysParam, 10) : DEFAULT_PERIOD_DAYS;
@@ -87,6 +90,7 @@ export default function ProjectDetail() {
   const projectName = projectInfo?.name ?? 'Project';
   const githubOrg = projectInfo?.githubOrg;
   const githubRepo = projectInfo?.githubRepo;
+  const currentDataSource = projectInfo?.dataSource === 'collectoss' ? 'collectoss' : 'github';
   const isRefetching = isFetching && !isLoading;
 
   return (
@@ -111,7 +115,12 @@ export default function ProjectDetail() {
         {/* Page header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{projectName}</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold text-gray-900">{projectName}</h1>
+              {projectId && (
+                <DataSourceControl projectId={projectId} dataSource={currentDataSource} isAdmin={isAdmin} />
+              )}
+            </div>
             {githubOrg && githubRepo && (
               <a
                 href={`https://github.com/${githubOrg}/${githubRepo}`}

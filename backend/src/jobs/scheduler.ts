@@ -176,6 +176,7 @@ export class CollectionScheduler {
             projectId: project.id,
             jobType: 'sync',
             since: sinceDate.toISOString(),
+            incremental: true,
           },
           {
             priority: 1,
@@ -210,6 +211,7 @@ export class CollectionScheduler {
         projectId,
         jobType: 'full_sync',
         since: repoCreatedAt.toISOString(),
+        incremental: false,
       },
       {
         priority: 0, // Highest priority
@@ -247,6 +249,8 @@ export class CollectionScheduler {
         projectId,
         jobType: 'sync',
         since: sinceDate.toISOString(),
+        // No explicit date → "since last sync" (CollectOSS uses its own cursor)
+        incremental: !since,
         ...(phases && { phases }),
       },
       {

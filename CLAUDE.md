@@ -52,8 +52,38 @@ cd backend && npm run db:studio      # Drizzle Studio GUI
   job processing, Winston for logging
 - **Frontend**: React 18, Vite, TanStack React Query, React Router, Recharts,
   Tailwind CSS
+- **Data**: GitHub API (default) or CollectOSS DB (optional, per-project)
 - **Infra**: Docker Compose for local dev (Postgres + Redis), OpenShift for
   production, ArgoCD for GitOps deploys
+
+## Data Collection — GitHub or CollectOSS
+
+Contributions (commits, PRs, reviews, issues) come from one of two backends,
+chosen per project (`projects.data_source`):
+
+1. **GitHub API (default)** — `GitHubCollector` (Octokit REST + GraphQL).
+2. **CollectOSS (optional)** — `CollectossAdapter` reads a CollectOSS
+   PostgreSQL database read-only. Enabled by `COLLECTOSS_DATABASE_URL`.
+
+Both emit identical `ContributionRecord`s (same GitHub IDs) into the
+`contributions` table, so metrics and the dashboard are backend-agnostic and
+switching never duplicates rows. Governance, leadership and team sync always
+use GitHub.
+
+- `collectProjectContributions()` (`modules/collection/project-collection.ts`)
+  dispatches per run and falls back to GitHub if CollectOSS can't serve the repo.
+- CollectOSS incremental syncs use `projects.collectoss_synced_through`
+  (CollectOSS `data_collection_date` cursor), not `last_sync_at`.
+- All CollectOSS SQL lives in `collectoss-adapter.ts` / `collectoss-repo-resolver.ts`;
+  required columns are listed in `REQUIRED_COLUMNS` (`collectoss-health.ts`).
+- Env: `COLLECTOSS_DATABASE_URL`, `COLLECTOSS_SCHEMA` (default `data`),
+  `DEFAULT_DATA_SOURCE` (default `github`), `COLLECTOSS_FALLBACK_TO_GITHUB` (default `true`).
+
+Local testing: `docker compose --profile collectoss up -d collectoss-db`, set
+`COLLECTOSS_DATABASE_URL=postgresql://sample_user:sample_password@localhost:5434/sample_collected_data`.
+Adapter integration tests run when `COLLECTOSS_TEST_DATABASE_URL` is set.
+
+See [`docs/collectoss-integration.md`](docs/collectoss-integration.md).
 
 ## Key Patterns
 

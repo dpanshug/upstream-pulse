@@ -69,7 +69,13 @@ Both processes validate configuration on startup (`validateConfig()`) and exit i
 
 ## Data Collection Pipeline
 
-All data originates from GitHub and flows through a three-stage pipeline:
+Contribution data comes from the GitHub API by default, or — per project — from
+an optional [CollectOSS](collectoss-integration.md) database (`projects.data_source`).
+`collectProjectContributions()` picks the backend for each run; both emit the
+same records, so everything downstream is identical. Governance, leadership and
+team data always come from GitHub.
+
+Data flows through a three-stage pipeline:
 
 ```
 GitHub API ──► Collector ──► Identity Resolver ──► PostgreSQL
@@ -282,7 +288,7 @@ metrics_daily (deprecated — not used)
 
 ### Tables
 
-**`projects`** — Tracked GitHub repositories. Unique on `(github_org, github_repo)`. `lastSyncAt` marks where the next daily sync should start.
+**`projects`** — Tracked GitHub repositories. Unique on `(github_org, github_repo)`. `lastSyncAt` marks where the next daily sync should start. `dataSource` (`github` | `collectoss`) selects the contribution backend; `collectossRepoId` / `collectossSyncedThrough` hold the CollectOSS repo mapping and incremental cursor.
 
 **`team_members`** — Organization's team registry. Primary identifier is `github_username` (matched during identity resolution). Can be populated manually or via GitHub org sync (`source: 'manual' | 'github_org_sync'`). `githubUserId` is auto-fetched on creation for stable identity across username changes.
 

@@ -8,6 +8,8 @@ import { collectionWorker } from './jobs/workers/collection-worker.js';
 import { governanceWorker } from './jobs/workers/governance-worker.js';
 import { leadershipWorker } from './jobs/workers/leadership-worker.js';
 import { teamSyncWorker } from './jobs/workers/team-sync-worker.js';
+import { isCollectossConfigured, closeCollectossClient } from './shared/database/collectoss-client.js';
+import { checkCollectossHealth } from './modules/collection/collectoss-health.js';
 
 // Validate configuration on startup
 try {
@@ -20,6 +22,8 @@ try {
 logger.info('Starting worker process', {
   nodeEnv: config.nodeEnv,
   redisUrl: config.redisUrl,
+  collectoss: isCollectossConfigured() ? 'configured' : 'disabled',
+  defaultDataSource: config.defaultDataSource,
 });
 
 // Clean up stale 'running' job records left by previous crashes/restarts.
@@ -41,6 +45,11 @@ try {
   }
 } catch (error) {
   logger.warn('Failed to clean up stale job records', { error });
+}
+
+// CollectOSS health check (non-blocking, never throws) — logs schema/connectivity problems early
+if (isCollectossConfigured()) {
+  void checkCollectossHealth(true);
 }
 
 // Initialize scheduler
@@ -77,6 +86,12 @@ const shutdown = async () => {
     leadershipWorker.close(),
     teamSyncWorker.close(),
   ]);
+
+  try {
+    await closeCollectossClient();
+  } catch (error) {
+    logger.warn('Failed to close CollectOSS connection pool', { error: (error as Error).message });
+  }
 
   logger.info('Worker process stopped');
   process.exit(0);

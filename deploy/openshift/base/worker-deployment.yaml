@@ -64,6 +64,13 @@ spec:
                 secretKeyRef:
                   name: upstream-pulse-secrets
                   key: GITHUB_TEAM_TOKEN
+            # Optional: CollectOSS database (read-only). Absent key = CollectOSS disabled.
+            - name: COLLECTOSS_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: upstream-pulse-secrets
+                  key: COLLECTOSS_DATABASE_URL
+                  optional: true
           envFrom:
             - configMapRef:
                 name: upstream-pulse-config

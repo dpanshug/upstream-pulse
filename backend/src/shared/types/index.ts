@@ -32,6 +32,41 @@ export type NewCollectionJob = InferInsertModel<typeof schema.collectionJobs>;
 export type Report = InferSelectModel<typeof schema.reports>;
 export type NewReport = InferInsertModel<typeof schema.reports>;
 
+// ── Contribution collection ─────────────────────────────────────────
+
+/** Backends that can populate the contributions table. */
+export const DATA_SOURCES = ['github', 'collectoss'] as const;
+export type DataSource = (typeof DATA_SOURCES)[number];
+
+export type CollectionPhase = 'commits' | 'pull_requests' | 'reviews' | 'issues';
+
+export type CollectionProgressCallback = (detail: { phase: string; collected: number }) => void;
+export type CollectionPhaseCallback = (phase: string, records: ContributionRecord[]) => Promise<void>;
+
+// Collection record — shared between GitHubCollector and CollectOSSAdapter
+export interface ContributionRecord {
+  type: 'commit' | 'pr' | 'review' | 'issue';
+  githubId: string;
+  author?: string;
+  email?: string;
+  date: Date;
+  isMerged?: boolean;
+  linesAdded?: number;
+  linesDeleted?: number;
+  filesChanged?: number;
+  metadata?: ContributionMetadata;
+}
+
+/** Free-form metadata stored in contributions.metadata (jsonb). */
+export interface ContributionMetadata {
+  url?: string;
+  author?: string;
+  title?: string;
+  state?: string;
+  dataSource?: DataSource;
+  [key: string]: unknown;
+}
+
 // Custom types
 export interface Repository {
   name: string;
