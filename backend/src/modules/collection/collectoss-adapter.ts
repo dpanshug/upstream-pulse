@@ -216,6 +216,16 @@ export class CollectossAdapter {
    * a single `(Merge commit)` row — those are skipped to match GitHubCollector.
    * Date = author timestamp (GitHubCollector uses commit.author.date).
    * Keyset-paginated on SHA (index: repo_id, cmt_commit_hash).
+   *
+   * Author = contributors.cntrb_login via cmt_ght_author_id (the canonical,
+   * actively maintained identity). cmt_author_platform_username is only a
+   * fallback: CollectOSS maintainers note it is not reliably populated and it
+   * is proposed for removal (chaoss/CollectOSS#215).
+   *
+   * Upcoming CollectOSS rename: cmt_ght_author_id (and pr_augur_contributor_id
+   * below) are slated to lose their legacy names (chaoss/CollectOSS#513).
+   * When that ships, update the column names here and in REQUIRED_COLUMNS
+   * (collectoss-health.ts); the health check reports them as missing until then.
    */
   private async collectCommits(repoId: number, window: CollectossWindow, repoUrl: string, flush: Flush): Promise<void> {
     const sql = this.sql;
@@ -263,7 +273,7 @@ export class CollectossAdapter {
           ? sql<{ id: string; login: string | null }[]>`
               SELECT cntrb_id::text AS id, cntrb_login AS login
               FROM ${collectossTable(sql, 'contributors')}
-              WHERE cntrb_id::text IN ${sql(authorIds)}
+              WHERE cntrb_id = ANY(${authorIds}::uuid[])
             `
           : Promise.resolve([]),
         sql<{ sha: string; msg: string }[]>`
@@ -276,7 +286,7 @@ export class CollectossAdapter {
       const messageBySha = new Map(messages.map((m) => [m.sha, m.msg]));
 
       const records: ContributionRecord[] = rows.map((row) => {
-        const author = login(row.platform_username) ?? login(row.author_id ? loginById.get(row.author_id) : undefined);
+        const author = login(row.author_id ? loginById.get(row.author_id) : undefined) ?? login(row.platform_username);
         return {
           type: 'commit',
           githubId: row.sha,

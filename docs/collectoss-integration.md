@@ -128,8 +128,9 @@ rows is harmless — inserts are idempotent upserts.
   grouped by SHA and `cmt_added`/`cmt_removed` summed. Facade records merge
   commits as a single `(Merge commit)` row; these are skipped, matching
   GitHubCollector. Date = author timestamp (`cmt_author_timestamp`), as on
-  GitHub. Author = `cmt_author_platform_username`, else the login of
-  `cmt_ght_author_id` in `contributors`. Commit messages come from
+  GitHub. Author = the `contributors.cntrb_login` of `cmt_ght_author_id`
+  (canonical identity), falling back to `cmt_author_platform_username`, which
+  CollectOSS does not reliably populate (chaoss/CollectOSS#215). Commit messages come from
   `commit_messages`.
 - **PRs / issues / reviews** — author = `contributors.cntrb_login`. Items without
   a resolvable author are skipped (GitHubCollector skips deleted users too).
@@ -209,6 +210,7 @@ COLLECTOSS_TEST_DATABASE_URL=postgresql://sample_user:sample_password@localhost:
 | Production access | Read-only credentials + network path from the OpenShift cluster to the OSPO CollectOSS instance (`#proj-ospo-aspen`) |
 | Repo coverage | Which tracked repos (kubeflow, kserve, vllm-project, …) the instance collects; request additions |
 | Refresh cadence | ~weekly on the OSPO instance — dashboards for CollectOSS projects lag by up to a week |
+| Upcoming column renames | `cmt_ght_author_id` / `pr_augur_contributor_id` will drop their legacy names (chaoss/CollectOSS#513, targeted for 1.1). The health check will report them as missing; update `collectoss-adapter.ts` + `REQUIRED_COLUMNS` when the OSPO instance upgrades |
 | Schema stability | The data team recommends a future "stable" schema; set `COLLECTOSS_SCHEMA` when it exists (column changes go in `collectoss-adapter.ts` + `REQUIRED_COLUMNS`) |
 | Author resolution | Measure unresolved-author rate per repo during validation |
 

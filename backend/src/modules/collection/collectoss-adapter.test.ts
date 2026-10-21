@@ -153,6 +153,23 @@ describe.skipIf(!TEST_URL)('CollectossAdapter (sample CollectOSS DB)', () => {
     expect(commits.filter(c => typeof c.metadata?.message === 'string').length).toBeGreaterThan(0);
   });
 
+  it('resolves commit authors from the contributors table (cmt_ght_author_id → cntrb_login)', async () => {
+    const { byPhase } = await collect({}, ['commits']);
+    const expected = await sql<{ sha: string; login: string }[]>`
+      SELECT c.cmt_commit_hash AS sha, max(ct.cntrb_login) AS login
+      FROM ${sql(`${SCHEMA}.commits`)} c
+      JOIN ${sql(`${SCHEMA}.contributors`)} ct ON ct.cntrb_id = c.cmt_ght_author_id
+      WHERE c.repo_id = ${repoId}
+        AND ct.cntrb_login NOT IN ('not-provided', 'nan', 'nobody', 'ghost')
+      GROUP BY c.cmt_commit_hash
+    `;
+    const loginBySha = new Map(expected.map(r => [r.sha, r.login]));
+    const commits = byPhase.get('commits') ?? [];
+    const checked = commits.filter(c => loginBySha.has(c.githubId));
+    expect(checked.length).toBeGreaterThan(0);
+    for (const c of checked) expect(c.author).toBe(loginBySha.get(c.githubId));
+  });
+
   it('filters by contribution date for range syncs', async () => {
     const all = await collect({}, ['pull_requests']);
     const prs = all.byPhase.get('pull_requests') ?? [];
