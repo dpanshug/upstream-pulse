@@ -40,6 +40,13 @@ export const config = {
     .map(s => s.trim())
     .filter(Boolean),
 
+  // Org registry autoseed (opt-in): on startup, insert the orgs declared in
+  // ORG_REGISTRY (collection config) into the orgs table so collection can
+  // start without manual setup. Defaults to false — each deployment should
+  // manage its own org list via the UI/API rather than inheriting the
+  // registry defaults.
+  orgRegistryAutoseed: process.env.ORG_REGISTRY_AUTOSEED === 'true',
+
   // Insight generation (Google Gemini)
   googleAIApiKey: process.env.GOOGLE_AI_API_KEY || '',
 
