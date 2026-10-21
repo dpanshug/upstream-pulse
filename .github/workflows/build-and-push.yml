@@ -115,7 +115,10 @@ jobs:
       - name: Commit image tags on main and preprod
         if: github.ref_name != 'rhai-org-pulse'
         env:
-          GH_TOKEN: ${{ github.token }}
+          # PAT (repo admin) so this commit can bypass the main-protection
+          # ruleset (PR + required checks). The default github.token is not a
+          # bypass actor, so its push is rejected (GH013).
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
