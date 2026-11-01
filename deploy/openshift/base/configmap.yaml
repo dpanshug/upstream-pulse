@@ -11,6 +11,9 @@ data:
   LOG_LEVEL: "info"
   PROMETHEUS_ENABLED: "true"
   GITHUB_TEAM_ORG: "opendatahub-io"
+  # Opt-in: insert ORG_REGISTRY collection defaults into the DB at
+  # startup. Off by default — the org list is managed via the UI/API.
+  ORG_REGISTRY_AUTOSEED: "false"
   ADMIN_USERS: "admin"
   ADMIN_GROUPS: ""
   # Contribution data source for new projects: github | collectoss

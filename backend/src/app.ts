@@ -1487,17 +1487,15 @@ const start = async () => {
     logger.info(`Environment: ${config.nodeEnv}`);
     logger.info(`Health check: http://localhost:${config.port}/health`);
 
-    // Reconcile registry collection config with DB orgs
+    // Reconcile registry collection config with DB orgs (opt-in via
+    // ORG_REGISTRY_AUTOSEED; off by default so fresh deployments start
+    // with an empty org list managed via the UI/API)
     (async () => {
+      if (!config.orgRegistryAutoseed) return;
       try {
-        const { ORG_REGISTRY } = await import('./shared/config/org-registry.js');
-        for (const cfg of ORG_REGISTRY) {
-          await db.insert(orgs).values({
-            githubOrg: cfg.githubOrg.toLowerCase(),
-            name: cfg.githubOrg,
-            governanceModel: 'none',
-          }).onConflictDoNothing();
-        }
+        const { seedOrgsFromRegistry } = await import('./shared/database/org-registry-seed.js');
+        const inserted = await seedOrgsFromRegistry();
+        logger.info('Org registry autoseed complete', { inserted });
       } catch (err) {
         logger.warn('Registry reconciliation skipped', { error: (err as Error).message });
       }
