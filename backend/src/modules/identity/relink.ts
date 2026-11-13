@@ -15,10 +15,16 @@
  * `\u0000`, because jsonb cannot represent it — and the failure was swallowed,
  * so the relink silently did nothing for the whole batch.
  *
- * Splitting the text form never parses JSON. It matches both shapes because
- * PostgreSQL's jsonb text output is canonical: no whitespace, and inner quotes
- * escaped as `\"`. The pattern below relies on exactly that format, so if the
- * column type ever changes away from jsonb this must be revisited.
+ * The expression below never parses JSON, so a `\u0000` row cannot abort it:
+ *
+ *   - jsonb *string*: `#>> '{}'` returns the inner text with escapes resolved,
+ *     giving `{"author":"login"}`; all rows in production are this shape today.
+ *   - jsonb *object*: `::text` gives the same shape.
+ *
+ * Both branches are then split on `"author":"`, which relies on PostgreSQL's
+ * canonical jsonb text output (no whitespace). Handling both shapes matters:
+ * the writer double-encodes today, but a driver or drizzle upgrade could switch
+ * it to a plain object and silently break the relink again.
  */
 
 import { sql } from 'drizzle-orm';
@@ -72,7 +78,12 @@ export async function relinkOrphanedRecords(db: Db): Promise<RelinkResult> {
       FROM team_members tm
       WHERE c.team_member_id IS NULL
         AND tm.github_username IS NOT NULL
-        AND lower(split_part(split_part(c.metadata::text, '"author\\":\\"', 2), '\\"', 1))
+        AND lower(split_part(split_part(
+              case when jsonb_typeof(c.metadata) = 'string'
+                   then c.metadata #>> '{}'
+                   else c.metadata::text
+              end,
+              '"author":"', 2), '"', 1))
             = lower(tm.github_username)
     `));
   } catch (error) {
@@ -135,7 +146,12 @@ export async function relinkForMember(
       UPDATE contributions
       SET team_member_id = ${memberId}
       WHERE team_member_id IS NULL
-        AND lower(split_part(split_part(metadata::text, '"author\\":\\"', 2), '\\"', 1))
+        AND lower(split_part(split_part(
+              case when jsonb_typeof(metadata) = 'string'
+                   then metadata #>> '{}'
+                   else metadata::text
+              end,
+              '"author":"', 2), '"', 1))
             = lower(${githubUsername})
     `));
   } catch (error) {
