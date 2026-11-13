@@ -52,6 +52,25 @@ function errorMessage(error: unknown): string {
 }
 
 /**
+ * One row per lowercase GitHub username, used as the join target for the relink
+ * statements.
+ *
+ * `team_members.github_username` is not unique (only `github_user_id` and
+ * `primary_email` are), so `UPDATE ... FROM team_members` could match the same
+ * orphaned row twice and let PostgreSQL choose arbitrarily which member wins.
+ * That would silently attach a departed person's history to a duplicate row, or
+ * the other way round. Deduplicating here makes the choice deterministic:
+ * prefer the active member, then the oldest record.
+ */
+const identityTargets = sql`
+  SELECT DISTINCT ON (lower(github_username))
+         id, lower(github_username) AS username
+  FROM team_members
+  WHERE github_username IS NOT NULL
+  ORDER BY lower(github_username), is_active DESC, created_at ASC
+`;
+
+/**
  * Link every orphaned contribution, governance role and leadership position to
  * the member whose GitHub login matches.
  *
@@ -74,17 +93,16 @@ export async function relinkOrphanedRecords(db: Db): Promise<RelinkResult> {
   try {
     result.contributions = rowCount(await db.execute(sql`
       UPDATE contributions c
-      SET team_member_id = tm.id
-      FROM team_members tm
+      SET team_member_id = m.id
+      FROM (${identityTargets}) m
       WHERE c.team_member_id IS NULL
-        AND tm.github_username IS NOT NULL
         AND lower(split_part(split_part(
               case when jsonb_typeof(c.metadata) = 'string'
                    then c.metadata #>> '{}'
                    else c.metadata::text
               end,
               '"author":"', 2), '"', 1))
-            = lower(tm.github_username)
+            = m.username
     `));
   } catch (error) {
     result.errors.push({ table: 'contributions', message: errorMessage(error) });
@@ -93,12 +111,11 @@ export async function relinkOrphanedRecords(db: Db): Promise<RelinkResult> {
   try {
     result.maintainerStatus = rowCount(await db.execute(sql`
       UPDATE maintainer_status ms
-      SET team_member_id = tm.id
-      FROM team_members tm
+      SET team_member_id = m.id
+      FROM (${identityTargets}) m
       WHERE ms.team_member_id IS NULL
         AND ms.github_username IS NOT NULL
-        AND tm.github_username IS NOT NULL
-        AND lower(ms.github_username) = lower(tm.github_username)
+        AND lower(ms.github_username) = m.username
     `));
   } catch (error) {
     result.errors.push({ table: 'maintainer_status', message: errorMessage(error) });
@@ -107,12 +124,11 @@ export async function relinkOrphanedRecords(db: Db): Promise<RelinkResult> {
   try {
     result.leadershipPositions = rowCount(await db.execute(sql`
       UPDATE leadership_positions lp
-      SET team_member_id = tm.id
-      FROM team_members tm
+      SET team_member_id = m.id
+      FROM (${identityTargets}) m
       WHERE lp.team_member_id IS NULL
         AND lp.github_username IS NOT NULL
-        AND tm.github_username IS NOT NULL
-        AND lower(lp.github_username) = lower(tm.github_username)
+        AND lower(lp.github_username) = m.username
     `));
   } catch (error) {
     result.errors.push({ table: 'leadership_positions', message: errorMessage(error) });
