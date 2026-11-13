@@ -45,6 +45,23 @@ describe('relinkOrphanedRecords', () => {
     expect(result.total).toBe(0);
     expect(result.errors).toEqual([]);
   });
+
+  it('joins against one deduplicated identity row per username', async () => {
+    const execute = vi.fn(async (_query: unknown) => ({ rowCount: 0 }));
+    await relinkOrphanedRecords({ execute } as unknown as DbArg);
+
+    // `github_username` is not unique, so joining team_members directly could
+    // match the same orphaned row twice and let PostgreSQL pick which member
+    // receives it. Every statement must use the deduplicated target instead.
+    const statements = execute.mock.calls.map(([query]) =>
+      JSON.stringify((query as { queryChunks?: unknown[] }).queryChunks)
+    );
+    expect(statements).toHaveLength(3);
+    for (const statement of statements) {
+      expect(statement).toContain('DISTINCT ON (lower(github_username))');
+      expect(statement).not.toContain('FROM team_members tm');
+    }
+  });
 });
 
 describe('relinkForMember', () => {
