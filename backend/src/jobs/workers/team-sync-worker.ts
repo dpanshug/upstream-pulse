@@ -17,7 +17,8 @@ import { logger } from '../../shared/utils/logger.js';
 import { db } from '../../shared/database/client.js';
 import { collectionJobs, teamMembers } from '../../shared/database/schema.js';
 import { fetchGitHubOrgMembers, fetchGitHubUser } from '../../shared/utils/github.js';
-import { eq, sql } from 'drizzle-orm';
+import { relinkOrphanedRecords } from '../../modules/identity/relink.js';
+import { eq } from 'drizzle-orm';
 
 interface TeamSyncJobData {
   trigger: 'scheduled' | 'manual';
@@ -191,59 +192,23 @@ export const teamSyncWorker = new Worker<TeamSyncJobData>(
 
       // --- Phase 3: Re-link orphaned records across all tables ---
       // Runs on every sync (not only when members were added) so a username
-      // correction or a previously failed relink self-heals. Author logins are
-      // extracted without a jsonb cast: `(metadata #>> '{}')::jsonb` throws on
-      // rows that contain \u0000, which used to abort the whole relink.
-      // Matching is case-insensitive and ignores is_active so that history for
-      // departed members stays attributed.
-      try {
-        const result = await db.execute(sql`
-          UPDATE contributions c
-          SET team_member_id = tm.id
-          FROM team_members tm
-          WHERE c.team_member_id IS NULL
-            AND tm.github_username IS NOT NULL
-            AND lower(split_part(split_part(c.metadata::text, '"author\\":\\"', 2), '\\"', 1))
-                = lower(tm.github_username)
-        `) as unknown as { rowCount: number };
-        stats.relinked += result.rowCount;
-        logger.info(`Re-linked ${result.rowCount} orphaned contributions to team members`);
-      } catch (error) {
-        logger.error('Error re-linking orphaned contributions', { error });
-      }
+      // correction or a previously failed relink self-heals. The shared helper
+      // avoids the jsonb cast that throws on `\u0000` rows, matches
+      // case-insensitively, and keeps history attributed to departed members.
+      const relinkResult = await relinkOrphanedRecords(db);
+      stats.relinked += relinkResult.total;
 
-      // Re-link governance roles (maintainer_status)
-      try {
-        const result = await db.execute(sql`
-          UPDATE maintainer_status ms
-          SET team_member_id = tm.id
-          FROM team_members tm
-          WHERE ms.team_member_id IS NULL
-            AND ms.github_username IS NOT NULL
-            AND tm.github_username IS NOT NULL
-            AND lower(ms.github_username) = lower(tm.github_username)
-        `) as unknown as { rowCount: number };
-        stats.relinked += result.rowCount;
-        logger.info(`Re-linked ${result.rowCount} orphaned governance roles to team members`);
-      } catch (error) {
-        logger.error('Error re-linking orphaned governance roles', { error });
+      if (relinkResult.contributions > 0) {
+        logger.info(`Re-linked ${relinkResult.contributions} orphaned contributions to team members`);
       }
-
-      // Re-link leadership positions
-      try {
-        const result = await db.execute(sql`
-          UPDATE leadership_positions lp
-          SET team_member_id = tm.id
-          FROM team_members tm
-          WHERE lp.team_member_id IS NULL
-            AND lp.github_username IS NOT NULL
-            AND tm.github_username IS NOT NULL
-            AND lower(lp.github_username) = lower(tm.github_username)
-        `) as unknown as { rowCount: number };
-        stats.relinked += result.rowCount;
-        logger.info(`Re-linked ${result.rowCount} orphaned leadership positions to team members`);
-      } catch (error) {
-        logger.error('Error re-linking orphaned leadership positions', { error });
+      if (relinkResult.maintainerStatus > 0) {
+        logger.info(`Re-linked ${relinkResult.maintainerStatus} orphaned governance roles to team members`);
+      }
+      if (relinkResult.leadershipPositions > 0) {
+        logger.info(`Re-linked ${relinkResult.leadershipPositions} orphaned leadership positions to team members`);
+      }
+      if (relinkResult.errors.length > 0) {
+        logger.error('Error re-linking orphaned records', { errors: relinkResult.errors });
       }
 
       // Update job record

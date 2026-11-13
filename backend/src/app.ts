@@ -19,7 +19,8 @@ import { DATA_SOURCES } from './shared/types/index.js';
 import { errorMessage, isCollectossConfigured } from './shared/database/collectoss-client.js';
 import { resolveCollectossRepoId } from './modules/collection/collectoss-repo-resolver.js';
 import { checkCollectossHealth } from './modules/collection/collectoss-health.js';
-import { findDeactivationCandidates } from './modules/identity/roster-diff.js';
+import { findDeactivationCandidates, type DeactivationCandidate } from './modules/identity/roster-diff.js';
+import { relinkForMember, relinkOrphanedRecords } from './modules/identity/relink.js';
 
 // Validate configuration on startup
 try {
@@ -441,39 +442,23 @@ app.post<{
     logger.info(`Created team member: ${name} (@${githubUsername})`);
 
     // Re-link orphaned contributions/governance records that were collected
-    // before this team member existed in the database
+    // before this team member existed in the database. Shared helper, so the
+    // author extraction stays null-byte safe and consistent with the bulk sync.
     let relinked = { contributions: 0, maintainerStatus: 0, leadershipPositions: 0 };
     if (githubUsername) {
-      try {
-        const contribResult = await db.execute(sql`
-          UPDATE contributions
-          SET team_member_id = ${newMember.id}
-          WHERE team_member_id IS NULL
-            AND LOWER((metadata #>> '{}')::jsonb->>'author') = LOWER(${githubUsername})
-        `) as unknown as { count: number; rowCount?: number };
-        relinked.contributions = contribResult.count ?? contribResult.rowCount ?? 0;
+      const relinkResult = await relinkForMember(db, newMember.id, githubUsername);
+      relinked = {
+        contributions: relinkResult.contributions,
+        maintainerStatus: relinkResult.maintainerStatus,
+        leadershipPositions: relinkResult.leadershipPositions,
+      };
 
-        const msResult = await db.execute(sql`
-          UPDATE maintainer_status
-          SET team_member_id = ${newMember.id}
-          WHERE team_member_id IS NULL
-            AND LOWER(github_username) = LOWER(${githubUsername})
-        `) as unknown as { count: number; rowCount?: number };
-        relinked.maintainerStatus = msResult.count ?? msResult.rowCount ?? 0;
-
-        const lpResult = await db.execute(sql`
-          UPDATE leadership_positions
-          SET team_member_id = ${newMember.id}
-          WHERE team_member_id IS NULL
-            AND LOWER(github_username) = LOWER(${githubUsername})
-        `) as unknown as { count: number; rowCount?: number };
-        relinked.leadershipPositions = lpResult.count ?? lpResult.rowCount ?? 0;
-
-        if (relinked.contributions > 0 || relinked.maintainerStatus > 0 || relinked.leadershipPositions > 0) {
-          logger.info(`Re-linked orphaned records for @${githubUsername}`, relinked);
-        }
-      } catch (relinkError) {
-        logger.warn(`Failed to re-link orphaned records for @${githubUsername}`, { error: relinkError });
+      if (relinkResult.errors.length > 0) {
+        logger.warn(`Failed to re-link some orphaned records for @${githubUsername}`, {
+          errors: relinkResult.errors,
+        });
+      } else if (relinked.contributions > 0 || relinked.maintainerStatus > 0 || relinked.leadershipPositions > 0) {
+        logger.info(`Re-linked orphaned records for @${githubUsername}`, relinked);
       }
     }
 
@@ -717,8 +702,11 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
     const incomingUsernames = new Set<string>();
     let deactivated = 0;
     let totalRelinked = 0;
-    // Reported but not acted on unless the caller opts in.
-    let wouldDeactivate: string[] = [];
+    // Reported but not acted on unless the caller opts in. Kept as the full
+    // candidate list (id/name/login) so email-only members are visible too —
+    // previously the array dropped them while the deactivation step still
+    // acted on them, so the preview could under-report what would happen.
+    let wouldDeactivate: DeactivationCandidate[] = [];
 
     const toUpdate: Array<{ id: string; person: typeof people[0]; existing: typeof existingMembers[0] }> = [];
     const toInsert: typeof people = [];
@@ -823,14 +811,12 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
         incomingUsernames,
         deactivationSources,
       });
-      wouldDeactivate = candidates
-        .map(c => c.githubUsername)
-        .filter((u): u is string => Boolean(u));
+      wouldDeactivate = candidates;
 
       if (candidates.length > 0 && !deactivateMissing) {
         logger.warn('Bulk sync: members absent from payload are kept active (report-only)', {
           count: candidates.length,
-          sample: wouldDeactivate.slice(0, 20),
+          sample: candidates.slice(0, 20).map(c => c.githubUsername ?? c.name),
         });
       }
 
@@ -847,57 +833,19 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
 
     // Relink orphaned data set-based, for every member, on every sync.
     //
-    // Two properties matter here:
-    //  - null-byte safety: the old per-member loop cast
-    //    `(metadata #>> '{}')::jsonb`, which throws on rows containing \u0000.
-    //    The error was swallowed as "non-fatal", so members could be inserted
-    //    with relinked = 0. The author login is now extracted with split_part,
-    //    which never parses JSON.
+    // Shared with the GitHub org-sync worker so the two paths cannot drift
+    // again. Two properties matter here:
+    //  - null-byte safety: the helper never re-parses `metadata` as jsonb, which
+    //    throws on `\u0000` rows and used to be swallowed as "non-fatal", so a
+    //    member could be inserted with relinked = 0.
     //  - convergence: this runs whether or not members were newly inserted, so
     //    a username correction or a previously failed relink self-heals.
-    try {
-      const contribResult = await db.execute(sql`
-        UPDATE contributions c
-        SET team_member_id = tm.id
-        FROM team_members tm
-        WHERE c.team_member_id IS NULL
-          AND tm.github_username IS NOT NULL
-          AND lower(split_part(split_part(c.metadata::text, '"author\\":\\"', 2), '\\"', 1))
-              = lower(tm.github_username)
-      `) as unknown as { rowCount?: number };
-      totalRelinked += contribResult.rowCount ?? 0;
-    } catch (relinkError) {
-      logger.warn('Bulk sync: contribution relink failed (non-fatal)', { error: relinkError });
-    }
-
-    try {
-      const msResult = await db.execute(sql`
-        UPDATE maintainer_status ms
-        SET team_member_id = tm.id
-        FROM team_members tm
-        WHERE ms.team_member_id IS NULL
-          AND ms.github_username IS NOT NULL
-          AND tm.github_username IS NOT NULL
-          AND lower(ms.github_username) = lower(tm.github_username)
-      `) as unknown as { rowCount?: number };
-      totalRelinked += msResult.rowCount ?? 0;
-    } catch (relinkError) {
-      logger.warn('Bulk sync: maintainer status relink failed (non-fatal)', { error: relinkError });
-    }
-
-    try {
-      const lpResult = await db.execute(sql`
-        UPDATE leadership_positions lp
-        SET team_member_id = tm.id
-        FROM team_members tm
-        WHERE lp.team_member_id IS NULL
-          AND lp.github_username IS NOT NULL
-          AND tm.github_username IS NOT NULL
-          AND lower(lp.github_username) = lower(tm.github_username)
-      `) as unknown as { rowCount?: number };
-      totalRelinked += lpResult.rowCount ?? 0;
-    } catch (relinkError) {
-      logger.warn('Bulk sync: leadership relink failed (non-fatal)', { error: relinkError });
+    const relinkResult = await relinkOrphanedRecords(db);
+    totalRelinked += relinkResult.total;
+    if (relinkResult.errors.length > 0) {
+      logger.warn('Bulk sync: some relink statements failed (non-fatal)', {
+        errors: relinkResult.errors,
+      });
     }
 
     // Queue governance + leadership refresh if new members were added (outside transaction)
