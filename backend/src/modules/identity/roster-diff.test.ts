@@ -6,6 +6,7 @@ function member(overrides: Partial<RosterMember> & { id: string }): RosterMember
     isActive: true,
     source: 'org_pulse_roster',
     githubUsername: null,
+    name: 'Test Member',
     ...overrides,
   };
 }
@@ -19,7 +20,7 @@ describe('findDeactivationCandidates', () => {
       deactivationSources: ['org_pulse_roster'],
     });
 
-    expect(result).toEqual([{ id: 'a', githubUsername: 'alice' }]);
+    expect(result).toEqual([{ id: 'a', name: 'Test Member', githubUsername: 'alice' }]);
   });
 
   it('does not return a member present in the payload, regardless of case', () => {
@@ -77,6 +78,6 @@ describe('findDeactivationCandidates', () => {
       deactivationSources: ['org_pulse_roster'],
     });
 
-    expect(result).toEqual([{ id: 'a', githubUsername: null }]);
+    expect(result).toEqual([{ id: 'a', name: 'Test Member', githubUsername: null }]);
   });
 });

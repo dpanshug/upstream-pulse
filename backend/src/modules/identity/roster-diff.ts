@@ -13,10 +13,12 @@ export interface RosterMember {
   isActive: boolean | null;
   source: string | null;
   githubUsername: string | null;
+  name: string;
 }
 
 export interface DeactivationCandidate {
   id: string;
+  name: string;
   githubUsername: string | null;
 }
 
@@ -44,5 +46,5 @@ export function findDeactivationCandidates(params: {
         deactivationSources.includes(m.source) &&
         !(m.githubUsername && incomingUsernames.has(m.githubUsername.toLowerCase()))
     )
-    .map((m) => ({ id: m.id, githubUsername: m.githubUsername }));
+    .map((m) => ({ id: m.id, name: m.name, githubUsername: m.githubUsername }));
 }
