@@ -19,6 +19,8 @@ import { DATA_SOURCES } from './shared/types/index.js';
 import { errorMessage, isCollectossConfigured } from './shared/database/collectoss-client.js';
 import { resolveCollectossRepoId } from './modules/collection/collectoss-repo-resolver.js';
 import { checkCollectossHealth } from './modules/collection/collectoss-health.js';
+import { findDeactivationCandidates, type DeactivationCandidate } from './modules/identity/roster-diff.js';
+import { relinkForMember, relinkOrphanedRecords } from './modules/identity/relink.js';
 
 // Validate configuration on startup
 try {
@@ -440,39 +442,23 @@ app.post<{
     logger.info(`Created team member: ${name} (@${githubUsername})`);
 
     // Re-link orphaned contributions/governance records that were collected
-    // before this team member existed in the database
+    // before this team member existed in the database. Shared helper, so the
+    // author extraction stays null-byte safe and consistent with the bulk sync.
     let relinked = { contributions: 0, maintainerStatus: 0, leadershipPositions: 0 };
     if (githubUsername) {
-      try {
-        const contribResult = await db.execute(sql`
-          UPDATE contributions
-          SET team_member_id = ${newMember.id}
-          WHERE team_member_id IS NULL
-            AND LOWER((metadata #>> '{}')::jsonb->>'author') = LOWER(${githubUsername})
-        `) as unknown as { count: number; rowCount?: number };
-        relinked.contributions = contribResult.count ?? contribResult.rowCount ?? 0;
+      const relinkResult = await relinkForMember(db, newMember.id, githubUsername);
+      relinked = {
+        contributions: relinkResult.contributions,
+        maintainerStatus: relinkResult.maintainerStatus,
+        leadershipPositions: relinkResult.leadershipPositions,
+      };
 
-        const msResult = await db.execute(sql`
-          UPDATE maintainer_status
-          SET team_member_id = ${newMember.id}
-          WHERE team_member_id IS NULL
-            AND LOWER(github_username) = LOWER(${githubUsername})
-        `) as unknown as { count: number; rowCount?: number };
-        relinked.maintainerStatus = msResult.count ?? msResult.rowCount ?? 0;
-
-        const lpResult = await db.execute(sql`
-          UPDATE leadership_positions
-          SET team_member_id = ${newMember.id}
-          WHERE team_member_id IS NULL
-            AND LOWER(github_username) = LOWER(${githubUsername})
-        `) as unknown as { count: number; rowCount?: number };
-        relinked.leadershipPositions = lpResult.count ?? lpResult.rowCount ?? 0;
-
-        if (relinked.contributions > 0 || relinked.maintainerStatus > 0 || relinked.leadershipPositions > 0) {
-          logger.info(`Re-linked orphaned records for @${githubUsername}`, relinked);
-        }
-      } catch (relinkError) {
-        logger.warn(`Failed to re-link orphaned records for @${githubUsername}`, { error: relinkError });
+      if (relinkResult.errors.length > 0) {
+        logger.warn(`Failed to re-link some orphaned records for @${githubUsername}`, {
+          errors: relinkResult.errors,
+        });
+      } else if (relinked.contributions > 0 || relinked.maintainerStatus > 0 || relinked.leadershipPositions > 0) {
+        logger.info(`Re-linked orphaned records for @${githubUsername}`, relinked);
       }
     }
 
@@ -662,6 +648,10 @@ app.post<{
 const bulkSyncSchema = z.object({
   source: z.string().min(1),
   replacesSources: z.array(z.string()).optional().default([]),
+  // Deactivating members that are simply absent from one payload is dangerous:
+  // a truncated or incomplete roster silently removes real people. Default is
+  // report-only; callers must opt in explicitly.
+  deactivateMissing: z.boolean().optional().default(false),
   people: z.array(z.object({
     name: z.string().min(1),
     email: z.string().nullable().optional(),
@@ -682,7 +672,7 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
       return { error: 'Invalid request body', details: parsed.error.flatten() };
     }
 
-    const { source, replacesSources, people } = parsed.data;
+    const { source, replacesSources, people, deactivateMissing } = parsed.data;
     const deactivationSources = [source, ...replacesSources];
 
     const seenUsernames = new Set<string>();
@@ -712,6 +702,11 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
     const incomingUsernames = new Set<string>();
     let deactivated = 0;
     let totalRelinked = 0;
+    // Reported but not acted on unless the caller opts in. Kept as the full
+    // candidate list (id/name/login) so email-only members are visible too —
+    // previously the array dropped them while the deactivation step still
+    // acted on them, so the preview could under-report what would happen.
+    let wouldDeactivate: DeactivationCandidate[] = [];
 
     const toUpdate: Array<{ id: string; person: typeof people[0]; existing: typeof existingMembers[0] }> = [];
     const toInsert: typeof people = [];
@@ -730,8 +725,6 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
         toInsert.push(person);
       }
     }
-
-    const newlyInserted: Array<{ id: string; githubUsername: string }> = [];
 
     await db.transaction(async (tx) => {
       // Bulk update existing rows in chunks (single UPDATE per chunk via FROM VALUES)
@@ -778,7 +771,6 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
 
           for (const m of insertedRows) {
             processedIds.add(m.id);
-            if (m.githubUsername) newlyInserted.push({ id: m.id, githubUsername: m.githubUsername });
           }
           inserted = insertedRows.length;
         } catch (insertError) {
@@ -798,7 +790,6 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
               if (newMember) {
                 processedIds.add(newMember.id);
                 inserted++;
-                if (newMember.githubUsername) newlyInserted.push({ id: newMember.id, githubUsername: newMember.githubUsername });
               }
             } catch (rowError) {
               logger.warn(`Bulk sync: skipping ${person.name}`, { error: rowError });
@@ -807,13 +798,30 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
         }
       }
 
-      // Batch deactivate stale rows
-      const idsToDeactivate = existingMembers
-        .filter(m => m.isActive && !processedIds.has(m.id) && m.source && deactivationSources.includes(m.source)
-          && !(m.githubUsername && incomingUsernames.has(m.githubUsername.toLowerCase())))
-        .map(m => m.id);
+      // Batch deactivate stale rows.
+      //
+      // Report-only by default. A roster that is temporarily incomplete (a
+      // failed upstream fetch, a partial export, a person mid-transfer between
+      // teams) would otherwise deactivate real, active people on a single push.
+      // Callers opt in with `deactivateMissing: true` once the diff has been
+      // reviewed and is genuinely empty.
+      const candidates = findDeactivationCandidates({
+        existingMembers,
+        processedIds,
+        incomingUsernames,
+        deactivationSources,
+      });
+      wouldDeactivate = candidates;
 
-      if (idsToDeactivate.length > 0) {
+      if (candidates.length > 0 && !deactivateMissing) {
+        logger.warn('Bulk sync: members absent from payload are kept active (report-only)', {
+          count: candidates.length,
+          sample: candidates.slice(0, 20).map(c => c.githubUsername ?? c.name),
+        });
+      }
+
+      if (deactivateMissing && candidates.length > 0) {
+        const idsToDeactivate = candidates.map(c => c.id);
         await tx.execute(sql`
           UPDATE team_members SET is_active = false, end_date = ${new Date().toISOString().split('T')[0]}, updated_at = NOW()
           WHERE id IN (${sql.join(idsToDeactivate.map(id => sql`${id}`), sql`, `)})
@@ -823,27 +831,21 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
 
     });
 
-    // Relink orphaned data for newly inserted members (outside transaction
-    // so a null-byte error in one member's metadata doesn't abort the sync)
-    for (const m of newlyInserted) {
-      try {
-        const contribResult = await db.execute(sql`
-          UPDATE contributions SET team_member_id = ${m.id}
-          WHERE team_member_id IS NULL
-            AND LOWER((metadata #>> '{}')::jsonb->>'author') = LOWER(${m.githubUsername})
-        `) as unknown as { rowCount?: number };
-        const msResult = await db.execute(sql`
-          UPDATE maintainer_status SET team_member_id = ${m.id}
-          WHERE team_member_id IS NULL AND LOWER(github_username) = LOWER(${m.githubUsername})
-        `) as unknown as { rowCount?: number };
-        const lpResult = await db.execute(sql`
-          UPDATE leadership_positions SET team_member_id = ${m.id}
-          WHERE team_member_id IS NULL AND LOWER(github_username) = LOWER(${m.githubUsername})
-        `) as unknown as { rowCount?: number };
-        totalRelinked += (contribResult.rowCount ?? 0) + (msResult.rowCount ?? 0) + (lpResult.rowCount ?? 0);
-      } catch (relinkError) {
-        logger.warn(`Bulk sync: relink failed for @${m.githubUsername} (non-fatal)`, { error: relinkError });
-      }
+    // Relink orphaned data set-based, for every member, on every sync.
+    //
+    // Shared with the GitHub org-sync worker so the two paths cannot drift
+    // again. Two properties matter here:
+    //  - null-byte safety: the helper never re-parses `metadata` as jsonb, which
+    //    throws on `\u0000` rows and used to be swallowed as "non-fatal", so a
+    //    member could be inserted with relinked = 0.
+    //  - convergence: this runs whether or not members were newly inserted, so
+    //    a username correction or a previously failed relink self-heals.
+    const relinkResult = await relinkOrphanedRecords(db);
+    totalRelinked += relinkResult.total;
+    if (relinkResult.errors.length > 0) {
+      logger.warn('Bulk sync: some relink statements failed (non-fatal)', {
+        errors: relinkResult.errors,
+      });
     }
 
     // Queue governance + leadership refresh if new members were added (outside transaction)
@@ -858,7 +860,11 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
       }
     }
 
-    logger.info(`Bulk team sync complete`, { source, upserted, inserted, deactivated, relinked: totalRelinked });
+    logger.info(`Bulk team sync complete`, {
+      source, upserted, inserted, deactivated, relinked: totalRelinked,
+      wouldDeactivate: wouldDeactivate.length,
+      deactivateMissing,
+    });
 
     return {
       success: true,
@@ -867,6 +873,8 @@ app.post('/api/admin/team-members/sync', { preHandler: [requireAdmin] }, async (
       inserted,
       deactivated,
       relinked: totalRelinked,
+      wouldDeactivate,
+      deactivateMissing,
     };
   } catch (error) {
     logger.error('Error in bulk team sync', { error });
